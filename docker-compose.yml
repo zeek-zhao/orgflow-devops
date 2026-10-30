@@ -22,7 +22,7 @@ services:
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
     volumes:
-      - ./out/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./out:/etc/caddy:ro
       - caddy_data:/data
     depends_on:
       - router
@@ -33,9 +33,9 @@ services:
     restart: unless-stopped
     environment:
       - CADDY_ADMIN_URL=${CADDY_ADMIN_URL:-http://caddy:2019}
-      - ROUTES_FILE=/app/routes.yaml
+      - ROUTES_FILE=/app/config/routes.yaml
     volumes:
-      - ./config/routes.yaml:/app/routes.yaml:ro
+      - ./config:/app/config:ro
       - ./out:/app/out
     expose:
       - "8090"
