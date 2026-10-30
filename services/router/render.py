@@ -5,7 +5,7 @@
   render.py --routes config/routes.yaml --out out/Caddyfile
   render.py --routes config/routes.yaml --out out/Caddyfile --watch
 
-设计：只支持本项目约定的极简 schema（listen + routes[path/upstream/strip_prefix]），
+设计：只支持本项目约定的极简 schema（listen + routes[path/upstream/strip_prefix/auth]），
 不依赖 PyYAML，保证零第三方依赖即可运行。
 """
 import argparse
@@ -41,9 +41,12 @@ def parse_routes(path):
                 cur["path"] = s.split(":", 1)[1].strip().strip('"').strip("'")
             elif s.startswith("upstream:"):
                 cur["upstream"] = s.split(":", 1)[1].strip().strip('"').strip("'")
-            elif s.startswith("strip_prefix:"):
+            elif s.startswith(("strip_prefix:", "strip:")):
                 v = s.split(":", 1)[1].strip().lower()
                 cur["strip_prefix"] = v in ("true", "1", "yes")
+            elif s.startswith("auth:"):
+                v = s.split(":", 1)[1].strip().lower()
+                cur["auth"] = v in ("true", "1", "yes")
     return listen, routes
 
 
@@ -58,6 +61,17 @@ def render(listen, routes):
             out.append(f"\thandle_path {p}* {{")
         else:
             out.append(f"\thandle {p}* {{")
+        if r.get("auth", False):
+            out.extend([
+                "\t\tforward_auth oauth2-proxy:4180 {",
+                "\t\t\turi /oauth2/auth",
+                "\t\t\tcopy_headers X-Auth-Request-User X-Auth-Request-Email",
+                "\t\t\t@unauth status 401",
+                "\t\t\thandle_response @unauth {",
+                "\t\t\t\tredir * /auth/oauth2/start?rd={uri} 302",
+                "\t\t\t}",
+                "\t\t}",
+            ])
         out.append(f"\t\treverse_proxy {up}")
         out.append("\t}")
     out.append("}")
