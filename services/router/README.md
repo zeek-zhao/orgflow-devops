@@ -48,5 +48,12 @@ bash services/router/reload.sh   # 渲染 + POST /load 到 Caddy admin
   不需要再次修改 routes.yaml。内容相同不重复写入或加载；watch 启动时会同步一次。
 - 首次启动 watch 且输出不存在时，先生成启动文件供 Caddy 启动，再持续重试 admin；
   这是尚无旧配置时的自举例外，不会覆盖已有文件。
+- watch 模式默认在 `0.0.0.0:8090` 提供 `/healthz`（仅容器内部 expose），
+  可用 `--health-port` 更改；返回 `{"ok":true,"routes":N}`。
+  尚未读取有效路由时返回 503；之后报告最近处理的路由数量，不依赖 Caddy
+  admin 可达性，Caddy 自身健康由独立探针检查。其他路径返回 404。
+  单次渲染/加载不监听健康端口，原 CLI 行为不变。
+  `bash services/router/reload.sh out/Caddyfile --watch --health-port 8090`
+  可显式启用长驻加载和健康端点。
 
 回归检查：`python3 -m unittest discover -s services/router -p 'test_*.py'`。

@@ -6,4 +6,4 @@ CADDYFILE="${1:-out/Caddyfile}"
 ROUTES="${ROUTES_FILE:-config/routes.yaml}"
 
 exec python3 services/router/render.py \
-  --routes "$ROUTES" --out "$CADDYFILE" --admin "$ADMIN"
+  --routes "$ROUTES" --out "$CADDYFILE" --admin "$ADMIN" "${@:2}"

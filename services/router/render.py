@@ -9,10 +9,13 @@
 不依赖 PyYAML，保证零第三方依赖即可运行。
 """
 import argparse
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
 import math
 import os
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -133,6 +136,23 @@ def reload_caddy(content, admin_url):
         ) from e
 
 
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path != "/healthz":
+            self.send_error(404)
+            return
+        ready = self.server.routes_count is not None
+        body = json.dumps({"ok": ready, "routes": self.server.routes_count or 0}).encode("utf-8")
+        self.send_response(200 if ready else 503)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--routes", required=True)
@@ -140,9 +160,23 @@ def main():
     ap.add_argument("--watch", action="store_true")
     ap.add_argument("--interval", type=float, default=2.0)
     ap.add_argument("--admin", default=os.environ.get("CADDY_ADMIN_URL", ""))
+    ap.add_argument("--health-port", type=int, default=8090,
+                    help="watch-mode health HTTP port (default: 8090)")
     args = ap.parse_args()
     if not math.isfinite(args.interval) or args.interval <= 0:
         ap.error("--interval must be a finite positive number")
+    if not 0 <= args.health_port <= 65535:
+        ap.error("--health-port must be between 0 and 65535")
+
+    health = None
+    if args.watch:
+        try:
+            health = ThreadingHTTPServer(("0.0.0.0", args.health_port), HealthHandler)
+        except (OSError, ValueError) as e:
+            print(f"[router] health startup failed: {e}", file=sys.stderr)
+            return 1
+        health.routes_count = None
+        threading.Thread(target=health.serve_forever, daemon=True).start()
 
     def once(force_reload=False):
         listen, routes = parse_routes(args.routes)
@@ -152,11 +186,16 @@ def main():
         if args.watch and not os.path.exists(args.out):
             write_if_changed(args.out, content)
             print(f"[router] bootstrapped {args.out}; waiting for Caddy", flush=True)
+        # Health must not depend on Caddy: deploy waits for router before starting Caddy.
+        if health is not None and health.routes_count is None:
+            health.routes_count = len(routes)
         if args.admin and (changed or force_reload):
             st = reload_caddy(content, args.admin)
             print(f"[router] caddy reload -> {st}", flush=True)
         if write_if_changed(args.out, content):
             print(f"[router] rendered {args.out} ({len(routes)} routes)")
+        if health is not None:
+            health.routes_count = len(routes)
 
     if not args.watch:
         try:

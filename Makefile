@@ -3,11 +3,12 @@ SHELL := /bin/bash
 COMPOSE ?= docker compose
 ENV_FILE ?= .env
 
-.PHONY: help render deploy up down jobs jobs-test backup lint test test-groovy clean
+.PHONY: help render deploy doctor up down jobs jobs-test backup lint test test-groovy clean
 
 help:
 	@echo "make render   渲染 routes.yaml -> out/Caddyfile"
 	@echo "make deploy   起 M0 底座（Jenkins/权限/路由/Caddy/Nexus）"
+	@echo "make doctor   只读环境自检（Docker/端口/配置/磁盘/镜像，不启动容器）"
 	@echo "make jobs     推送参数化 deploy/backup Job 到 Jenkins"
 	@echo "make jobs-test 本地渲染校验 deploy/backup Job（不连接 Jenkins，无需 .env）"
 	@echo "make backup   触发一次全量备份（本地脚本）"
@@ -22,7 +23,10 @@ render:
 	@echo "rendered out/Caddyfile"
 
 deploy: render
-	@bash scripts/deploy.sh
+	@ENV_FILE="$(ENV_FILE)" COMPOSE="$(COMPOSE)" bash scripts/deploy.sh
+
+doctor:
+	@ENV_FILE="$(ENV_FILE)" COMPOSE="$(COMPOSE)" python3 scripts/doctor.py
 
 up:
 	$(COMPOSE) --env-file $(ENV_FILE) up -d
@@ -47,6 +51,9 @@ lint:
 
 test:
 	@python3 -m py_compile services/router/render.py
+	@python3 services/router/test_render.py
+	@python3 services/auth/test_bootstrap.py
+	@python3 scripts/test_deploy.py
 	@python3 scripts/test_jobs.py
 	@echo "python syntax ok"
 
