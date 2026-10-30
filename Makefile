@@ -3,7 +3,7 @@ SHELL := /bin/bash
 COMPOSE ?= docker compose
 ENV_FILE ?= .env
 
-.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy clean
+.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock clean
 
 help:
 	@echo "make render   渲染 routes.yaml -> out/Caddyfile"
@@ -17,6 +17,8 @@ help:
 	@echo "make lint     静态检查（shellcheck/yamllint）"
 	@echo "make test     跑 Python 侧测试（路由/导入/Job 定义）"
 	@echo "make test-groovy 跑共享库行为测试（需要 groovy，缺失则跳过）"
+	@echo "make test-bats DinD 容器内跑 9 个服务/策略用例（KEEP=1 保现场）"
+	@echo "make images-lock 从本地镜像 digest 更新 tests/images.lock"
 	@echo "make down     停止并移除容器"
 
 render:
@@ -72,6 +74,16 @@ test:
 	@python3 scripts/test_jobs.py
 	@python3 scripts/test_backup.py
 	@echo "python syntax ok"
+
+test-bats:
+	@bash tests/images.sh ensure
+	docker build -t orgflow/m0-test:24.04-v1 tests/harness
+	docker run --rm --privileged --name orgflow-m0-test -e KEEP="$(KEEP)" \
+		-v "$(CURDIR):/repo" -v /var/run/docker.sock:/host/docker.sock \
+		-v m0-dind:/var/lib/docker orgflow/m0-test:24.04-v1
+
+images-lock:
+	@bash tests/images.sh update
 
 # 共享库行为测试只依赖 groovy 本身（用 GroovyShell + metaClass 打桩，无外部 jar）
 test-groovy:

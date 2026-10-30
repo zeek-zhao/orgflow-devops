@@ -92,10 +92,20 @@ class RouterTests(unittest.TestCase):
         for path in ("nexus", "ldapadmin", "auth"):
             self.assertIn(f"\thandle_path /{path}* {{", content)
         self.assertEqual(content.count("reverse_proxy "), 5)
+        self.assertTrue(content.endswith('\thandle {\n\t\trespond "not found" 404\n\t}\n}\n'))
         before = self.out.stat()
         self.assertEqual(self.run_render().returncode, 0)
         self.assertEqual(self.out.stat().st_mtime_ns, before.st_mtime_ns)
         self.assertEqual(self.out.stat().st_ino, before.st_ino)
+
+    def test_missing_upstream_preserves_previous_output(self):
+        self.assertEqual(self.run_render().returncode, 0)
+        before = self.out.read_bytes()
+        self.routes.write_text('routes:\n  - path: /broken\n')
+        result = self.run_render()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("upstream is required", result.stderr)
+        self.assertEqual(self.out.read_bytes(), before)
 
     def test_auth_forward_auth_precedes_jenkins_proxy(self):
         self.assertEqual(self.run_render().returncode, 0)
