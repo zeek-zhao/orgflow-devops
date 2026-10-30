@@ -65,7 +65,7 @@ jobs:
           digest=$(awk -F '\t' -v name="$LOCK_NAME" '$1 == name {print $3}' tests/images.lock)
           [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "Invalid lock digest: $LOCK_NAME" >&2; exit 1; }
           # Tags can move; mirror the exact lock, not today's upstream tag.
-          src="${SRC}@${digest}"
+          src="${SRC%:*}@${digest}"
           dst="ghcr.io/${GITHUB_REPOSITORY,,}/${PACKAGE}:${SRC##*:}"
           if [[ "$MODE" == all ]]; then
             skopeo copy --all --preserve-digests "docker://$src" "docker://$dst"

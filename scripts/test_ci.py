@@ -1,10 +1,12 @@
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 
 
@@ -18,7 +20,8 @@ class ImageTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
         for name in ("scripts/pin-images.sh", "tests/images.sh", "tests/images.lock",
-                     "docker-compose.yml", "docker-compose.ghcr.yml"):
+                     "docker-compose.yml", "docker-compose.ghcr.yml",
+                     ".github/workflows/mirror.yml"):
             target = self.root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, target)
@@ -54,6 +57,22 @@ elif args and args[0] == "pull" and os.environ.get("PULL_FAIL"):
     sys.exit(1)
 """)
         mock.chmod(0o755)
+        skopeo = binary / "skopeo"
+        skopeo.write_text(f"""#!{sys.executable}
+import json
+import os
+import re
+import sys
+args = sys.argv[1:]
+with open("calls.jsonl", "a") as stream:
+    stream.write(json.dumps(["skopeo", *args]) + "\\n")
+if any(re.search(r":[^/]+@sha256:", arg) for arg in args):
+    sys.exit("skopeo does not support tag plus digest")
+if args[0] == "inspect":
+    print(os.environ["TARGET_DIGEST"] if args[-1].startswith("docker://ghcr.io/zeek-zhao/")
+          else os.environ["SOURCE_DIGEST"])
+""")
+        skopeo.chmod(0o755)
 
     def run_script(self, script, *args, **env):
         return subprocess.run(
@@ -91,7 +110,10 @@ elif args and args[0] == "pull" and os.environ.get("PULL_FAIL"):
         result = self.run_script("scripts/pin-images.sh")
         self.assertEqual(result.returncode, 0, result.stderr)
         first = path.read_bytes()
-        self.assertTrue(path.read_text().startswith(original.rstrip("\n") + "\n"))
+        for name in ("caddy", "jenkins", "ldap", "ldapadmin", "dex", "oauth2-proxy", "nexus"):
+            pattern = rf"^  {name}:\n    image: [^\n]+\n"
+            self.assertEqual(re.search(pattern, path.read_text(), re.MULTILINE).group(),
+                             re.search(pattern, original, re.MULTILINE).group())
         for name in ("router", "jjb", "m0-test"):
             self.assertIn(f"/{name}:24.04-v1@{DIGEST}", path.read_text())
         self.assertIn("x-m0-test-image:", path.read_text())
@@ -144,6 +166,51 @@ elif args and args[0] == "pull" and os.environ.get("PULL_FAIL"):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("make images-pin", result.stderr)
         self.assertFalse(any(call[0] == "pull" for call in self.calls()))
+
+    def mirror(self, mode, target_digest):
+        workflow = (self.root / ".github/workflows/mirror.yml").read_text()
+        script = textwrap.dedent(workflow.split("- name: Copy and verify\n", 1)[1]
+                                 .split("        run: |\n", 1)[1])
+        digest = next(line.split("\t")[2] for line in
+                      (self.root / "tests/images.lock").read_text().splitlines()
+                      if line.startswith("caddy\t"))
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=self.root, capture_output=True, text=True, timeout=20,
+            env=dict(self.env, SRC="docker.io/library/caddy:2", PACKAGE="mirror-caddy",
+                     LOCK_NAME="caddy", MODE=mode, GITHUB_REPOSITORY="zeek-zhao/orgflow-devops",
+                     GITHUB_STEP_SUMMARY=str(self.root / "summary.txt"),
+                     SOURCE_DIGEST=digest, TARGET_DIGEST=target_digest or digest),
+        )
+        return result, digest
+
+    def test_all_mirror_preserves_the_lock_not_the_moving_tag(self):
+        result, digest = self.mirror("all", "")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls()[0], [
+            "skopeo", "copy", "--all", "--preserve-digests",
+            f"docker://docker.io/library/caddy@{digest}",
+            "docker://ghcr.io/zeek-zhao/orgflow-devops/mirror-caddy:2",
+        ])
+        self.assertIn("Verified: source = destination = images.lock.",
+                      (self.root / "summary.txt").read_text())
+
+    def test_all_mirror_rejects_changed_digest(self):
+        result, _ = self.mirror("all", DIGEST)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Digest mismatch", result.stderr)
+
+    def test_amd64_mirror_records_changed_digest_in_separate_tag(self):
+        result, digest = self.mirror("amd64", DIGEST)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls()[0], [
+            "skopeo", "copy", "--override-os", "linux", "--override-arch", "amd64",
+            f"docker://docker.io/library/caddy@{digest}",
+            "docker://ghcr.io/zeek-zhao/orgflow-devops/mirror-caddy:2-amd64",
+        ])
+        summary = (self.root / "summary.txt").read_text()
+        self.assertIn(digest, summary)
+        self.assertIn(DIGEST, summary)
+        self.assertIn("单架构搬运后 digest 会变，不能沿用上游 digest", summary)
 
 
 if __name__ == "__main__":
