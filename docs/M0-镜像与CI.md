@@ -34,10 +34,13 @@ CI 仅用 `secrets.GITHUB_TOKEN` 登录 GHCR，镜像工作流需要 `packages: 
    全部解析成功后才原子回写，并在写入前检查合并 Compose 配置。
    `router` / `jjb` 增加到 `docker-compose.ghcr.yml` 的服务段，
    harness 存在该文件的标准 Compose 扩展 `x-m0-test-image`，供 GHCR bats 使用。
-   重复执行结果相同；失败会提示先跑 `images.yml`。提交真实 pins；
+   默认解析 `latest`；合入前验收可显式运行
+   `IMAGES_TAG=sha-<工作流的7位提交号> make images-pin`，只选择已推送成功的那次产物，
+   不必提前合入 main 或伪造 `latest`。重复执行结果相同；失败会提示先跑 `images.yml`。提交真实 pins；
    不改变 `tests/images.lock` 和基础 Compose 的上游 digest。
 
-手动触发示例（工作流首次引入时需先通过 PR 注册，或合入默认分支）：
+手动触发示例（工作流首次引入时需先注册，或合入默认分支；仅 dispatch/schedule 的
+新工作流在尚未注册时会返回 404）：
 
 ```sh
 gh workflow run images.yml --ref main

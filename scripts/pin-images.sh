@@ -13,9 +13,12 @@ import sys
 import tempfile
 
 prefix = "ghcr.io/zeek-zhao/orgflow-devops"
+tag = os.environ.get("IMAGES_TAG", "latest")
+if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", tag):
+    sys.exit("IMAGES_TAG must be a valid image tag")
 images = {}
 for name in ("router", "jjb", "m0-test"):
-    reference = f"{prefix}/{name}:latest"
+    reference = f"{prefix}/{name}:{tag}"
     try:
         result = subprocess.run(
             ["docker", "buildx", "imagetools", "inspect", reference],

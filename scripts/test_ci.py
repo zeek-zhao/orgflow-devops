@@ -25,7 +25,7 @@ class ImageTests(unittest.TestCase):
         binary = self.root / "bin"
         binary.mkdir()
         self.env = dict(os.environ, PATH=f"{binary}:{os.environ['PATH']}",
-                        ALLOW_PULL_DOCKER_HUB="0", USE_GHCR="0")
+                        ALLOW_PULL_DOCKER_HUB="0", USE_GHCR="0", IMAGES_TAG="latest")
         mock = binary / "docker"
         mock.write_text(f"""#!{sys.executable}
 import json
@@ -100,6 +100,13 @@ elif args and args[0] == "pull" and os.environ.get("PULL_FAIL"):
         self.assertEqual(path.read_bytes(), first)
         self.assertEqual((self.root / "tests/images.lock").read_bytes(), lock)
         self.assertEqual(len([call for call in self.calls() if "inspect" in call]), 6)
+        self.assertTrue(all(call[-1].endswith(":latest") for call in self.calls() if "inspect" in call))
+
+    def test_explicit_sha_tag_supports_premerge_acceptance(self):
+        result = self.run_script("scripts/pin-images.sh", IMAGES_TAG="sha-ba5e76e")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(all(call[-1].endswith(":sha-ba5e76e")
+                            for call in self.calls() if "inspect" in call))
 
     def test_failed_or_invalid_inspect_never_partially_writes(self):
         path = self.root / "docker-compose.ghcr.yml"

@@ -1,8 +1,6 @@
 name: Mirror
 
 on:
-  pull_request:
-    paths: [.github/workflows/mirror.yml]
   workflow_dispatch:
     inputs:
       mode:
@@ -19,7 +17,6 @@ permissions:
 
 jobs:
   mirror:
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
