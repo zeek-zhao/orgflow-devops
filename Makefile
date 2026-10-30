@@ -3,15 +3,17 @@ SHELL := /bin/bash
 COMPOSE ?= docker compose
 ENV_FILE ?= .env
 
-.PHONY: help render deploy doctor up down jobs jobs-test backup lint test test-groovy clean
+.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy clean
 
 help:
 	@echo "make render   渲染 routes.yaml -> out/Caddyfile"
 	@echo "make deploy   起 M0 底座（Jenkins/权限/路由/Caddy/Nexus）"
 	@echo "make doctor   只读环境自检（Docker/端口/配置/磁盘/镜像，不启动容器）"
-	@echo "make jobs     推送参数化 deploy/backup Job 到 Jenkins"
-	@echo "make jobs-test 本地渲染校验 deploy/backup Job（不连接 Jenkins，无需 .env）"
+	@echo "make jobs     推送参数化 deploy/backup/restore Job 到 Jenkins"
+	@echo "make jobs-test 本地渲染校验三个 Job（不连接 Jenkins，无需 .env）"
 	@echo "make backup   触发一次全量备份（本地脚本）"
+	@echo "make restore  SERVICE=ldap BACKUP_FILE=包路径（交互确认覆盖）"
+	@echo "make backup-verify BACKUP_FILE=包路径（只校验）"
 	@echo "make lint     静态检查（shellcheck/yamllint）"
 	@echo "make test     跑 Python 侧测试（路由/导入/Job 定义）"
 	@echo "make test-groovy 跑共享库行为测试（需要 groovy，缺失则跳过）"
@@ -45,6 +47,19 @@ jobs-test:
 backup:
 	@bash scripts/backup.sh --all
 
+restore:
+	@test -n "$$SERVICE" && test -n "$$BACKUP_FILE" || { echo "必须显式传 SERVICE 和 BACKUP_FILE" >&2; exit 1; }
+	@read -r -p "将停服并覆盖 $$SERVICE 数据；输入 YES 继续: " confirm && \
+		test "$$confirm" = YES || { echo "未确认，取消恢复" >&2; exit 1; }; \
+		bash scripts/restore.sh --service "$$SERVICE" --file "$$BACKUP_FILE" --force
+
+backup-verify:
+	@test -n "$$BACKUP_FILE" || { echo "必须传 BACKUP_FILE" >&2; exit 1; }
+	@bash scripts/backup.sh --verify "$$BACKUP_FILE"
+
+restore backup-verify: export SERVICE := $(SERVICE)
+restore backup-verify: export BACKUP_FILE := $(BACKUP_FILE)
+
 lint:
 	@command -v shellcheck >/dev/null && shellcheck scripts/*.sh || echo "shellcheck 未安装，跳过"
 	@command -v yamllint >/dev/null && yamllint config services docker-compose.yml || echo "yamllint 未安装，跳过"
@@ -55,6 +70,7 @@ test:
 	@python3 services/auth/test_bootstrap.py
 	@python3 scripts/test_deploy.py
 	@python3 scripts/test_jobs.py
+	@python3 scripts/test_backup.py
 	@echo "python syntax ok"
 
 # 共享库行为测试只依赖 groovy 本身（用 GroovyShell + metaClass 打桩，无外部 jar）

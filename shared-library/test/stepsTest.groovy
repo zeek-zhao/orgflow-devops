@@ -17,7 +17,7 @@ def loadStep(String name, Map state) {
         }
     }
     step.metaClass.sh = { String command ->
-        assert state.inCredentials
+        assert name == 'restoreService' || state.inCredentials
         assert command.contains('set +x')
         assert !command.contains('test-secret')
         state.commands << command
@@ -68,6 +68,28 @@ assert backup.commands[0].contains('bash scripts/backup.sh --service "$BACKUP_SE
 assert backup.bindings == []
 assert backup.environment.contains('BACKUP_RETENTION_DAYS=0')
 
+def restore = newState()
+loadStep('restoreService', restore).call(service: 'ldap', confirm: 'YES', backupFile: 'out/backups/ldap-test.tgz')
+assert restore.commands.size() == 1
+assert restore.commands[0].contains('--file "$file" --force')
+assert restore.commands[0].contains('if [ -z "$file" ]')
+assert restore.environment.contains('RESTORE_SERVICE=ldap')
+assert restore.environment.contains('RESTORE_FILE=out/backups/ldap-test.tgz')
+assert restore.bindings == null
+[
+    [service: 'ldap'],
+    [service: 'ldap', confirm: 'yes'],
+    [service: 'other', confirm: 'YES'],
+    [service: 'ldap', confirm: 'YES', backupFile: '$(echo test-secret).tgz'],
+    [service: 'ldap', confirm: 'YES', backupFile: "file'; echo test-secret.tgz"]
+].each { cfg ->
+    def state = newState()
+    expectFailure { loadStep('restoreService', state).call(cfg) }
+    assert state.commands.empty
+    assert state.environment.empty
+    assert state.bindings == null
+}
+
 [
     [service: 'ldap; echo test-secret'],
     [service: 'caddy', port: '65536'],
@@ -99,7 +121,7 @@ assert backup.environment.contains('BACKUP_RETENTION_DAYS=0')
 // Compile the actual JJB output, including its resolved braces and checkout syntax.
 def loader = new GroovyClassLoader()
 loader.parseClass('@interface Library { String value(); }')
-['deploy-service', 'backup-service'].each { name ->
+['deploy-service', 'backup-service', 'restore-service'].each { name ->
     def xmlFile = new File(".jjb/rendered/${name}/config.xml")
     assert xmlFile.exists(): 'Run make jobs-test first'
     def factory = javax.xml.parsers.DocumentBuilderFactory.newInstance()
