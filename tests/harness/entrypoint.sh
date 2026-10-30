@@ -12,7 +12,9 @@ daemon_pid=
 stage="starting dockerd"
 
 compose() {
-    docker compose -f /repo/docker-compose.yml -f "$M0_COMPOSE_OVERRIDE" \
+    local args=(-f /repo/docker-compose.yml)
+    if [[ -n ${M0_COMPOSE_EXTRA:-} ]]; then args+=(-f "$M0_COMPOSE_EXTRA"); fi
+    docker compose "${args[@]}" -f "$M0_COMPOSE_OVERRIDE" \
         --env-file "$M0_ENV_FILE" --project-directory /repo "$@"
 }
 

@@ -2,8 +2,45 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+ghcr_config() {
+    docker compose -f docker-compose.yml -f docker-compose.ghcr.yml config --format json
+}
+
+harness_image() {
+    if [[ ${USE_GHCR:-0} == 1 ]]; then
+        ghcr_config | python3 -c '
+import json, re, sys
+image = json.load(sys.stdin).get("x-m0-test-image", "")
+if not re.fullmatch(r"ghcr.io/[^@\s]+@sha256:[a-f0-9]{64}", image):
+    sys.exit("Missing pinned GHCR harness; 先跑 images.yml 工作流，再执行 make images-pin")
+print(image)
+'
+    else
+        echo orgflow/m0-test:24.04-v1
+    fi
+}
+
 case "${1:-}" in
+    harness-image)
+        harness_image
+        ;;
     ensure)
+        if [[ ${USE_GHCR:-0} == 1 ]]; then
+            harness=$(harness_image)
+            images=$(ghcr_config | python3 -c '
+import json, re, sys
+services = json.load(sys.stdin)["services"]
+for name, service in services.items():
+    image = service.get("image", "")
+    if not re.fullmatch(r"ghcr.io/[^@\s]+@sha256:[a-f0-9]{64}", image):
+        sys.exit(f"{name}: missing pinned GHCR image; 先跑 images.yml 工作流，再执行 make images-pin")
+    print(image)
+')
+            while read -r image; do
+                docker image inspect "$image" >/dev/null 2>&1 || docker pull "$image"
+            done <<< "$images"$'\n'"$harness"
+            exit 0
+        fi
         while IFS=$'\t' read -r name ref digest; do
             [[ -z $name || $name == \#* ]] && continue
             image="$ref@$digest"
@@ -13,8 +50,14 @@ case "${1:-}" in
                     docker pull "$image"
                     ;;
                 *)
-                    echo "Missing local image $image; Docker Hub is unavailable. Import this exact image from a trusted offline source." >&2
-                    exit 1
+                    if [[ ${ALLOW_PULL_DOCKER_HUB:-0} == 1 ]]; then
+                        # Hosted CI runners start without cached Hub images.
+                        docker pull "$image"
+                    else
+                        # 213 cannot reach Hub; fail fast rather than hang on a pull.
+                        echo "Missing local image $image; Docker Hub is unavailable. Import this exact image from a trusted offline source." >&2
+                        exit 1
+                    fi
                     ;;
             esac
         done < tests/images.lock
@@ -40,5 +83,5 @@ case "${1:-}" in
         mv "$temporary" tests/images.lock
         echo "Updated tests/images.lock; synchronize Compose and Dockerfile references before testing."
         ;;
-    *) echo "Usage: bash tests/images.sh ensure|update" >&2; exit 2 ;;
+    *) echo "Usage: bash tests/images.sh ensure|update|harness-image" >&2; exit 2 ;;
 esac
