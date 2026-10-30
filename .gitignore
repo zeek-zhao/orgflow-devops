@@ -1,0 +1,12 @@
+# 敏感与运行期产物
+.env
+out/
+*.log
+
+# 语言
+__pycache__/
+*.pyc
+
+# 编辑器
+.idea/
+.vscode/

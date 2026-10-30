@@ -1,0 +1,49 @@
+- job:
+    name: deploy-service
+    description: "M0 参数化部署：选择一个服务，按参数拉起（敏感项走 Credentials）"
+    project-type: pipeline
+    sandbox: true
+    pipeline: |
+      @Library('orgflow-shared') _
+      deployService(
+        service: params.SERVICE,
+        environment: params.ENV,
+        version: params.VERSION,
+        port: params.PORT,
+        domain: params.DOMAIN
+      )
+    parameters:
+      - choice:
+          name: SERVICE
+          choices:
+            - jenkins
+            - caddy
+            - router
+            - ldap
+            - ldapadmin
+            - oauth2-proxy
+            - nexus
+          description: "要部署的服务"
+      - choice:
+          name: ENV
+          choices:
+            - dev
+            - staging
+            - prod
+          description: "目标环境"
+      - string:
+          name: VERSION
+          default: latest
+          description: "镜像版本/tag"
+      - string:
+          name: PORT
+          default: ''
+          description: "覆盖端口（留空用默认）"
+      - string:
+          name: DOMAIN
+          default: ''
+          description: "对外域名（可选）"
+      - boolean:
+          name: DRY_RUN
+          default: false
+          description: "只打印不执行"
