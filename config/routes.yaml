@@ -1,0 +1,20 @@
+# 路由注册数据源（路由注册服务读取此文件并渲染 Caddyfile）
+# 改完执行 `make render` 或由 router 服务 watch 自动热加载
+listen: ":8080"
+
+routes:
+  - path: /jenkins
+    upstream: jenkins:8080
+    strip_prefix: false
+
+  - path: /nexus
+    upstream: nexus:8081
+    strip_prefix: true
+
+  - path: /ldapadmin
+    upstream: ldapadmin:80
+    strip_prefix: true
+
+  - path: /auth
+    upstream: oauth2-proxy:4180
+    strip_prefix: true

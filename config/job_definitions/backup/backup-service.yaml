@@ -1,0 +1,31 @@
+- job:
+    name: backup-service
+    description: "M0 参数化备份：选服务 + 目标 + 保留天数"
+    project-type: pipeline
+    sandbox: true
+    pipeline: |
+      @Library('orgflow-shared') _
+      backupService(
+        service: params.SERVICE,
+        target: params.BACKUP_TARGET,
+        retentionDays: params.RETENTION_DAYS
+      )
+    parameters:
+      - choice:
+          name: SERVICE
+          choices:
+            - jenkins
+            - nexus
+            - ldap
+            - all
+          description: "要备份的服务（all=全部）"
+      - choice:
+          name: BACKUP_TARGET
+          choices:
+            - local
+            - nexus
+          description: "备份目标"
+      - string:
+          name: RETENTION_DAYS
+          default: '7'
+          description: "保留天数"
