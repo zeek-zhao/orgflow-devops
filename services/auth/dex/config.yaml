@@ -1,0 +1,36 @@
+issuer: http://localhost:8080/dex
+storage:
+  type: memory
+web:
+  http: 0.0.0.0:5556
+staticClients:
+  - id: jenkins
+    secretEnv: OAUTH2_CLIENT_SECRET
+    redirectURIs:
+      - http://localhost:8080/auth/oauth2/callback
+    name: OrgFlow
+connectors:
+  - type: ldap
+    id: ldap
+    name: OpenLDAP
+    config:
+      host: ldap:389
+      insecureNoSSL: true
+      bindDN: cn=admin,dc=devops,dc=com
+      bindPW: ${LDAP_ADMIN_PASSWORD}
+      userSearch:
+        baseDN: ou=users,dc=devops,dc=com
+        filter: "(objectClass=inetOrgPerson)"
+        username: uid
+        idAttr: uid
+        emailAttr: mail
+        nameAttr: cn
+      groupSearch:
+        baseDN: ou=groups,dc=devops,dc=com
+        filter: "(objectClass=posixGroup)"
+        userMatchers:
+          - userAttr: uid
+            groupAttr: memberUid
+        nameAttr: cn
+oauth2:
+  skipApprovalScreen: true

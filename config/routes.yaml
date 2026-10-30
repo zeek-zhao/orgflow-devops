@@ -6,6 +6,7 @@ routes:
   - path: /jenkins
     upstream: jenkins:8080
     strip_prefix: false
+    auth: true
 
   - path: /nexus
     upstream: nexus:8081
@@ -18,3 +19,8 @@ routes:
   - path: /auth
     upstream: oauth2-proxy:4180
     strip_prefix: true
+
+  # Dex 的端点挂在 issuer 路径 /dex 下（/dex/auth、/dex/token、/dex/keys），不能剥前缀
+  - path: /dex
+    upstream: dex:5556
+    strip_prefix: false

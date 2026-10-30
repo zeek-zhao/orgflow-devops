@@ -80,17 +80,45 @@ class RouterTests(unittest.TestCase):
             process.terminate()
             process.communicate(timeout=5)
 
-    def test_four_routes_and_unchanged_output(self):
+    def test_five_routes_and_unchanged_output(self):
         self.assertEqual(self.run_render().returncode, 0)
         content = self.out.read_text()
         self.assertIn("\thandle /jenkins* {", content)
+        self.assertIn("\thandle /dex* {", content)
         for path in ("nexus", "ldapadmin", "auth"):
             self.assertIn(f"\thandle_path /{path}* {{", content)
-        self.assertEqual(content.count("reverse_proxy "), 4)
+        self.assertEqual(content.count("reverse_proxy "), 5)
         before = self.out.stat()
         self.assertEqual(self.run_render().returncode, 0)
         self.assertEqual(self.out.stat().st_mtime_ns, before.st_mtime_ns)
         self.assertEqual(self.out.stat().st_ino, before.st_ino)
+
+    def test_auth_forward_auth_precedes_jenkins_proxy(self):
+        self.assertEqual(self.run_render().returncode, 0)
+        content = self.out.read_text()
+        jenkins = content.split("\thandle /jenkins* {", 1)[1].split("\thandle_path", 1)[0]
+        self.assertIn("forward_auth oauth2-proxy:4180 {", jenkins)
+        self.assertIn("uri /oauth2/auth", jenkins)
+        self.assertIn("copy_headers X-Auth-Request-User X-Auth-Request-Email", jenkins)
+        self.assertIn("@unauth status 401", jenkins)
+        self.assertIn("handle_response @unauth {", jenkins)
+        self.assertIn("redir * /auth/oauth2/start?rd={uri} 302", jenkins)
+        self.assertLess(jenkins.index("forward_auth"), jenkins.index("reverse_proxy"))
+        self.assertEqual(content.count("forward_auth "), 1)
+
+    def test_auth_defaults_to_false_and_explicit_false_is_unprotected(self):
+        self.routes.write_text(
+            'listen: ":8080"\nroutes:\n'
+            '  - path: /legacy\n    upstream: legacy:80\n'
+            '  - path: /public\n    upstream: public:80\n    auth: false\n    strip: true\n'
+            '  - path: /private\n    upstream: private:80\n    auth: true\n'
+        )
+        self.assertEqual(self.run_render().returncode, 0)
+        content = self.out.read_text()
+        self.assertEqual(content.count("reverse_proxy "), 3)
+        self.assertEqual(content.count("forward_auth "), 1)
+        self.assertIn("\thandle_path /public* {", content)
+        self.assertNotIn("forward_auth", content.split("\thandle /private*", 1)[0])
 
     def test_reload_success_and_rejection_preserve_last_good_file(self):
         self.out.write_text("old file\n")
