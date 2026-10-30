@@ -1,0 +1,15 @@
+jenkins:
+  systemMessage: "orgflow-devops M0 —— Jenkins 自举最小核心"
+  numExecutors: 2
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_ID}"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+unclassified:
+  location:
+    url: "${JENKINS_URL}"

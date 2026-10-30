@@ -1,0 +1,96 @@
+name: orgflow-devops
+
+# M0 最小核心：Jenkins + 权限管理服务 + 路由注册服务 + Caddy + Nexus
+services:
+  jenkins:
+    image: jenkins/jenkins:${JENKINS_VERSION:-lts-jdk17}
+    container_name: of-jenkins
+    restart: unless-stopped
+    environment:
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+      - CASC_JENKINS_CONFIG=/var/jenkins_home/casc/jenkins.yaml
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - ./config/jenkins.yaml:/var/jenkins_home/casc/jenkins.yaml:ro
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2
+    container_name: of-caddy
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    volumes:
+      - ./out/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - router
+
+  router:
+    build: ./services/router
+    container_name: of-router
+    restart: unless-stopped
+    environment:
+      - CADDY_ADMIN_URL=${CADDY_ADMIN_URL:-http://caddy:2019}
+      - ROUTES_FILE=/app/routes.yaml
+    volumes:
+      - ./config/routes.yaml:/app/routes.yaml:ro
+      - ./out:/app/out
+    expose:
+      - "8090"
+
+  ldap:
+    image: osixia/openldap:1.5.0
+    container_name: of-ldap
+    restart: unless-stopped
+    environment:
+      - LDAP_ORGANISATION=${LDAP_ORGANISATION:-OrgFlow}
+      - LDAP_DOMAIN=${LDAP_DOMAIN:-orgflow.internal}
+      - LDAP_ADMIN_PASSWORD=${LDAP_ADMIN_PASSWORD:-change-me}
+    volumes:
+      - ldap_data:/var/lib/ldap
+      - ldap_config:/etc/ldap/slapd.d
+    expose:
+      - "389"
+
+  ldapadmin:
+    image: osixia/phpldapadmin:0.9.0
+    container_name: of-ldapadmin
+    restart: unless-stopped
+    environment:
+      - PHPLDAPADMIN_LDAP_HOSTS=ldap
+    expose:
+      - "80"
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+    container_name: of-oauth2
+    restart: unless-stopped
+    command:
+      - --http-address=0.0.0.0:4180
+      - --provider=oidc
+      - --client-id=${OAUTH2_CLIENT_ID:-jenkins}
+      - --client-secret=${OAUTH2_CLIENT_SECRET:-change-me}
+      - --cookie-secret=${OAUTH2_COOKIE_SECRET:-change-me-32bytes-min}
+      - --upstream=${OAUTH2_UPSTREAM:-static://200}
+      - --email-domain=*
+      - --skip-provider-button=true
+    expose:
+      - "4180"
+
+  nexus:
+    image: sonatype/nexus3:${NEXUS_VERSION:-3.92.2}
+    container_name: of-nexus
+    restart: unless-stopped
+    volumes:
+      - nexus_data:/nexus-data
+    expose:
+      - "8081"
+
+volumes:
+  jenkins_home:
+  caddy_data:
+  ldap_data:
+  ldap_config:
+  nexus_data:
