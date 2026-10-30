@@ -3,11 +3,35 @@
 set -euo pipefail
 
 SERVICE="all"
-[ "${1:-}" = "--service" ] && SERVICE="${2:-all}"
-[ "${1:-}" = "--all" ] && SERVICE="all"
+case "${1:-}" in
+  --service)
+    if [ "$#" != 2 ] || [ -z "$2" ]; then
+      echo "用法: backup.sh [--all | --service jenkins|nexus|ldap|all]" >&2
+      exit 1
+    fi
+    SERVICE="$2" ;;
+  --all|"")
+    if [ "$#" -gt 1 ]; then
+      echo "参数过多" >&2
+      exit 1
+    fi ;;
+  *) echo "未知参数: $1" >&2; exit 1 ;;
+esac
 
 BACKUP_DIR="${BACKUP_DIR:-./out/backups}"
 RETENTION="${BACKUP_RETENTION_DAYS:-7}"
+case "$SERVICE" in
+  jenkins|nexus|ldap|all) ;;
+  *) echo "未知服务: $SERVICE" >&2; exit 1 ;;
+esac
+if [ "${BACKUP_TARGET:-local}" != local ]; then
+  echo "M0 仅支持 BACKUP_TARGET=local" >&2
+  exit 1
+fi
+if [[ ! "$RETENTION" =~ ^[0-9]{1,5}$ ]]; then
+  echo "BACKUP_RETENTION_DAYS 必须为 0-99999 的整数" >&2
+  exit 1
+fi
 PROJECT="orgflow-devops"
 mkdir -p "$BACKUP_DIR"
 ts=$(date +%Y%m%d-%H%M%S)
@@ -26,11 +50,9 @@ else
 fi
 
 for s in "${targets[@]}"; do
-  vol="${VOLS[$s]:-}"
-  if [ -z "$vol" ]; then
-    echo "跳过未知服务: $s" >&2
-    continue
-  fi
+  vol="${VOLS[$s]}"
+  # docker run would silently create a missing volume and back up an empty directory.
+  docker volume inspect "$vol" >/dev/null
   out="$BACKUP_DIR/${s}-${ts}.tgz"
   echo "备份 $s ($vol) -> $out"
   docker run --rm \
@@ -40,5 +62,7 @@ for s in "${targets[@]}"; do
 done
 
 echo "清理超过 ${RETENTION} 天的备份"
-find "$BACKUP_DIR" -name '*.tgz' -mtime +"$RETENTION" -delete || true
+for s in "${targets[@]}"; do
+  find "$BACKUP_DIR" -type f -name "${s}-*.tgz" -mtime +"$RETENTION" -delete
+done
 echo "完成"
