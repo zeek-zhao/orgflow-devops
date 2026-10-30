@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'amd64 saves space; all preserves the upstream digest for Compose'
+        description: 'all preserves the upstream digest that docker-compose.ghcr.yml pins; amd64 only saves space and BREAKS those pins'
         type: choice
-        options: [amd64, all]
-        default: amd64
+        options: [all, amd64]
+        default: all
   schedule:
     - cron: '0 3 * * 1'
 
