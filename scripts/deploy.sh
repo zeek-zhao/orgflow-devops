@@ -43,8 +43,13 @@ if [ -n "${SERVICE_VERSION:-}" ]; then
     exit 1
   fi
   case "$SERVICE" in
-    jenkins) export JENKINS_VERSION="$SERVICE_VERSION" ;;
-    nexus) export NEXUS_VERSION="$SERVICE_VERSION" ;;
+    jenkins|nexus)
+      locked_ref="$(awk -F '\t' -v service="$SERVICE" '$1 == service {print $2}' tests/images.lock)"
+      if [ "${locked_ref##*:}" != "$SERVICE_VERSION" ]; then
+        echo "SERVICE_VERSION 必须匹配 tests/images.lock；升级请先更新 digest 锁定" >&2
+        exit 1
+      fi
+      ;;
     *) echo "SERVICE_VERSION 仅支持 Jenkins/Nexus" >&2; exit 1 ;;
   esac
 fi
