@@ -22,6 +22,7 @@ http_body() {
 
 compose_cmd() {
     local args=(-f "$M0_REPO/docker-compose.yml")
+    if [[ -n ${M0_COMPOSE_EXTRA:-} ]]; then args+=(-f "$M0_COMPOSE_EXTRA"); fi
     if [[ -n ${M0_COMPOSE_OVERRIDE:-} ]]; then args+=(-f "$M0_COMPOSE_OVERRIDE"); fi
     docker compose "${args[@]}" --env-file "$M0_ENV_FILE" --project-directory "$M0_REPO" "$@"
 }

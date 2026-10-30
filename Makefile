@@ -2,8 +2,11 @@
 SHELL := /bin/bash
 COMPOSE ?= docker compose
 ENV_FILE ?= .env
+ifeq ($(USE_GHCR),1)
+COMPOSE += -f docker-compose.yml -f docker-compose.ghcr.yml
+endif
 
-.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock clean
+.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock images-pin clean
 
 help:
 	@echo "make render   渲染 routes.yaml -> out/Caddyfile"
@@ -19,6 +22,8 @@ help:
 	@echo "make test-groovy 跑共享库行为测试（需要 groovy，缺失则跳过）"
 	@echo "make test-bats DinD 容器内跑 9 个服务/策略用例（KEEP=1 保现场）"
 	@echo "make images-lock 从本地镜像 digest 更新 tests/images.lock"
+	@echo "make images-pin 从 GHCR 回写自建镜像 digest（先跑 images.yml）"
+	@echo "USE_GHCR=1 make up / test-bats 使用 GHCR 锁定镜像"
 	@echo "make down     停止并移除容器"
 
 render:
@@ -33,7 +38,7 @@ doctor:
 	@ENV_FILE="$(ENV_FILE)" COMPOSE="$(COMPOSE)" python3 scripts/doctor.py
 
 up:
-	$(COMPOSE) --env-file $(ENV_FILE) up -d
+	$(COMPOSE) --env-file $(ENV_FILE) up -d $(if $(filter 1,$(USE_GHCR)),--no-build)
 
 down:
 	$(COMPOSE) --env-file $(ENV_FILE) down
@@ -73,17 +78,23 @@ test:
 	@python3 scripts/test_deploy.py
 	@python3 scripts/test_jobs.py
 	@python3 scripts/test_backup.py
+	@python3 scripts/test_ci.py
 	@echo "python syntax ok"
 
 test-bats:
-	@bash tests/images.sh ensure
-	docker build -t orgflow/m0-test:24.04-v1 tests/harness
+	@USE_GHCR="$(USE_GHCR)" bash tests/images.sh ensure
+	@if [[ "$(USE_GHCR)" != 1 ]]; then docker build -t orgflow/m0-test:24.04-v1 tests/harness; fi
+	@image=$$(USE_GHCR="$(USE_GHCR)" bash tests/images.sh harness-image) && \
 	docker run --rm --privileged --name orgflow-m0-test -e KEEP="$(KEEP)" \
+		-e M0_COMPOSE_EXTRA="$(if $(filter 1,$(USE_GHCR)),/repo/docker-compose.ghcr.yml)" \
 		-v "$(CURDIR):/repo" -v /var/run/docker.sock:/host/docker.sock \
-		-v m0-dind:/var/lib/docker orgflow/m0-test:24.04-v1
+		-v m0-dind:/var/lib/docker "$$image"
 
 images-lock:
 	@bash tests/images.sh update
+
+images-pin:
+	@bash scripts/pin-images.sh
 
 # 共享库行为测试只依赖 groovy 本身（用 GroovyShell + metaClass 打桩，无外部 jar）
 test-groovy:
