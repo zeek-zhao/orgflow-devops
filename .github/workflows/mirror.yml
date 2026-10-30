@@ -1,0 +1,95 @@
+name: Mirror
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'amd64 saves space; all preserves the upstream digest for Compose'
+        type: choice
+        options: [amd64, all]
+        default: amd64
+  schedule:
+    - cron: '0 3 * * 1'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - src: docker.io/library/caddy:2
+            dst: mirror-caddy
+            lock: caddy
+          - src: docker.io/jenkins/jenkins:lts-jdk17
+            dst: mirror-jenkins
+            lock: jenkins
+          - src: docker.io/osixia/openldap:1.5.0
+            dst: mirror-openldap
+            lock: ldap
+          - src: docker.io/osixia/phpldapadmin:0.9.0
+            dst: mirror-phpldapadmin
+            lock: ldapadmin
+          - src: ghcr.io/dexidp/dex:v2.41.1
+            dst: mirror-dex
+            lock: dex
+          - src: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+            dst: mirror-oauth2-proxy
+            lock: oauth2proxy
+          - src: docker.io/sonatype/nexus3:3.92.2
+            dst: mirror-nexus
+            lock: nexus
+          - src: docker.io/library/ubuntu:24.04
+            dst: mirror-ubuntu
+            lock: ubuntu
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install skopeo
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq skopeo
+      - name: Login to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | skopeo login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Copy and verify
+        env:
+          SRC: ${{ matrix.src }}
+          PACKAGE: ${{ matrix.dst }}
+          LOCK_NAME: ${{ matrix.lock }}
+          MODE: ${{ inputs.mode || 'amd64' }}
+        run: |
+          set -euo pipefail
+          digest=$(awk -F '\t' -v name="$LOCK_NAME" '$1 == name {print $3}' tests/images.lock)
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "Invalid lock digest: $LOCK_NAME" >&2; exit 1; }
+          # Tags can move; mirror the exact lock, not today's upstream tag.
+          src="${SRC}@${digest}"
+          dst="ghcr.io/${GITHUB_REPOSITORY,,}/${PACKAGE}:${SRC##*:}"
+          if [[ "$MODE" == all ]]; then
+            skopeo copy --all --preserve-digests "docker://$src" "docker://$dst"
+          else
+            # Keep single-arch tags separate so scheduled runs cannot overwrite
+            # the all-mode tag referenced by the digest-locked Compose override.
+            dst="${dst}-amd64"
+            skopeo copy --override-os linux --override-arch amd64 "docker://$src" "docker://$dst"
+          fi
+          source_digest=$(skopeo inspect --format '{{.Digest}}' "docker://$src")
+          target_digest=$(skopeo inspect --format '{{.Digest}}' "docker://$dst")
+          {
+            echo "### $PACKAGE ($MODE)"
+            echo "- Source: $src"
+            echo "- Destination: $dst"
+            echo "- Source digest: $source_digest"
+            echo "- Destination digest: $target_digest"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$MODE" == all ]]; then
+            if [[ "$source_digest" != "$target_digest" || "$target_digest" != "$digest" ]]; then
+              echo 'Digest mismatch: all-mode copy must preserve the lock digest.' | tee -a "$GITHUB_STEP_SUMMARY" >&2
+              exit 1
+            fi
+            echo 'Verified: source = destination = images.lock.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '单架构搬运后 digest 会变，不能沿用上游 digest；以上记录不以源/目标 digest 相等作为通过条件。' | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
