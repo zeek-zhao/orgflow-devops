@@ -46,13 +46,26 @@ services:
     restart: unless-stopped
     environment:
       - LDAP_ORGANISATION=${LDAP_ORGANISATION:-OrgFlow}
-      - LDAP_DOMAIN=${LDAP_DOMAIN:-orgflow.internal}
+      - LDAP_DOMAIN=${LDAP_DOMAIN:-devops.com}
       - LDAP_ADMIN_PASSWORD=${LDAP_ADMIN_PASSWORD:-change-me}
     volumes:
       - ldap_data:/var/lib/ldap
       - ldap_config:/etc/ldap/slapd.d
+      - ./services/auth:/opt/orgflow-auth:ro
     expose:
       - "389"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          printf '%s' "$$LDAP_ADMIN_PASSWORD" |
+          ldapsearch -x -H ldap://localhost:389
+          -D cn=admin,dc=devops,dc=com -y /dev/stdin
+          -b dc=devops,dc=com -s base
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   ldapadmin:
     image: osixia/phpldapadmin:0.9.0
@@ -60,8 +73,30 @@ services:
     restart: unless-stopped
     environment:
       - PHPLDAPADMIN_LDAP_HOSTS=ldap
+      - PHPLDAPADMIN_HTTPS=false
     expose:
       - "80"
+
+  dex:
+    image: ghcr.io/dexidp/dex:v2.41.1
+    container_name: of-dex
+    restart: unless-stopped
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    environment:
+      - LDAP_ADMIN_PASSWORD=${LDAP_ADMIN_PASSWORD:-change-me}
+      - OAUTH2_CLIENT_SECRET=${OAUTH2_CLIENT_SECRET:-change-me}
+    volumes:
+      - ./services/auth/dex/config.yaml:/etc/dex/config.yaml:ro
+    expose:
+      - "5556"
+    depends_on:
+      - ldap
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:5556/dex/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   oauth2-proxy:
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
@@ -72,12 +107,33 @@ services:
       - --provider=oidc
       - --client-id=${OAUTH2_CLIENT_ID:-jenkins}
       - --client-secret=${OAUTH2_CLIENT_SECRET:-change-me}
-      - --cookie-secret=${OAUTH2_COOKIE_SECRET:-change-me-32bytes-min}
-      - --upstream=${OAUTH2_UPSTREAM:-static://200}
+      - --cookie-secret=${OAUTH2_COOKIE_SECRET:-0123456789abcdef0123456789abcdef}
+      - --oidc-issuer-url=http://localhost:8080/dex
+      - --skip-oidc-discovery=true
+      - --login-url=http://localhost:8080/dex/auth
+      - --redeem-url=http://dex:5556/dex/token
+      - --oidc-jwks-url=http://dex:5556/dex/keys
+      - --insecure-oidc-skip-issuer-verification=true
+      - --upstream=static://202
+      - --reverse-proxy=true
+      - --set-xauthrequest=true
+      - --cookie-secure=false
+      - --cookie-refresh=1h
+      - --whitelist-domain=localhost:8080
+      - --redirect-url=http://localhost:8080/auth/oauth2/callback
+      - --ping-path=/ping
       - --email-domain=*
       - --skip-provider-button=true
     expose:
       - "4180"
+    depends_on:
+      - dex
+    healthcheck:
+      test: ["CMD", "/bin/oauth2-proxy", "--version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   nexus:
     image: sonatype/nexus3:${NEXUS_VERSION:-3.92.2}

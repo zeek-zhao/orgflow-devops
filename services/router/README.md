@@ -26,6 +26,10 @@ bash services/router/reload.sh   # 渲染 + POST /load 到 Caddy admin
 
 - `strip_prefix: false` → Caddy 用 `handle`（保留前缀）。
 - `strip_prefix: true` → Caddy 用 `handle_path`（剥离前缀）。
+- `strip` 是 `strip_prefix` 的别名。
+- `auth: true` → 在该路由的 `reverse_proxy` 前通过 oauth2-proxy 校验会话，
+  401 重定向到 `/auth/oauth2/start?rd={uri}`，并透传用户和邮件请求头。
+  默认 `false`，旧路由不受影响；M0 仅 `/jenkins` 开启，其他四条路由公开。
 - 路由失败自动回滚由 `render.py` 的「写前比对 + reload 失败不覆盖」保证。
 
 ## 热加载与故障处理

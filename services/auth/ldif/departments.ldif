@@ -1,0 +1,47 @@
+# 组织单元 (Organizational Units)
+
+dn: ou=departments,dc=devops,dc=com
+ou: departments
+objectclass: top
+objectclass: organizationalUnit
+
+# 部门 (Departments)
+
+dn: cn=product,ou=departments,dc=devops,dc=com
+cn: product
+objectclass: top
+objectclass: groupOfNames
+description: Product Development Department
+member: cn=Zeek Zhao,ou=people,dc=devops,dc=com
+member: cn=Alice Johnson,ou=people,dc=devops,dc=com
+
+dn: cn=research,ou=departments,dc=devops,dc=com
+cn: research
+objectclass: top
+objectclass: groupOfNames
+description: Research and Development Department
+member: cn=Bob Smith,ou=people,dc=devops,dc=com
+
+dn: cn=testing,ou=departments,dc=devops,dc=com
+cn: testing
+objectclass: top
+objectclass: groupOfNames
+description: Quality Assurance and Testing Department
+member: cn=Charlie Brown,ou=people,dc=devops,dc=com
+member: cn=Henry Allen,ou=people,dc=devops,dc=com
+
+dn: cn=deployment,ou=departments,dc=devops,dc=com
+cn: deployment
+objectclass: top
+objectclass: groupOfNames
+description: Deployment and Release Management Department
+member: cn=Diana Prince,ou=people,dc=devops,dc=com
+member: cn=Grace Hopper,ou=people,dc=devops,dc=com
+
+dn: cn=project-management,ou=departments,dc=devops,dc=com
+cn: project-management
+objectclass: top
+objectclass: groupOfNames
+description: Project Management Office
+member: cn=Edward Nygma,ou=people,dc=devops,dc=com
+member: cn=Fiona Gallagher,ou=people,dc=devops,dc=com
