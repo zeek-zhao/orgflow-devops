@@ -18,7 +18,7 @@
 ## 快速开始
 
 ```bash
-cp .env.example .env        # 填端口/账号/镜像
+cp .env.example .env        # 填端口/账号；镜像 digest 由 tests/images.lock 锁定
 make render                 # routes.yaml -> out/Caddyfile
 make deploy                 # 起 M0 底座
 make jobs                   # 推送参数化 deploy/backup Job 到 Jenkins
@@ -33,7 +33,13 @@ services/router 路由注册服务（渲染 + reload）
 shared-library  deployService / backupService 步骤
 scripts/        deploy / backup / lint
 docs/           方案与运维
+tests/          镜像锁定 / bats 服务测试 / DinD harness
 ```
+
+## 测试
+
+`make test` 跑逻辑检查，`make test-bats` 在独立 DinD 栈内跑 9 个真实服务/策略用例。
+运行要求、`KEEP=1` 调试和镜像升级步骤见 [M0 测试体系](docs/M0-测试体系.md)。
 
 ## 约定
 

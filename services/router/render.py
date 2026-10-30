@@ -59,7 +59,7 @@ def render(listen, routes):
         p = r.get("path", "").rstrip("/") or "/"
         up = r.get("upstream", "")
         if not up:
-            continue
+            raise ValueError(f"route {p}: upstream is required")
         if r.get("strip_prefix"):
             out.append(f"\thandle_path {p}* {{")
         else:
@@ -77,7 +77,7 @@ def render(listen, routes):
             ])
         out.append(f"\t\treverse_proxy {up}")
         out.append("\t}")
-    out.append("}")
+    out.extend(["\thandle {", '\t\trespond "not found" 404', "\t}", "}"])
     return "\n".join(out) + "\n"
 
 

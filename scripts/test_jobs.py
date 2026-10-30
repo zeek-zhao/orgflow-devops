@@ -17,13 +17,14 @@ class JobScriptTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        for directory in ("scripts", "config", "services/router", "bin"):
+        for directory in ("scripts", "config", "services/router", "tests", "bin"):
             (self.root / directory).mkdir(parents=True, exist_ok=True)
         for name in (
             "scripts/gen-jjb-conf.sh", "scripts/deploy.sh", "scripts/backup.sh",
             "scripts/backup-common.sh",
             "config/jenkins_jobs.ini.tpl", "config/routes.yaml",
             "services/router/render.py",
+            "tests/images.lock",
         ):
             shutil.copyfile(ROOT / name, self.root / name)
         self.dotenv = self.root / ".env"
@@ -127,7 +128,7 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
         self.assertEqual(commands[0]["args"], [
             "compose", "--env-file", ".env", "up", "-d", "--no-deps", "jenkins",
         ])
-        self.assertEqual(commands[0]["version"], "lts-jdk17")
+        self.assertIsNone(commands[0]["version"])
         self.assertEqual(commands[1]["args"][-2:], ["ps", "jenkins"])
 
     def test_deploy_environment_and_port(self):
@@ -150,6 +151,7 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
             (["--service", "jenkins"], {"SERVICE_PORT": "8088"}),
             (["--service", "router"], {"SERVICE_VERSION": "latest"}),
             (["--service", "jenkins"], {"SERVICE_VERSION": "$(bad)"}),
+            (["--service", "jenkins"], {"SERVICE_VERSION": "latest"}),
             (["--service", "caddy"], {"SERVICE_DOMAIN": "example.test"}),
         ):
             with self.subTest(args=args, env=env):
