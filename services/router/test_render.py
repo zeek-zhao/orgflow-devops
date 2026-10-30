@@ -1,4 +1,5 @@
 import contextlib
+import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
 from pathlib import Path
@@ -9,6 +10,8 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.error
+import urllib.request
 
 ROOT = Path(__file__).resolve().parents[2]
 ROUTES = ROOT / "config/routes.yaml"
@@ -67,10 +70,11 @@ class RouterTests(unittest.TestCase):
         self.fail("watch did not reach expected state within 5 seconds")
 
     @contextlib.contextmanager
-    def watch(self, url):
+    def watch(self, url, health_port=0):
         process = subprocess.Popen(
             [sys.executable, str(SCRIPT), "--routes", str(self.routes),
-             "--out", str(self.out), "--watch", "--interval", "0.05", "--admin", url],
+             "--out", str(self.out), "--watch", "--interval", "0.05", "--admin", url,
+             "--health-port", str(health_port)],
             env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
         try:
@@ -220,6 +224,68 @@ class RouterTests(unittest.TestCase):
                 result = self.run_render("--watch", "--interval", value)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("--interval must be", result.stderr)
+
+    def test_healthz_json_and_updated_route_count(self):
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        with self.watch("", port):
+            self.wait_for(self.out.exists)
+            url = f"http://127.0.0.1:{port}/healthz"
+            with urllib.request.urlopen(url, timeout=2) as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.headers.get_content_type(), "application/json")
+                self.assertEqual(json.load(response), {"ok": True, "routes": 5})
+            self.routes.write_text('routes:\n  - path: /one\n    upstream: one:80\n')
+            self.wait_for(lambda: "one:80" in self.out.read_text())
+            with urllib.request.urlopen(url, timeout=2) as response:
+                self.assertEqual(json.load(response), {"ok": True, "routes": 1})
+            with self.assertRaises(urllib.error.HTTPError) as error:
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/other", timeout=2)
+            self.assertEqual(error.exception.code, 404)
+
+    def test_invalid_health_port(self):
+        for port in ("-1", "65536"):
+            result = self.run_render("--watch", "--health-port", port)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("--health-port must be", result.stderr)
+
+    def test_healthz_does_not_wait_for_caddy_reload(self):
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        with admin_server() as (server, admin):
+            server.status = 400
+            with self.watch(admin, port):
+                self.wait_for(lambda: len(server.requests) >= 2)
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz",
+                                            timeout=2) as response:
+                    self.assertEqual(json.load(response), {"ok": True, "routes": 5})
+
+    def test_healthz_missing_routes_recovers_in_watch_mode(self):
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        self.routes.unlink()
+        with self.watch("", port):
+            url = f"http://127.0.0.1:{port}/healthz"
+
+            def not_ready():
+                try:
+                    urllib.request.urlopen(url, timeout=1).close()
+                except urllib.error.HTTPError as error:
+                    self.assertEqual(error.code, 503)
+                    self.assertEqual(json.load(error), {"ok": False, "routes": 0})
+                    return True
+                except urllib.error.URLError:
+                    return False
+                return False
+
+            self.wait_for(not_ready)
+            self.routes.write_bytes(ROUTES.read_bytes())
+            self.wait_for(self.out.exists)
+            with urllib.request.urlopen(url, timeout=2) as response:
+                self.assertEqual(json.load(response), {"ok": True, "routes": 5})
 
 
 if __name__ == "__main__":
