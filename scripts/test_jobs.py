@@ -21,6 +21,7 @@ class JobScriptTests(unittest.TestCase):
             (self.root / directory).mkdir(parents=True, exist_ok=True)
         for name in (
             "scripts/gen-jjb-conf.sh", "scripts/deploy.sh", "scripts/backup.sh",
+            "scripts/backup-common.sh",
             "config/jenkins_jobs.ini.tpl", "config/routes.yaml",
             "services/router/render.py",
         ):
@@ -46,9 +47,11 @@ class JobScriptTests(unittest.TestCase):
         )
         mock = f"""#!{sys.executable}
 import json
+import io
 import os
 from pathlib import Path
 import sys
+import tarfile
 with open(os.environ["JOB_TEST_LOG"], "a") as log:
     log.write(json.dumps({{
         "tool": Path(sys.argv[0]).name, "args": sys.argv[1:],
@@ -57,6 +60,12 @@ with open(os.environ["JOB_TEST_LOG"], "a") as log:
     }}) + "\\n")
 if sys.argv[1:3] == ["volume", "inspect"]:
     sys.exit(int(os.environ.get("JOB_TEST_INSPECT_STATUS", "0")))
+if os.environ.get("JOB_TEST_STATUS", "0") == "0" and sys.argv[1] == "run":
+    with tarfile.open(fileobj=sys.stdout.buffer, mode="w|gz") as archive:
+        data = b"test data"
+        info = tarfile.TarInfo("data")
+        info.size = len(data)
+        archive.addfile(info, io.BytesIO(data))
 sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
 """
         for name in ("docker", "make"):
@@ -171,14 +180,14 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
             path.touch()
             os.utime(path, (0, 0))
         result = self.run_script(
-            "backup", "--service", "ldap", BACKUP_RETENTION_DAYS="0",
+            "backup", "--service", "ldap", BACKUP_RETENTION_DAYS="1",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         commands = self.commands()
         self.assertEqual(commands[0]["args"], [
             "volume", "inspect", "orgflow-devops_ldap_data",
         ])
-        self.assertIn("orgflow-devops_ldap_data:/data:ro", commands[1]["args"])
+        self.assertIn("orgflow-devops_ldap_data:/data:ro", commands[2]["args"])
         self.assertFalse((directory / "ldap-old.tgz").exists())
         self.assertTrue((directory / "jenkins-old.tgz").exists())
         self.assertTrue((directory / "other.tgz").exists())
@@ -186,7 +195,7 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
     def test_backup_all_volumes(self):
         result = self.run_script("backup", "--all")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len(self.commands()), 6)
+        self.assertEqual(len(self.commands()), 9)
 
     def test_backup_missing_volume_or_archive_failure_does_not_clean(self):
         for env in (

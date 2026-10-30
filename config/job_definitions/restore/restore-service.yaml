@@ -1,0 +1,44 @@
+- job:
+    name: restore-service
+    description: "恢复命名卷（破坏性操作，CONFIRM=YES 才执行）"
+    project-type: pipeline
+    sandbox: true
+    scm:
+      - git:
+          url: https://github.com/zeek-zhao/orgflow-devops.git
+          branches: [main]
+          credentials-id: github-token
+          skip-tag: true
+          wipe-workspace: false
+    dsl: |
+      @Library('orgflow-shared') _
+      node('orgflow-docker') {{
+        def scm = [$class: 'GitSCM',
+          branches: [[name: 'main']],
+          userRemoteConfigs: [[
+            url: 'https://github.com/zeek-zhao/orgflow-devops.git',
+            credentialsId: 'github-token'
+          ]]]
+        checkout(scm)
+        restoreService(
+          service: params.SERVICE,
+          backupFile: params.BACKUP_FILE,
+          confirm: params.CONFIRM
+        )
+      }}
+    parameters:
+      - choice:
+          name: SERVICE
+          choices:
+            - jenkins
+            - nexus
+            - ldap
+          description: "要恢复的服务（将停服并覆盖数据卷）"
+      - string:
+          name: BACKUP_FILE
+          default: ''
+          description: "备份包路径；留空使用本服务最新包（按 mtime）"
+      - string:
+          name: CONFIRM
+          default: ''
+          description: "必须输入 YES；确认覆盖目标服务数据"
