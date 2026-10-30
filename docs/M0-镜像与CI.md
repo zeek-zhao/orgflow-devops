@@ -95,3 +95,18 @@ GitHub 托管 runner 无缓存，工作流显式设置 `ALLOW_PULL_DOCKER_HUB=1`
 `mirror-*` 只搬运公开上游镜像，不混入私有源码或凭据；有需要可在包设置中
 将其可见性改为 public 以节省配额，但应确认上游许可证和组织策略。
 自建包的公开性单独评估，不要为了省配额自动公开仓库产物。
+
+## 首次验收（Issue #12）
+
+| 项目 | 实测结果 |
+|---|---|
+| 自建镜像发布 | [Images 41087100418](https://github.com/zeek-zhao/orgflow-devops/actions/runs/41087100418) 成功，三个私有包均可 inspect，`digests.txt` 已汇总 |
+| PR 仅构建 | [Images 41087085853](https://github.com/zeek-zhao/orgflow-devops/actions/runs/41087085853) 成功，未登录或推送 |
+| PR Python + bats | [Test 41087898694](https://github.com/zeek-zhao/orgflow-devops/actions/runs/41087898694) 成功，原 56 项加 12 项 CI 回归测试、9/9 bats |
+| 八项全架构搬运 | [Mirror 41087890087](https://github.com/zeek-zhao/orgflow-devops/actions/runs/41087890087) 手动 `mode=all`，全部成功 |
+| GHCR 全链路 | 本地 `USE_GHCR=1 make test-bats` 为 9/9；三包按 `sha-ba5e76e` pin 两次，文件字节一致 |
+
+实际 inspect `mirror-caddy:2` 与 lock 均为
+`sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e`。
+基础 Compose 和 `tests/images.lock` 未修改。两种 Compose 配置、Bash 语法、
+四个 YAML 解析检查及默认本地构建模式的 9/9 bats 同样通过。
