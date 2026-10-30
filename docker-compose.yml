@@ -22,6 +22,12 @@ services:
       - ./config/jenkins.yaml:/var/jenkins_home/casc/jenkins.yaml:ro
     expose:
       - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/login >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
 
   jjb:
     build: ./tools/jjb
@@ -44,6 +50,12 @@ services:
       - caddy_data:/data
     depends_on:
       - router
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:2019/config/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   router:
     build: ./services/router
@@ -57,6 +69,12 @@ services:
       - ./out:/app/out
     expose:
       - "8090"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/healthz', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   ldap:
     image: osixia/openldap:1.5.0
@@ -94,6 +112,12 @@ services:
       - PHPLDAPADMIN_HTTPS=false
     expose:
       - "80"
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(file_get_contents('http://localhost/') === false ? 1 : 0);"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   dex:
     image: ghcr.io/dexidp/dex:v2.41.1
@@ -161,6 +185,12 @@ services:
       - nexus_data:/nexus-data
     expose:
       - "8081"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/service/rest/v1/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
 
 volumes:
   jenkins_home:
