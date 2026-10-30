@@ -9,9 +9,12 @@
 不依赖 PyYAML，保证零第三方依赖即可运行。
 """
 import argparse
+import math
 import os
 import sys
+import tempfile
 import time
+import urllib.error
 import urllib.request
 
 
@@ -61,34 +64,59 @@ def render(listen, routes):
     return "\n".join(out) + "\n"
 
 
-def write_if_changed(path, content):
+def content_matches(path, content):
     try:
         with open(path, "r", encoding="utf-8") as f:
-            if f.read() == content:
-                return False
+            return f.read() == content
     except FileNotFoundError:
-        pass
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(content)
+        return False
+
+
+def write_if_changed(path, content):
+    if content_matches(path, content):
+        return False
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=directory, delete=False
+        ) as f:
+            temporary = f.name
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(temporary, 0o644)
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None and os.path.exists(temporary):
+            os.unlink(temporary)
     return True
 
 
-def reload_caddy(caddyfile, admin_url):
-    with open(caddyfile, "rb") as f:
-        data = f.read()
+def reload_caddy(content, admin_url):
+    url = admin_url.rstrip("/") + "/load"
     req = urllib.request.Request(
-        admin_url.rstrip("/") + "/load",
-        data=data,
+        url,
+        data=content.encode("utf-8"),
         method="POST",
         headers={"Content-Type": "text/caddyfile"},
     )
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
+            if not 200 <= resp.status < 300:
+                raise RuntimeError(f"reload {url}: HTTP {resp.status}")
             return resp.status
-    except Exception as e:  # noqa: BLE001
-        print(f"[router] reload failed: {e}", file=sys.stderr)
-        return None
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", errors="replace").strip()
+        raise RuntimeError(
+            f"reload {url}: HTTP {e.code} {e.reason}: {detail}"
+        ) from e
+    except (urllib.error.URLError, OSError) as e:
+        raise RuntimeError(
+            f"cannot reach Caddy admin at {url}: {e}; "
+            "check that Caddy is running and CADDY_ADMIN_URL is correct"
+        ) from e
 
 
 def main():
@@ -99,33 +127,43 @@ def main():
     ap.add_argument("--interval", type=float, default=2.0)
     ap.add_argument("--admin", default=os.environ.get("CADDY_ADMIN_URL", ""))
     args = ap.parse_args()
+    if not math.isfinite(args.interval) or args.interval <= 0:
+        ap.error("--interval must be a finite positive number")
 
-    def once():
+    def once(force_reload=False):
         listen, routes = parse_routes(args.routes)
         content = render(listen, routes)
-        changed = write_if_changed(args.out, content)
-        if changed:
+        changed = not content_matches(args.out, content)
+        # Bootstrap only in watch mode: Caddy needs a file before it can start.
+        if args.watch and not os.path.exists(args.out):
+            write_if_changed(args.out, content)
+            print(f"[router] bootstrapped {args.out}; waiting for Caddy", flush=True)
+        if args.admin and (changed or force_reload):
+            st = reload_caddy(content, args.admin)
+            print(f"[router] caddy reload -> {st}", flush=True)
+        if write_if_changed(args.out, content):
             print(f"[router] rendered {args.out} ({len(routes)} routes)")
-            if args.admin:
-                st = reload_caddy(args.out, args.admin)
-                print(f"[router] caddy reload -> {st}")
-        return changed
 
     if not args.watch:
-        once()
-        return
+        try:
+            once(force_reload=True)
+        except (OSError, RuntimeError, ValueError) as e:
+            print(f"[router] update failed: {e}; previous Caddyfile preserved", file=sys.stderr)
+            return 1
+        return 0
 
     last = None
     while True:
         try:
-            m = os.path.getmtime(args.routes)
+            stat = os.stat(args.routes)
+            m = (stat.st_mtime_ns, stat.st_size, stat.st_ino)
             if m != last:
+                once(force_reload=last is None)
                 last = m
-                once()
-        except Exception as e:  # noqa: BLE001
-            print(f"[router] watch error: {e}", file=sys.stderr)
+        except (OSError, RuntimeError, ValueError) as e:
+            print(f"[router] watch error: {e}; will retry", file=sys.stderr)
         time.sleep(args.interval)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
