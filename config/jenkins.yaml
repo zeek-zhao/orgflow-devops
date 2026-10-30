@@ -11,5 +11,37 @@ jenkins:
     loggedInUsersCanDoAnything:
       allowAnonymousRead: false
 unclassified:
+  globalLibraries:
+    libraries:
+      - name: "orgflow-shared"
+        defaultVersion: "main"
+        retriever:
+          modernSCM:
+            libraryPath: "shared-library"
+            scm:
+              git:
+                remote: "https://github.com/zeek-zhao/orgflow-devops.git"
+                credentialsId: "github-token"
   location:
     url: "${JENKINS_URL}"
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: "github-token"
+              username: "${GITHUB_USER:-zeek-zhao}"
+              password: "${GITHUB_TOKEN}"
+          - string:
+              scope: GLOBAL
+              id: "ldap-admin-password"
+              secret: "${LDAP_ADMIN_PASSWORD}"
+          - string:
+              scope: GLOBAL
+              id: "oauth2-client-secret"
+              secret: "${OAUTH2_CLIENT_SECRET}"
+          - string:
+              scope: GLOBAL
+              id: "oauth2-cookie-secret"
+              secret: "${OAUTH2_COOKIE_SECRET}"

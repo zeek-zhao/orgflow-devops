@@ -3,13 +3,29 @@
     description: "M0 参数化备份：选服务 + 目标 + 保留天数"
     project-type: pipeline
     sandbox: true
-    pipeline: |
+    scm:
+      - git:
+          url: https://github.com/zeek-zhao/orgflow-devops.git
+          branches: [main]
+          credentials-id: github-token
+          skip-tag: true
+          wipe-workspace: false
+    dsl: |
       @Library('orgflow-shared') _
-      backupService(
-        service: params.SERVICE,
-        target: params.BACKUP_TARGET,
-        retentionDays: params.RETENTION_DAYS
-      )
+      node('orgflow-docker') {{
+        def scm = [$class: 'GitSCM',
+          branches: [[name: 'main']],
+          userRemoteConfigs: [[
+            url: 'https://github.com/zeek-zhao/orgflow-devops.git',
+            credentialsId: 'github-token'
+          ]]]
+        checkout(scm)
+        backupService(
+          service: params.SERVICE,
+          target: params.BACKUP_TARGET,
+          retentionDays: params.RETENTION_DAYS
+        )
+      }}
     parameters:
       - choice:
           name: SERVICE
@@ -23,8 +39,7 @@
           name: BACKUP_TARGET
           choices:
             - local
-            - nexus
-          description: "备份目标"
+          description: "备份目标（M0 仅支持 local）"
       - string:
           name: RETENTION_DAYS
           default: '7'

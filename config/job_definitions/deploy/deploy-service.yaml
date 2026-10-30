@@ -1,17 +1,34 @@
 - job:
     name: deploy-service
-    description: "M0 参数化部署：选择一个服务，按参数拉起（敏感项走 Credentials）"
+    description: "M0 参数化部署：选择一个服务，按参数拉起（共享库 withCredentials 注入敏感项）"
     project-type: pipeline
     sandbox: true
-    pipeline: |
+    scm:
+      - git:
+          url: https://github.com/zeek-zhao/orgflow-devops.git
+          branches: [main]
+          credentials-id: github-token
+          skip-tag: true
+          wipe-workspace: false
+    dsl: |
       @Library('orgflow-shared') _
-      deployService(
-        service: params.SERVICE,
-        environment: params.ENV,
-        version: params.VERSION,
-        port: params.PORT,
-        domain: params.DOMAIN
-      )
+      node('orgflow-docker') {{
+        def scm = [$class: 'GitSCM',
+          branches: [[name: 'main']],
+          userRemoteConfigs: [[
+            url: 'https://github.com/zeek-zhao/orgflow-devops.git',
+            credentialsId: 'github-token'
+          ]]]
+        checkout(scm)
+        deployService(
+          service: params.SERVICE,
+          environment: params.ENV,
+          version: params.VERSION,
+          port: params.PORT,
+          domain: params.DOMAIN,
+          dryRun: params.DRY_RUN
+        )
+      }}
     parameters:
       - choice:
           name: SERVICE
@@ -21,6 +38,7 @@
             - router
             - ldap
             - ldapadmin
+            - dex
             - oauth2-proxy
             - nexus
           description: "要部署的服务"
@@ -33,17 +51,17 @@
           description: "目标环境"
       - string:
           name: VERSION
-          default: latest
-          description: "镜像版本/tag"
+          default: ''
+          description: "Jenkins/Nexus 镜像 tag（留空保留 Compose 默认版本）"
       - string:
           name: PORT
           default: ''
-          description: "覆盖端口（留空用默认）"
+          description: "Caddy 网关端口（留空用默认；其他服务不支持）"
       - string:
           name: DOMAIN
           default: ''
-          description: "对外域名（可选）"
-      - boolean:
+          description: "预留；M0 为路径路由，请留空（域名需另行配置 routes/Caddy）"
+      - bool:
           name: DRY_RUN
           default: false
           description: "只打印不执行"

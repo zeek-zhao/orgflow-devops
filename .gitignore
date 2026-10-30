@@ -1,5 +1,8 @@
 # 敏感与运行期产物
 .env
+.env.*
+!.env.example
+.jjb/
 out/
 *.log
 
