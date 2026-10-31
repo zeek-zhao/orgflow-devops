@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# =============================================================================
+# commit-msg —— 提交消息门禁
+#
+#   装法：make hooks        （core.hooksPath=.githooks）
+#   绕过：GIT_MSG_ALLOW=1 git commit …   （仅导入外部历史时）
+#
+#   两条规则：
+#     ① 不允许任何 Co-authored-by / Signed-off-by 尾注
+#        —— 本仓库只允许单一作者，多作者即违反身份规则
+#     ② 不允许 AI 署名与生成备注
+#        （Copilot / Claude / GPT / Gemini / Cursor / Codex …）
+#
+#   为什么：提交历史是审计证据。AI 工具自动追加的
+#   "Co-authored-by: Copilot <...>" 会让一条提交出现两个作者，
+#   既破坏身份唯一性，也把"谁负责这次改动"这件事糊掉。
+# =============================================================================
+set -uo pipefail
+
+msg_file="${1:-}"
+[[ -n "$msg_file" && -f "$msg_file" ]] || exit 0
+[[ "${GIT_MSG_ALLOW:-0}" == 1 ]] && exit 0
+
+# 注释行不参与判断（git 自己加的 # 行）
+body="$(grep -vE '^[[:space:]]*#' "$msg_file" || true)"
+
+ai_re='copilot|claude|chatgpt|gpt-?[0-9]|gemini|cursor|codex|codeium|windsurf|tabnine|aider|openai|anthropic'
+rc=0
+
+if printf '%s' "$body" | grep -qiE '^[[:space:]]*(co-authored-by|signed-off-by|assisted-by)[[:space:]]*:'; then
+  printf '\n[commit-msg] ✗ 提交消息含协作者尾注\n' >&2
+  printf '  本仓库只允许单一作者，不要保留 Co-authored-by / Signed-off-by 行\n' >&2
+  printf '  命中：\n' >&2
+  printf '%s\n' "$body" | grep -iE '^[[:space:]]*(co-authored-by|signed-off-by|assisted-by)[[:space:]]*:' | sed 's/^/    /' >&2
+  rc=1
+fi
+
+if printf '%s' "$body" | grep -qiE "(generated (with|by)|written by|authored by|powered by).*(${ai_re})|(${ai_re}).*(generated|assisted|co-authored)|🤖"; then
+  printf '\n[commit-msg] ✗ 提交消息含 AI 署名或生成备注\n' >&2
+  printf '  提交消息只写"改了什么、为什么改"，不要写由谁生成\n' >&2
+  printf '  命中：\n' >&2
+  printf '%s\n' "$body" | grep -iE "(generated (with|by)|written by|authored by|powered by).*(${ai_re})|(${ai_re}).*(generated|assisted|co-authored)|🤖" | sed 's/^/    /' >&2
+  rc=1
+fi
+
+[[ "$rc" -eq 0 ]] || printf '\n  绕过（不推荐）：GIT_MSG_ALLOW=1 git commit …\n\n' >&2
+
+exit "$rc"
