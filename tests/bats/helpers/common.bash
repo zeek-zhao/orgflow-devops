@@ -24,12 +24,14 @@ setup_gw() {
 # ---------------------------------------------------------------- HTTP 断言
 
 # gw_curl <子域> <路径> [curl 额外参数...]
+# URL 里必须显式带端口：--resolve 是按 host:port 匹配的，
+# 只写 https://host/ 的话 curl 按 443 去连，映射对不上就去查 DNS 了。
 gw_curl() {
     local sub=$1 path=$2
     shift 2
     curl -sSk --connect-timeout 5 --max-time 20 \
         --resolve "${sub}.${GW_DOMAIN}:${GW_HTTPS_PORT}:${GW_HOST}" \
-        "https://${sub}.${GW_DOMAIN}${path}" "$@"
+        "https://${sub}.${GW_DOMAIN}:${GW_HTTPS_PORT}${path}" "$@"
 }
 
 gw_code() {
@@ -52,7 +54,7 @@ assert_gw() {
     local actual
     actual=$(gw_code "$1" "$2") || return
     if [[ $actual != "$3" ]]; then
-        echo "https://$1.$GW_DOMAIN$2: expected HTTP $3, got $actual" >&2
+        echo "https://$1.$GW_DOMAIN:$GW_HTTPS_PORT$2: expected HTTP $3, got $actual" >&2
         return 1
     fi
 }
@@ -66,7 +68,7 @@ gw_wait() {
         fi
         sleep 1
     done
-    echo "https://$sub.$GW_DOMAIN$path: expected $expected, last status ${actual:-connection-failed}" >&2
+    echo "https://$sub.$GW_DOMAIN:$GW_HTTPS_PORT$path: expected $expected, last status ${actual:-connection-failed}" >&2
     return 1
 }
 
