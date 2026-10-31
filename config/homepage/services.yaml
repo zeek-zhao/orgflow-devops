@@ -24,7 +24,9 @@
         icon: mdi-account-group
 
     - Dex:
-        href: https://dex.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}/dex/
+        # Dex 是 OIDC provider，没有 Web 首页：/ 、/dex 、/dex/ 都是 404。
+        # 指到 /dex/auth 才是可用的落点（会 302 到 /dex/auth/ldap 登录页）。
+        href: https://dex.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}/dex/auth
         description: OIDC 身份提供方 · 172.31.0.24
         icon: mdi-shield-key
 

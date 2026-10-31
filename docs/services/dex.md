@@ -22,9 +22,11 @@ OIDC 身份提供方。把 LDAP 里的用户包装成标准 OIDC，让 `oauth2-p
 
 ## 入口与依赖
 
-- **入口**：`https://dex.org-devops.com/dex/`。**所有端点都挂在 `/dex` 下**——
+- **入口**：`https://dex.org-devops.com/dex/auth`。**所有端点都挂在 `/dex` 下**——
   ADR-13 的域名路由不剥路径前缀，所以发现文档是 `/dex/.well-known/openid-configuration`，
   不是 `/.well-known/openid-configuration`
+- ⚠ **`/`、`/dex`、`/dex/` 都是 404**：Dex 是 OIDC provider，本身**没有 Web 首页**。
+  别把这些地址当入口写进面板或文档（首页卡片曾因此点了 404）
 - **依赖谁**：`ldap`（用户来源）、`dnsmasq`
 - **被谁依赖**：`oauth2-proxy`（要它的 issuer、token、jwks 端点）
 
