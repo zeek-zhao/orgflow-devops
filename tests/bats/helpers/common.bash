@@ -152,18 +152,19 @@ assert_container_ip() {
 
 assert_resolves_in_container() {
     local container=$1 name=$2 expected=$3 out
-    out=$(docker_exec "$container" sh -c "
-        if command -v getent >/dev/null 2>&1; then getent hosts '$name'
-        elif command -v nslookup >/dev/null 2>&1; then nslookup '$name'
-        elif command -v dig >/dev/null 2>&1; then dig +short '$name'
-        else echo no-resolver-tool; fi") || return
-    if [[ $out == *no-resolver-tool* ]]; then
-        # nexus3 的底座（UBI）只有 curl，没有 getent/nslookup/dig。
-        # curl 的 %{remote_ip} 一样能证明「这个名字被解析到了哪个地址」：
-        # 打一个必然拒绝连接的端口，解析成功就会打印 remote_ip，解析失败则什么都不打印。
-        out=$(docker_exec "$container" curl -s -o /dev/null -w '%{remote_ip}' \
-            --max-time 3 "http://$name:9/" 2>/dev/null || true)
-    fi
+    # 不在容器里跑 `sh -c 'if command -v ...'`：nexus 的底座镜像精简得厉害，
+    # 一旦缺 shell 或内建命令，整个 exec 会以奇怪的退出码失败，
+    # 报出来是「解析失败」，实际是「探测脚本本身跑不起来」。
+    # 改成从宿主侧逐个试，哪个工具不存在就让 docker exec 返回 127，`|| true` 吞掉。
+    out=$(docker exec "$container" getent hosts "$name" 2>/dev/null || true)
+    [[ -n $out ]] || out=$(docker exec "$container" nslookup "$name" 2>/dev/null || true)
+    [[ -n $out ]] || out=$(docker exec "$container" dig +short "$name" 2>/dev/null || true)
+    # 三个工具都没有时退回 curl：打网关的 80 端口（Caddy 会回 308，连接是通的），
+    # 用 %{remote_ip} 证明名字被解析到了哪个地址。
+    # 不要打一个没人监听的端口 —— curl 的 remote_ip 只在连接建立后才填，
+    # 连接被拒时是空串，会把「解析失败」和「端口没开」混成同一个现象。
+    [[ -n $out ]] || out=$(docker exec "$container" curl -s -o /dev/null -w '%{remote_ip}' \
+        --max-time 3 "http://$name/" 2>/dev/null || true)
     if [[ $out != *"$expected"* ]]; then
         echo "$container: cannot resolve $name to $expected; got: ${out:-<empty>}" >&2
         return 1

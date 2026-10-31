@@ -26,8 +26,17 @@ setup() {
 @test "dns: 服务名仍然可解析（dnsmasq 转发给 Docker 内嵌 DNS）" {
     assert_resolves_in caddy nexus 172.31.0.21
     assert_resolves_in jenkins ldap 172.31.0.22
-    # nexus 容器的 base 镜像不一定有 getent/dig，用容器版断言按工具降级
-    assert_resolves_in_container of-nexus dex 172.31.0.24
+    # nexus 不是 compose 服务（#46），按容器名查；它的底座镜像工具少，
+    # 断言里会按 getent → nslookup → dig → curl 逐级降级。
+    assert_resolves_in_container of-nexus "auth.${GW_DOMAIN}" 172.31.0.10
+}
+
+@test "dns: nexus 容器也把 dnsmasq 当 resolver（不是 Docker 内嵌 DNS）" {
+    # docker run 不带 --dns 时会退回 127.0.0.11，那样 *.org-devops.com 解析不了，
+    # 而症状是「容器能起来但访问网关域名失败」，看起来像网络问题。
+    run docker_exec of-nexus cat /etc/resolv.conf
+    [ "$status" -eq 0 ]
+    assert_contains "$output" "172.31.0.2"
 }
 
 @test "dns: 固定 IP 表与架构图一致（排查时按 IP 定位容器）" {
