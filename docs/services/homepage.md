@@ -45,13 +45,18 @@ docker compose up -d homepage
 
 | 变量 | 作用 | 默认 |
 |---|---|---|
-| `HOMEPAGE_ALLOWED_HOSTS` | 允许的 Host 头，**必填** | `home.<GATEWAY_DOMAIN>` |
+| `HOMEPAGE_ALLOWED_HOSTS` | 允许的 Host 头，**必填**；逗号分隔，带端口与不带端口两种写法都要列 | `home.<GATEWAY_DOMAIN>`, `home.<GATEWAY_DOMAIN>:<GATEWAY_HTTPS_PORT>` |
 | `HOMEPAGE_VAR_GATEWAY_DOMAIN` | 给 yaml 里的 `{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}` 用 | `GATEWAY_DOMAIN` |
 | `PUID` / `PGID` | 运行身份 | `1000` |
 
 **`HOMEPAGE_ALLOWED_HOSTS` 必须由 `GATEWAY_DOMAIN` 驱动。** homepage 会校验 Host 头，
 写死某个域名后换域名访问会直接返回 `400`，页面只有一句 `host not allowed`——
 看不出是配置问题还是路由问题。
+
+**端口也要列进去。** 这个校验是拿 Host 头做精确匹配，而 Host 头里带不带端口取决于访问者敲的 URL：
+`https://home.example.com/` 发的是 `home.example.com`，`https://home.example.com:8443/` 发的是
+`home.example.com:8443`。只列不带端口的那条，非 443 端口访问（CI 用 8443、局域网自测常用 8443）
+必然 400——而这个 400 和「服务根本没起来」在浏览器里长得一模一样。
 
 卡片里的链接也走变量（`https://jenkins.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}`），
 换域名只改 `.env`，不用回来改 yaml。
@@ -65,7 +70,8 @@ docker inspect -f '{{.State.Health.Status}}' of-homepage
 docker compose ps homepage
 ```
 
-健康检查用 `node` 自检（镜像里不一定有 `wget`/`curl`，但一定有 node）。
+健康检查用 `node` 自检（镜像里不一定有 `wget`/`curl`，但一定有 node），判据是 `<500` 而非 `==200`：
+探针从 `127.0.0.1` 发，Host 不在白名单里，**正常就返回 400**。那 400 恰好证明 HTTP 服务活着。
 
 **2. 它自己活着吗**
 
@@ -73,7 +79,8 @@ docker compose ps homepage
 docker compose exec -T homepage node -e "require('http').get('http://127.0.0.1:3000/',r=>{console.log(r.statusCode);process.exit(0)}).on('error',e=>{console.log(e.message);process.exit(1)})"
 ```
 
-期望打印 `200`。
+期望打印 `400`（Host 是 `127.0.0.1`，不在白名单）。打印 `200` 说明白名单被放宽了；
+连不上或超时才是真的没起来。
 
 **3. 走网关能打开吗**
 

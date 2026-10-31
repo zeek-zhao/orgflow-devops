@@ -320,7 +320,11 @@ services:
     container_name: of-homepage
     restart: unless-stopped
     environment:
-      - HOMEPAGE_ALLOWED_HOSTS=home.${GATEWAY_DOMAIN:-org-devops.com}
+      # 两种写法都要列：homepage 拿 Host 头做精确匹配，而 Host 头里带不带端口取决于
+      # 访问者敲的 URL。非 443 端口（CI 用 8443、局域网自测常用 8443）访问时
+      # Host 是 `home.example.com:8443`，只列不带端口的那条会直接 400 —— 而 400
+      # 和「服务没起来」在浏览器里长得一样，排查方向会完全跑偏。
+      - HOMEPAGE_ALLOWED_HOSTS=home.${GATEWAY_DOMAIN:-org-devops.com},home.${GATEWAY_DOMAIN:-org-devops.com}:${GATEWAY_HTTPS_PORT:-443}
       # 卡片里的链接用 {{HOMEPAGE_VAR_GATEWAY_DOMAIN}} 引用，换域名不用改 yaml
       - HOMEPAGE_VAR_GATEWAY_DOMAIN=${GATEWAY_DOMAIN:-org-devops.com}
       - PUID=1000
