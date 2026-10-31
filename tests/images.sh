@@ -62,7 +62,7 @@ for name, service in services.items():
             esac
         done < tests/images.lock
         # Rebuild against the current sources (cached when unchanged).
-        docker compose build router
+        docker compose build router dnsmasq
         ;;
     update)
         temporary=$(mktemp tests/images.lock.XXXXXX)

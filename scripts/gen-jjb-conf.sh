@@ -21,7 +21,7 @@ if [ ! -f "$ENV_FILE" ]; then
     echo "提示：$ENV_FILE 不存在，本次使用占位值（仅本地渲染校验，不会连接 Jenkins）" >&2
     tmp_env="$(mktemp)"
     trap 'rm -f -- "$tmp_env"' EXIT
-    printf 'JENKINS_URL=http://localhost:8080/jenkins\nJENKINS_ADMIN_ID=placeholder\nJENKINS_ADMIN_PASSWORD=placeholder\n' >"$tmp_env"
+    printf 'JENKINS_URL=https://jenkins.org-devops.com/\nJENKINS_ADMIN_ID=placeholder\nJENKINS_ADMIN_PASSWORD=placeholder\n' >"$tmp_env"
     ENV_FILE="$tmp_env"
   else
     echo "缺少 $ENV_FILE，请复制 .env.example 并填写 Jenkins 连接信息" >&2
