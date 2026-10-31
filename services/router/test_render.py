@@ -84,13 +84,13 @@ class RouterTests(unittest.TestCase):
             process.terminate()
             process.communicate(timeout=5)
 
-    def test_five_domain_sites_and_unchanged_output(self):
+    def test_six_domain_sites_and_unchanged_output(self):
         self.assertEqual(self.run_render().returncode, 0)
         content = self.out.read_text()
         self.assertIn("\tlocal_certs", content)
-        for sub in ("jenkins", "nexus", "ldapadmin", "dex", "auth"):
+        for sub in ("jenkins", "nexus", "ldapadmin", "dex", "auth", "home"):
             self.assertIn(f"https://{sub}.org-devops.com {{", content)
-        self.assertEqual(content.count("reverse_proxy "), 5)
+        self.assertEqual(content.count("reverse_proxy "), 6)
         self.assertEqual(content.count("forward_auth "), 1)
         # 域名路由后不应再有路径匹配块
         self.assertNotIn("handle_path", content)
@@ -304,7 +304,7 @@ class RouterTests(unittest.TestCase):
             with urllib.request.urlopen(url, timeout=2) as response:
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.headers.get_content_type(), "application/json")
-                self.assertEqual(json.load(response), {"ok": True, "routes": 5})
+                self.assertEqual(json.load(response), {"ok": True, "routes": 6})
             # 换成一份只有两个站点的配置：auth 路由必须留着，否则渲染会直接报错
             self.routes.write_text(
                 'routes:\n'
@@ -334,7 +334,7 @@ class RouterTests(unittest.TestCase):
                 self.wait_for(lambda: len(server.requests) >= 2)
                 with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz",
                                             timeout=2) as response:
-                    self.assertEqual(json.load(response), {"ok": True, "routes": 5})
+                    self.assertEqual(json.load(response), {"ok": True, "routes": 6})
 
     def test_healthz_missing_routes_recovers_in_watch_mode(self):
         with socket.socket() as sock:
@@ -359,7 +359,7 @@ class RouterTests(unittest.TestCase):
             self.routes.write_bytes(ROUTES.read_bytes())
             self.wait_for(self.out.exists)
             with urllib.request.urlopen(url, timeout=2) as response:
-                self.assertEqual(json.load(response), {"ok": True, "routes": 5})
+                self.assertEqual(json.load(response), {"ok": True, "routes": 6})
 
 
 if __name__ == "__main__":
