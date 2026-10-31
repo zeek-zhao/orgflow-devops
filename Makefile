@@ -117,9 +117,11 @@ hooks:
 	@echo "钩子内容：pre-commit 校验提交身份，pre-push 拦主干 + 校验身份"
 
 # 校验 author 是否唯一（main 上 committer 允许 GitHub squash 机器人）
+# --no-merges 必须保留：GitHub 为 PR 生成的合成合并提交，其 author 是
+# 账号的 noreply 邮箱、committer 是 GitHub，属平台产物，不该计入身份校验。
 identity-check:
 	@bad=0; \
-	for ae in $$(git log --format='%ae' | sort -u); do \
+	for ae in $$(git log --no-merges --format='%ae' | sort -u); do \
 		if [ "$$ae" != "zeek.zhao@foxmail.com" ]; then echo "✗ author 异常: $$ae"; bad=1; fi; \
 	done; \
 	if [ "$$bad" = 0 ]; then echo "✓ author 唯一: zeek.zhao@foxmail.com"; else exit 1; fi
