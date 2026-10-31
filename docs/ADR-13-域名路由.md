@@ -163,7 +163,7 @@ docker compose ps -q nexus | xargs docker inspect -f '{{range .NetworkSettings.N
 
 # 3) 站点匹配与证书（绕过 hosts，直接把域名钉到网关）
 curl -sk --resolve nexus.org-devops.com:443:127.0.0.1 https://nexus.org-devops.com/ -o /dev/null -w '%{http_code}\n'
-echo | openssl s_client -connect 127.0.0.1:443 -servername nexus.org-devops.com 2>/dev/null | openssl x509 -noout -subject -issuer
+echo | openssl s_client -connect 127.0.0.1:443 -servername nexus.org-devops.com 2>/dev/null | openssl x509 -noout -ext subjectAltName -issuer   # 叶子证书没有 subject CN，域名只在 SAN
 ```
 
 | 现象 | 大概率原因 |

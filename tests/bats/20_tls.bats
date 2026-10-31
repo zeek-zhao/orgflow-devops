@@ -11,8 +11,11 @@ setup() {
     local sub info
     for sub in jenkins nexus ldapadmin dex auth; do
         info=$(echo | openssl s_client -connect "${GW_HOST}:${GW_HTTPS_PORT}" \
-            -servername "${sub}.${GW_DOMAIN}" 2>/dev/null | openssl x509 -noout -subject -issuer)
-        assert_contains "$info" "${sub}.${GW_DOMAIN}"
+            -servername "${sub}.${GW_DOMAIN}" 2>/dev/null \
+            | openssl x509 -noout -ext subjectAltName -issuer)
+        # Caddy 内部 CA 签的叶子证书 subject 是空的，域名只写在 SAN 里，
+        # 所以这里断言 SAN，不看 subject（否则永远拿到空 subject）
+        assert_contains "$info" "DNS:${sub}.${GW_DOMAIN}"
         assert_contains "$info" "Caddy Local Authority"
     done
 }
@@ -24,7 +27,7 @@ setup() {
     for sub in nexus ldapadmin dex; do
         run curl -sS --max-time 20 -o /dev/null -w '%{http_code}' --cacert "$ROOT_CA" \
             --resolve "${sub}.${GW_DOMAIN}:${GW_HTTPS_PORT}:${GW_HOST}" \
-            "https://${sub}.${GW_DOMAIN}/"
+            "https://${sub}.${GW_DOMAIN}:${GW_HTTPS_PORT}/"
         [ "$status" -eq 0 ]
         [ "$output" = 200 ]
     done
@@ -34,6 +37,6 @@ setup() {
     # 反证：如果这里意外返回 200，说明证书来自公共 CA，自签前提不成立
     run curl -sS --max-time 20 -o /dev/null -w '%{http_code}' \
         --resolve "nexus.${GW_DOMAIN}:${GW_HTTPS_PORT}:${GW_HOST}" \
-        "https://nexus.${GW_DOMAIN}/"
+        "https://nexus.${GW_DOMAIN}:${GW_HTTPS_PORT}/"
     [ "$status" -ne 0 ]
 }
