@@ -4,7 +4,7 @@
 
 | 工作流 | 职责 | 触发 |
 |---|---|---|
-| `images.yml` | Buildx matrix 构建 router、jjb、m0-test、dnsmasq、jenkins、jenkins-agent；非 PR 推 GHCR，每项输出 digest，汇总为 `digests.txt` artifact | main push / PR，限定 `tests/harness/**`、`services/router/**`、`services/dnsmasq/**`、`tools/jjb/**`、`tools/jenkins/**`、`tools/jenkins-agent/**` 和工作流本身；也可手动触发 |
+| `images.yml` | Buildx 构建 router、jjb、m0-test、dnsmasq、jenkins、jenkins-agent，**只建改动真正落进去的那几个**（见「按改动裁剪」）；非 PR 推 GHCR，每项输出 digest，汇总为 `digests.txt` artifact | main push / PR，限定 `tests/harness/**`、`services/router/**`、`services/dnsmasq/**`、`tools/jjb/**`、`tools/jenkins/**`、`tools/jenkins-agent/**`、`.github/scripts/**` 和工作流本身；也可手动触发 |
 | `mirror.yml` | skopeo 搬运 lock 中 7 个服务镜像和 Ubuntu 基座，逐项记录源/目标 digest | 手动（`mode=amd64` 默认 / `all`）；每周一 03:00 **UTC** 定时，默认 amd64 |
 | `test.yml` | `make test`，再 `ALLOW_PULL_DOCKER_HUB=1 make test-bats`；30 分钟超时，失败上传 `bats-failure-log` | main push、所有 PR、手动 |
 
@@ -12,6 +12,34 @@ CI 仅用 `secrets.GITHUB_TOKEN` 登录 GHCR，镜像工作流需要 `packages: 
 源码权限是 `contents: read`。PR 只构建，不登录、不推送；PR summary 中的 digest
 不是已发布镜像，不能用于部署。测试中 `pipefail` 保留 bats 的失败状态，
 `/tmp/bats-run.log` 包含构建、健康闸门及 TAP 输出。
+
+## 按改动裁剪（#53）
+
+`on.paths` 只决定「跑不跑」，不决定「建几个」。`images.yml` 先跑一个 `select` job，
+用 `.github/scripts/select-images.sh` 从 `git diff` 算出改动落在哪些镜像上下文里，
+只把命中的填进 matrix：
+
+| 镜像 | 上下文 | 触发路径 |
+|---|---|---|
+| `router` | `services/router` | `services/router/**` |
+| `jjb` | `tools/jjb` | `tools/jjb/**` |
+| `jenkins` | `tools/jenkins` | `tools/jenkins/**` |
+| `jenkins-agent` | `tools/jenkins-agent` | `tools/jenkins-agent/**` |
+| `m0-test` | `tests/harness` | `tests/harness/**` |
+| `dnsmasq` | `services/dnsmasq` | `services/dnsmasq/**` |
+
+触发路径由 `<context>/**` 推导，因为六个上下文都是自包含目录。**这条依赖有断言守着**：
+`test_ci.py` 检查每个 Dockerfile 都不许 `COPY ../`，否则构建会漏掉且没人发现。
+
+**判断不了就全量**，不猜：`.github/**` 改动、`workflow_dispatch`、新建分支（`before` 全 0）、
+算不出 diff。多建一轮是浪费，漏建一轮是事故 —— 213 拉不到 Docker Hub，只会吃到与源码
+不一致的 GHCR 镜像。
+
+无命中时 `any=false`，`build` / `digests` 用 `if` 跳过（空 `include` 会让 GitHub 直接报
+`Matrix vector 'include' does not contain any values`）。
+
+`test.yml` 和 `images.yml` 都带 `concurrency`，PR 上同分支连推取消上一轮；`main` 上不取消，
+避免打断正在推 GHCR 的构建。**Test 的 DinD 不做路径跳过** —— 它是这套栈唯一的真验证。
 
 包名前缀固定为小写 `ghcr.io/zeek-zhao/orgflow-devops/`：
 自建包是 `router`、`jjb`、`m0-test`、`dnsmasq`、`jenkins`、`jenkins-agent`，标签为 `sha-<7位>`、`24.04-v1`，
