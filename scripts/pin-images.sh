@@ -17,7 +17,7 @@ tag = os.environ.get("IMAGES_TAG", "latest")
 if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", tag):
     sys.exit("IMAGES_TAG must be a valid image tag")
 images = {}
-for name in ("router", "jjb", "m0-test", "dnsmasq"):
+for name in ("router", "jjb", "m0-test", "dnsmasq", "jenkins"):
     reference = f"{prefix}/{name}:{tag}"
     try:
         result = subprocess.run(
@@ -38,7 +38,7 @@ services = re.search(r"^services:[ \t]*\n(?:[ \t]+[^\n]*\n|\n)*", text, re.MULTI
 if services is None:
     sys.exit(f"{path}: missing services block")
 block = services.group()
-for name in ("router", "jjb", "dnsmasq"):
+for name in ("router", "jjb", "dnsmasq", "jenkins"):
     replacement = f"  {name}:\n    image: {images[name]}\n"
     pattern = rf"^  {name}:[^\n]*\n(?:[ \t]{{3,}}[^\n]*\n)*"
     if re.search(pattern, block, re.MULTILINE):

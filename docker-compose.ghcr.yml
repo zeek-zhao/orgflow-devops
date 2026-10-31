@@ -5,12 +5,14 @@
 # 需要凭据的只有「推」这一侧（.github/workflows/images.yml / mirror.yml）。
 #
 # 先用 mirror.yml mode=all 填充 mirror-* 包，再跑 images.yml；
-# make images-pin 把 router/jjb/dnsmasq 与 harness 的 digest 回写到本文件。
+# make images-pin 把 router/jjb/dnsmasq/jenkins 与 harness 的 digest 回写到本文件。
 services:
   caddy:
     image: ghcr.io/zeek-zhao/orgflow-devops/mirror-caddy:2@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
+  # 自建镜像（#44）：digest 由 `make images-pin` 从 GHCR 回写，不是上游 digest。
+  # 上游 jenkins/jenkins 不带插件，所以这里不能再用 mirror-jenkins。
   jenkins:
-    image: ghcr.io/zeek-zhao/orgflow-devops/mirror-jenkins:lts-jdk17@sha256:cce1eeb79902722f3cf7a8831c41e95c39f4a42b9a2981959630cc66539b3c2d
+    image: ghcr.io/zeek-zhao/orgflow-devops/jenkins:24.04-v1@sha256:24ca77d0a6f9f54219b67772534da7562894965bf07cbc7ab2a7865ea40996e0
   ldap:
     image: ghcr.io/zeek-zhao/orgflow-devops/mirror-openldap:1.5.0@sha256:18742e9c449c9c1afe129d3f2f3ee15fb34cc43e5f940a20f3399728f41d7c28
   ldapadmin:

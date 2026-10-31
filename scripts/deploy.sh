@@ -44,14 +44,16 @@ if [ -n "${SERVICE_VERSION:-}" ]; then
     exit 1
   fi
   case "$SERVICE" in
-    jenkins|nexus)
+    # jenkins 已改成自建镜像（#44），不再有上游 digest 可对，所以退出这个白名单；
+    # 只剩 nexus 还是「上游镜像 + images.lock 锁 digest」的形态。
+    nexus)
       locked_ref="$(awk -F '\t' -v service="$SERVICE" '$1 == service {print $2}' tests/images.lock)"
       if [ "${locked_ref##*:}" != "$SERVICE_VERSION" ]; then
         echo "SERVICE_VERSION 必须匹配 tests/images.lock；升级请先更新 digest 锁定" >&2
         exit 1
       fi
       ;;
-    *) echo "SERVICE_VERSION 仅支持 Jenkins/Nexus" >&2; exit 1 ;;
+    *) echo "SERVICE_VERSION 仅支持 Nexus" >&2; exit 1 ;;
   esac
 fi
 if [ -n "${SERVICE_PORT:-}" ]; then

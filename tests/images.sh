@@ -66,7 +66,9 @@ for name, service in services.items():
             esac
         done < tests/images.lock
         # Rebuild against the current sources (cached when unchanged).
-        docker compose build router dnsmasq
+        # jenkins 也在这里构建：底座在 Docker Hub，所以这条路径只适用于能出网的机器；
+        # 213 拉不到 Hub，一律走 USE_GHCR=1，不经过这里。
+        docker compose build router dnsmasq jenkins
         ;;
     update)
         temporary=$(mktemp tests/images.lock.XXXXXX)

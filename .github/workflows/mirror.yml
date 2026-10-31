@@ -25,9 +25,6 @@ jobs:
           - src: docker.io/library/caddy:2
             dst: mirror-caddy
             lock: caddy
-          - src: docker.io/jenkins/jenkins:lts-jdk17
-            dst: mirror-jenkins
-            lock: jenkins
           - src: docker.io/osixia/openldap:1.5.0
             dst: mirror-openldap
             lock: ldap
