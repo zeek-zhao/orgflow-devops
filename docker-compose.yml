@@ -13,6 +13,7 @@ name: orgflow-devops
 #   172.31.0.24  dex
 #   172.31.0.25  oauth2-proxy
 #   172.31.0.26  homepage
+#   172.31.0.27  jenkins-agent
 # 固定 IP 的意义：排查时能直接用 IP 定位到容器，不必反查随机地址。
 
 services:
@@ -60,6 +61,10 @@ services:
     volumes:
       - jenkins_home:/var/jenkins_home
       - ./config/jenkins.yaml:/var/jenkins_home/casc/jenkins.yaml:ro
+      # agent 的 SSH 私钥（#45）。放在 jenkins_home 里的子路径，JCasC 用
+      # fileOnMaster 引用它；私钥不入库（secrets/ 已 gitignore），
+      # 由 scripts/gen-agent-key.sh 生成，公钥同步进 .env 给 agent 容器。
+      - ./secrets/agent_ssh_key:/var/jenkins_home/ssh/agent_ssh_key:ro
     expose:
       - "8080"
     # 所有容器的 resolver 都是 dnsmasq，等它就绪再起，避免启动期 DNS 抖动
@@ -77,6 +82,38 @@ services:
       timeout: 5s
       retries: 20
       start_period: 60s
+
+  jenkins-agent:
+    # docker 能力放在独立 agent 里，不塞进 controller（#45）：
+    # controller 挂 /var/run/docker.sock 等于把宿主 root 交给拿全部凭据的主进程。
+    build:
+      context: ./tools/jenkins-agent
+      tags: ["orgflow/jenkins-agent:24.04-v1"]
+    container_name: of-jenkins-agent
+    restart: unless-stopped
+    volumes:
+      # 复用宿主 daemon：agent 里的 docker CLI 直接操作宿主 Docker
+      - /var/run/docker.sock:/var/run/docker.sock
+      # 公钥单独挂一个文件，不走 .env：deploy.sh 有「已有 .env 就绝不修改」的约定，
+      # 不能为了塞一个公钥去动它。私钥在同一目录，由 gen-agent-key.sh 一起生成。
+      - ./secrets/agent_ssh_key.pub:/run/secrets/agent_ssh_pub:ro
+    expose:
+      - "22"
+    depends_on:
+      dnsmasq:
+        condition: service_healthy
+    dns:
+      - 172.31.0.2
+    networks:
+      orgflow:
+        ipv4_address: 172.31.0.27
+    healthcheck:
+      # 不依赖 curl/nc：用 bash 的 /dev/tcp 探 22 端口，镜像里一定有 bash
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/127.0.0.1/22'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   jjb:
     build:

@@ -4,7 +4,7 @@
 
 | 工作流 | 职责 | 触发 |
 |---|---|---|
-| `images.yml` | Buildx matrix 构建 router、jjb、m0-test、dnsmasq、jenkins；非 PR 推 GHCR，每项输出 digest，汇总为 `digests.txt` artifact | main push / PR，限定 `tests/harness/**`、`services/router/**`、`services/dnsmasq/**`、`tools/jjb/**`、`tools/jenkins/**` 和工作流本身；也可手动触发 |
+| `images.yml` | Buildx matrix 构建 router、jjb、m0-test、dnsmasq、jenkins、jenkins-agent；非 PR 推 GHCR，每项输出 digest，汇总为 `digests.txt` artifact | main push / PR，限定 `tests/harness/**`、`services/router/**`、`services/dnsmasq/**`、`tools/jjb/**`、`tools/jenkins/**`、`tools/jenkins-agent/**` 和工作流本身；也可手动触发 |
 | `mirror.yml` | skopeo 搬运 lock 中 7 个服务镜像和 Ubuntu 基座，逐项记录源/目标 digest | 手动（`mode=amd64` 默认 / `all`）；每周一 03:00 **UTC** 定时，默认 amd64 |
 | `test.yml` | `make test`，再 `ALLOW_PULL_DOCKER_HUB=1 make test-bats`；30 分钟超时，失败上传 `bats-failure-log` | main push、所有 PR、手动 |
 
@@ -14,15 +14,14 @@ CI 仅用 `secrets.GITHUB_TOKEN` 登录 GHCR，镜像工作流需要 `packages: 
 `/tmp/bats-run.log` 包含构建、健康闸门及 TAP 输出。
 
 包名前缀固定为小写 `ghcr.io/zeek-zhao/orgflow-devops/`：
-自建包是 `router`、`jjb`、`m0-test`、`dnsmasq`、`jenkins`，标签为 `sha-<7位>`、`24.04-v1`，
+自建包是 `router`、`jjb`、`m0-test`、`dnsmasq`、`jenkins`、`jenkins-agent`，标签为 `sha-<7位>`、`24.04-v1`，
 以及只在默认分支生成的 `latest`。分支手动构建会更新 `24.04-v1`，不会更新 `latest`；
 部署始终以 `@sha256:...` 锁定，标签只是可读提示。
 
-`jenkins` 是**自建而非搬运**：上游 `jenkins/jenkins` 不带任何插件，
-pipeline job、`git`、`ssh-slaves`、`configuration-as-code` 全都没有，
-所以改成 `FROM jenkins/jenkins:lts-jdk21` + `tools/jenkins/plugins.txt`。
-它的底座在 Docker Hub 上、213 拉不到，**因此只能在 runner 上构建后推 GHCR**，
-`tests/images.lock` 里不再有 jenkins 行，`docker-compose.yml` 里它也从 `image:` 变成 `build:`。
+`jenkins` / `jenkins-agent` 是**自建而非搬运**：上游镜像一个不带插件、一个不带 docker CLI，
+而 213 拉不到 Docker Hub，**只能在 runner 上构建后推 GHCR**，
+`tests/images.lock` 里没有它们，`docker-compose.yml` 里也是 `build:` 而不是 `image:`。
+`jenkins-agent` 只装 docker CLI 不装 daemon —— daemon 用宿主机的（挂 `/var/run/docker.sock`）。
 
 搬运包名扁平化为 `mirror-caddy`、`mirror-openldap`、
 `mirror-phpldapadmin`、`mirror-dex`、`mirror-oauth2-proxy`、`mirror-nexus`、
@@ -50,9 +49,9 @@ pipeline job、`git`、`ssh-slaves`、`configuration-as-code` 全都没有，
 2. 手动执行 `mirror.yml`，**选择 `mode=all`**，等待七项完成。
    `--all --preserve-digests` 保留多架构索引与 manifest，必须满足源 digest =
    目标 digest = lock；不一致直接失败。`mirror-caddy:2` 必须与 lock 的 caddy 一字不差。
-3. 登录 GHCR 后执行 `make images-pin`。脚本 inspect 五个自建包的 `latest`，
+3. 登录 GHCR 后执行 `make images-pin`。脚本 inspect 六个自建包的 `latest`，
    全部解析成功后才原子回写，并在写入前检查合并 Compose 配置。
-   `router` / `jjb` / `dnsmasq` / `jenkins` 增加到 `docker-compose.ghcr.yml` 的服务段，
+   `router` / `jjb` / `dnsmasq` / `jenkins` / `jenkins-agent` 增加到 `docker-compose.ghcr.yml` 的服务段，
    harness 存在该文件的标准 Compose 扩展 `x-m0-test-image`，供 GHCR bats 使用。
    默认解析 `latest`；合入前验收可显式运行
    `IMAGES_TAG=sha-<工作流的7位提交号> make images-pin`，只选择已推送成功的那次产物，
