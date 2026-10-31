@@ -9,6 +9,12 @@ on:
 permissions:
   contents: read
 
+# 同一分支连推时取消上一次（#53）。Test 是这套栈唯一的真验证，不做路径跳过；
+# 但「结论已经过期的那一轮」没有跑完的必要 —— 每次 DinD 都要吃掉好几分钟额度。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: ubuntu-24.04
