@@ -38,7 +38,12 @@ services:
       start_period: 10s
 
   jenkins:
-    image: jenkins/jenkins:lts-jdk17@sha256:cce1eeb79902722f3cf7a8831c41e95c39f4a42b9a2981959630cc66539b3c2d # lock: jenkins
+    # 自建镜像（#44）：上游 jenkins/jenkins 不带插件，pipeline job 与 JCasC 都用不了。
+    # 底座在 Docker Hub 上，213 拉不到，所以本地构建只适用于能出网的机器；
+    # 213 一律 USE_GHCR=1，拉 GHCR 上由 images.yml 构建的同一份。
+    build:
+      context: ./tools/jenkins
+      tags: ["orgflow/jenkins:24.04-v1"]
     container_name: of-jenkins
     restart: unless-stopped
     environment:

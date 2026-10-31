@@ -4,8 +4,8 @@
 
 | 工作流 | 职责 | 触发 |
 |---|---|---|
-| `images.yml` | Buildx matrix 构建 router、jjb、m0-test、dnsmasq；非 PR 推 GHCR，每项输出 digest，汇总为 `digests.txt` artifact | main push / PR，限定 `tests/harness/**`、`services/router/**`、`services/dnsmasq/**`、`tools/jjb/**` 和工作流本身；也可手动触发 |
-| `mirror.yml` | skopeo 搬运 lock 中 8 个服务镜像和 Ubuntu 基座，逐项记录源/目标 digest | 手动（`mode=amd64` 默认 / `all`）；每周一 03:00 **UTC** 定时，默认 amd64 |
+| `images.yml` | Buildx matrix 构建 router、jjb、m0-test、dnsmasq、jenkins；非 PR 推 GHCR，每项输出 digest，汇总为 `digests.txt` artifact | main push / PR，限定 `tests/harness/**`、`services/router/**`、`services/dnsmasq/**`、`tools/jjb/**`、`tools/jenkins/**` 和工作流本身；也可手动触发 |
+| `mirror.yml` | skopeo 搬运 lock 中 7 个服务镜像和 Ubuntu 基座，逐项记录源/目标 digest | 手动（`mode=amd64` 默认 / `all`）；每周一 03:00 **UTC** 定时，默认 amd64 |
 | `test.yml` | `make test`，再 `ALLOW_PULL_DOCKER_HUB=1 make test-bats`；30 分钟超时，失败上传 `bats-failure-log` | main push、所有 PR、手动 |
 
 CI 仅用 `secrets.GITHUB_TOKEN` 登录 GHCR，镜像工作流需要 `packages: write`，
@@ -14,25 +14,45 @@ CI 仅用 `secrets.GITHUB_TOKEN` 登录 GHCR，镜像工作流需要 `packages: 
 `/tmp/bats-run.log` 包含构建、健康闸门及 TAP 输出。
 
 包名前缀固定为小写 `ghcr.io/zeek-zhao/orgflow-devops/`：
-自建包是 `router`、`jjb`、`m0-test`、`dnsmasq`，标签为 `sha-<7位>`、`24.04-v1`，
+自建包是 `router`、`jjb`、`m0-test`、`dnsmasq`、`jenkins`，标签为 `sha-<7位>`、`24.04-v1`，
 以及只在默认分支生成的 `latest`。分支手动构建会更新 `24.04-v1`，不会更新 `latest`；
 部署始终以 `@sha256:...` 锁定，标签只是可读提示。
 
-搬运包名扁平化为 `mirror-caddy`、`mirror-jenkins`、`mirror-openldap`、
+`jenkins` 是**自建而非搬运**：上游 `jenkins/jenkins` 不带任何插件，
+pipeline job、`git`、`ssh-slaves`、`configuration-as-code` 全都没有，
+所以改成 `FROM jenkins/jenkins:lts-jdk21` + `tools/jenkins/plugins.txt`。
+它的底座在 Docker Hub 上、213 拉不到，**因此只能在 runner 上构建后推 GHCR**，
+`tests/images.lock` 里不再有 jenkins 行，`docker-compose.yml` 里它也从 `image:` 变成 `build:`。
+
+搬运包名扁平化为 `mirror-caddy`、`mirror-openldap`、
 `mirror-phpldapadmin`、`mirror-dex`、`mirror-oauth2-proxy`、`mirror-nexus`、
 `mirror-ubuntu`。搬运源使用 `tests/images.lock` 的 digest，避免可变上游 tag
 移动导致 override 的 digest 在 GHCR 不存在；升级仍按测试文档更新 lock。
+
+> ### ★ 新建的 GHCR 包默认是 private
+>
+> GHCR **不会**继承仓库的可见性。新包（比如首次出现的 `jenkins`）建出来就是 private，
+> 匿名拉取会 401。而 213 的设计前提是「全部包 public、拉取不需要登录」，
+> 于是症状变成「镜像拉不下来」，很容易误判成网络或凭据问题。
+>
+> 这个开关**改不了 API**：`PATCH /user/packages/container/<name>` 对仓库关联的包一律 404
+> （即便令牌带 `write:packages`）。只能到
+> `https://github.com/users/zeek-zhao/packages/container/orgflow-devops%2F<name>/settings`
+> 手动把 Visibility 改成 Public，一次即可。
+>
+> 防线是 `tests/bats/18_public.bats`：它走完全匿名路径取 manifest，
+> 谁把包改回 private 或漏了新包，PR 阶段就会红，而不是等到 213 上才发现。
 
 ## 首次发布、搬运、回写
 
 1. push 并合入 main，等待 `images.yml` 绿色（路径过滤未命中时，在 main 手动运行）。
    可在 Summary / `digests.txt` 查看四个产物。分支构建不生成 `latest`，不能代替此步骤。
-2. 手动执行 `mirror.yml`，**选择 `mode=all`**，等待八项完成。
+2. 手动执行 `mirror.yml`，**选择 `mode=all`**，等待七项完成。
    `--all --preserve-digests` 保留多架构索引与 manifest，必须满足源 digest =
    目标 digest = lock；不一致直接失败。`mirror-caddy:2` 必须与 lock 的 caddy 一字不差。
-3. 登录 GHCR 后执行 `make images-pin`。脚本 inspect 四个自建包的 `latest`，
+3. 登录 GHCR 后执行 `make images-pin`。脚本 inspect 五个自建包的 `latest`，
    全部解析成功后才原子回写，并在写入前检查合并 Compose 配置。
-   `router` / `jjb` / `dnsmasq` 增加到 `docker-compose.ghcr.yml` 的服务段，
+   `router` / `jjb` / `dnsmasq` / `jenkins` 增加到 `docker-compose.ghcr.yml` 的服务段，
    harness 存在该文件的标准 Compose 扩展 `x-m0-test-image`，供 GHCR bats 使用。
    默认解析 `latest`；合入前验收可显式运行
    `IMAGES_TAG=sha-<工作流的7位提交号> make images-pin`，只选择已推送成功的那次产物，

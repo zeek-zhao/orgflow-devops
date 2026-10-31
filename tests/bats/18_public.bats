@@ -44,7 +44,8 @@ manifest_code() {
     local entry repo tag result code bad=()
     for entry in \
         "router:24.04-v1" "jjb:24.04-v1" "m0-test:24.04-v1" "dnsmasq:24.04-v1" \
-        "mirror-caddy:2" "mirror-jenkins:lts-jdk17" "mirror-openldap:1.5.0" \
+        "jenkins:24.04-v1" \
+        "mirror-caddy:2" "mirror-openldap:1.5.0" \
         "mirror-phpldapadmin:0.9.0" "mirror-dex:v2.41.1" \
         "mirror-oauth2-proxy:v7.6.0" "mirror-nexus:3.92.2" "mirror-ubuntu:24.04" \
         "mirror-homepage:v2.7.0"
