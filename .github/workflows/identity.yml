@@ -53,7 +53,9 @@ jobs:
           fi
 
           echo "检查范围：${scope} (${range})"
-          commits=$(git rev-list "$range")
+          # --no-merges：跳过 GitHub 为 PR 生成的合成合并提交
+          # （author=账号 noreply 邮箱，committer=GitHub，属平台产物）
+          commits=$(git rev-list --no-merges "$range")
           if [[ -z "$commits" ]]; then
             echo "范围内无提交，跳过"
             exit 0
