@@ -78,5 +78,7 @@ setup() {
         'http://localhost:8080/credentials/store/system/domain/_/api/json?tree=credentials[id,typeName]' 2>/dev/null || true)
     echo "系统凭据库: $raw" >&2
     assert_contains "$raw" "jenkins-agent-ssh"
-    assert_contains "$raw" "BasicSSHUserPrivateKey"
+    # typeName 是显示名（"SSH Username with private key"），不是类名 ——
+    # 用 BasicSSHUserPrivateKey 断言会失败，别被类名直觉带偏。
+    assert_contains "$raw" "SSH Username with private key"
 }
