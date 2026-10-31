@@ -25,6 +25,7 @@ routes:
   - name: ldapadmin
     subdomain: ldapadmin
     upstream: ldapadmin:80
+    auth: true
 
   # Dex 的端点挂在 issuer 路径 /dex 下（/dex/auth、/dex/token、/dex/keys）
   - name: dex

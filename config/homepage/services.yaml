@@ -20,7 +20,7 @@
 
     - LDAP Admin:
         href: https://ldapadmin.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}
-        description: 用户与部门管理 · 172.31.0.22
+        description: 用户与部门管理 · 172.31.0.23 · 需登录
         icon: mdi-account-group
 
     - Dex:
