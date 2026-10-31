@@ -20,19 +20,21 @@ setup() {
     done
 }
 
-@test "tls: 导出的根证书能校验整条链（不带 -k 也 200）" {
+@test "tls: 导出的根证书能校验整条链（不带 -k 也通）" {
     compose_cmd exec -T caddy cat /data/caddy/pki/authorities/local/root.crt > "$ROOT_CA"
     [ -s "$ROOT_CA" ]
-    local entry sub path
-    # dex 的端点都在 /dex 下，根路径本来就是 404，不能拿 / 当探针
-    for entry in "nexus:/" "ldapadmin:/" "dex:/dex/healthz"; do
+    local entry sub path expected
+    # dex 的端点都在 /dex 下，根路径本来就是 404，不能拿 / 当探针；
+    # ldapadmin 开了网关鉴权（#36），未登录是 302 跳 oauth2，不是 200
+    for entry in "nexus:/:200" "ldapadmin:/:302" "dex:/dex/healthz:200"; do
         sub=${entry%%:*}
-        path=${entry#*:}
+        path=${entry#*:}; path=${path%%:*}
+        expected=${entry##*:}
         run curl -sS --max-time 20 -o /dev/null -w '%{http_code}' --cacert "$ROOT_CA" \
             --resolve "${sub}.${GW_DOMAIN}:${GW_HTTPS_PORT}:${GW_HOST}" \
             "https://${sub}.${GW_DOMAIN}:${GW_HTTPS_PORT}${path}"
         [ "$status" -eq 0 ]
-        [ "$output" = 200 ]
+        [ "$output" = "$expected" ]
     done
 }
 

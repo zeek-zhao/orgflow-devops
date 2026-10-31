@@ -8,10 +8,10 @@ setup() {
     assert_gw auth /ping 200
     assert_gw jenkins / 302
     assert_gw dex /dex/keys 200
-    assert_gw ldapadmin / 200
+    assert_gw ldapadmin / 302
     assert_gw nexus / 200
     [ "$(grep -c reverse_proxy "$M0_REPO/out/Caddyfile")" -eq 6 ]
-    [ "$(grep -c forward_auth "$M0_REPO/out/Caddyfile")" -eq 1 ]
+    [ "$(grep -c forward_auth "$M0_REPO/out/Caddyfile")" -eq 2 ]
     assert_gw nexus /service/rest/v1/status 200
 }
 

@@ -63,7 +63,7 @@ flowchart LR
 | `172.31.0.20` | jenkins | 8080 | `jenkins.<domain>` | 是 |
 | `172.31.0.21` | nexus | 8081 | `nexus.<domain>` | 否 |
 | `172.31.0.22` | ldap | 389 | — | — |
-| `172.31.0.23` | ldapadmin | 80 | `ldapadmin.<domain>` | 否 |
+| `172.31.0.23` | ldapadmin | 80 | `ldapadmin.<domain>` | 是 |
 | `172.31.0.24` | dex | 5556 | `dex.<domain>` | 否 |
 | `172.31.0.25` | oauth2-proxy | 4180 | `auth.<domain>` | — |
 | `172.31.0.26` | homepage | 3000 | `home.<domain>` | 否 |

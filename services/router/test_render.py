@@ -91,7 +91,8 @@ class RouterTests(unittest.TestCase):
         for sub in ("jenkins", "nexus", "ldapadmin", "dex", "auth", "home"):
             self.assertIn(f"https://{sub}.org-devops.com {{", content)
         self.assertEqual(content.count("reverse_proxy "), 6)
-        self.assertEqual(content.count("forward_auth "), 1)
+        # jenkins 与 ldapadmin 两站开网关鉴权（#36）
+        self.assertEqual(content.count("forward_auth "), 2)
         # 域名路由后不应再有路径匹配块
         self.assertNotIn("handle_path", content)
         self.assertNotIn("handle /", content)
@@ -174,7 +175,23 @@ class RouterTests(unittest.TestCase):
             "redir * https://auth.org-devops.com/oauth2/start"
             "?rd={scheme}://{host}{uri} 302", jenkins)
         self.assertLess(jenkins.index("forward_auth"), jenkins.index("reverse_proxy"))
-        self.assertEqual(content.count("forward_auth "), 1)
+        self.assertEqual(content.count("forward_auth "), 2)
+
+    def test_ldapadmin_site_is_gateway_protected(self):
+        """#36：管理面站点必须开网关鉴权，匿名访问由 Caddy 直接 302 到登录页。"""
+        self.assertEqual(self.run_render().returncode, 0)
+        content = self.out.read_text()
+        # 站点段到下一个站点头为止，避免后面站点的块混进来
+        def site(segment):
+            return segment.split("\nhttps://", 1)[0]
+        ldapadmin = site(content.split("https://ldapadmin.org-devops.com {", 1)[1])
+        self.assertIn("forward_auth oauth2-proxy:4180 {", ldapadmin)
+        self.assertIn("redir * https://auth.org-devops.com/oauth2/start", ldapadmin)
+        self.assertLess(
+            ldapadmin.index("forward_auth"), ldapadmin.index("reverse_proxy"))
+        # 反向校验：nexus 这类公开站点不得被波及
+        nexus = site(content.split("https://nexus.org-devops.com {", 1)[1])
+        self.assertNotIn("forward_auth", nexus)
 
     def test_auth_defaults_to_false_and_explicit_false_is_unprotected(self):
         self.routes.write_text(
