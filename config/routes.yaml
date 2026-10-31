@@ -1,26 +1,37 @@
 # 路由注册数据源（路由注册服务读取此文件并渲染 Caddyfile）
-# 改完执行 `make render` 或由 router 服务 watch 自动热加载
-listen: ":8080"
+#
+# 域名模型：每个 route 是一个独立站点 https://<subdomain>.<gateway_domain>
+#   - gateway_domain 默认取本文件，部署时由 .env 的 GATEWAY_DOMAIN 覆盖
+#   - 全部站点使用 Caddy 内部 CA（local_certs），不向公网申请证书
+#   - 未登录访问受保护站点会跳到 https://<auth_subdomain>.<domain>/oauth2/start
+#
+# 改完执行 `make render`，或由 router 服务 watch 自动热加载。
+#
+# 注意：M0 ADR-13 起不再支持路径路由（/jenkins 这类入口已删除）。
+
+gateway_domain: org-devops.com
+auth_subdomain: auth
 
 routes:
-  - path: /jenkins
+  - name: jenkins
+    subdomain: jenkins
     upstream: jenkins:8080
-    strip_prefix: false
     auth: true
 
-  - path: /nexus
+  - name: nexus
+    subdomain: nexus
     upstream: nexus:8081
-    strip_prefix: true
 
-  - path: /ldapadmin
+  - name: ldapadmin
+    subdomain: ldapadmin
     upstream: ldapadmin:80
-    strip_prefix: true
 
-  - path: /auth
-    upstream: oauth2-proxy:4180
-    strip_prefix: true
-
-  # Dex 的端点挂在 issuer 路径 /dex 下（/dex/auth、/dex/token、/dex/keys），不能剥前缀
-  - path: /dex
+  # Dex 的端点挂在 issuer 路径 /dex 下（/dex/auth、/dex/token、/dex/keys）
+  - name: dex
+    subdomain: dex
     upstream: dex:5556
-    strip_prefix: false
+
+  # OAuth2 Proxy：/oauth2/* 与 /ping
+  - name: auth
+    subdomain: auth
+    upstream: oauth2-proxy:4180

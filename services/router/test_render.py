@@ -84,15 +84,17 @@ class RouterTests(unittest.TestCase):
             process.terminate()
             process.communicate(timeout=5)
 
-    def test_five_routes_and_unchanged_output(self):
+    def test_five_domain_sites_and_unchanged_output(self):
         self.assertEqual(self.run_render().returncode, 0)
         content = self.out.read_text()
-        self.assertIn("\thandle /jenkins* {", content)
-        self.assertIn("\thandle /dex* {", content)
-        for path in ("nexus", "ldapadmin", "auth"):
-            self.assertIn(f"\thandle_path /{path}* {{", content)
+        self.assertIn("\tlocal_certs", content)
+        for sub in ("jenkins", "nexus", "ldapadmin", "dex", "auth"):
+            self.assertIn(f"https://{sub}.org-devops.com {{", content)
         self.assertEqual(content.count("reverse_proxy "), 5)
-        self.assertTrue(content.endswith('\thandle {\n\t\trespond "not found" 404\n\t}\n}\n'))
+        self.assertEqual(content.count("forward_auth "), 1)
+        # 域名路由后不应再有路径匹配块
+        self.assertNotIn("handle_path", content)
+        self.assertNotIn("handle /", content)
         before = self.out.stat()
         self.assertEqual(self.run_render().returncode, 0)
         self.assertEqual(self.out.stat().st_mtime_ns, before.st_mtime_ns)
@@ -101,38 +103,63 @@ class RouterTests(unittest.TestCase):
     def test_missing_upstream_preserves_previous_output(self):
         self.assertEqual(self.run_render().returncode, 0)
         before = self.out.read_bytes()
-        self.routes.write_text('routes:\n  - path: /broken\n')
+        self.routes.write_text('routes:\n  - subdomain: broken\n')
         result = self.run_render()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("upstream is required", result.stderr)
         self.assertEqual(self.out.read_bytes(), before)
 
+    def test_duplicate_and_invalid_subdomain_are_rejected(self):
+        for text, message in (
+            ('routes:\n  - subdomain: dup\n    upstream: a:80\n'
+             '  - subdomain: dup\n    upstream: b:80\n', "duplicate subdomain"),
+            ('routes:\n  - subdomain: Bad_Case\n    upstream: a:80\n', "invalid subdomain"),
+            ('routes:\n  - upstream: a:80\n', "missing subdomain"),
+        ):
+            with self.subTest(message=message):
+                self.routes.write_text(text)
+                result = self.run_render()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+                self.assertFalse(self.out.exists())
+
+    def test_gateway_domain_env_override(self):
+        self.env = dict(self.env, GATEWAY_DOMAIN="example.internal", AUTH_SUBDOMAIN="sso")
+        self.assertEqual(self.run_render().returncode, 0)
+        content = self.out.read_text()
+        self.assertIn("https://jenkins.example.internal {", content)
+        self.assertIn("https://sso.example.internal/oauth2/start", content)
+
     def test_auth_forward_auth_precedes_jenkins_proxy(self):
         self.assertEqual(self.run_render().returncode, 0)
         content = self.out.read_text()
-        jenkins = content.split("\thandle /jenkins* {", 1)[1].split("\thandle_path", 1)[0]
+        jenkins = content.split("https://jenkins.org-devops.com {", 1)[1]
         self.assertIn("forward_auth oauth2-proxy:4180 {", jenkins)
         self.assertIn("uri /oauth2/auth", jenkins)
         self.assertIn("copy_headers X-Auth-Request-User X-Auth-Request-Email", jenkins)
         self.assertIn("@unauth status 401", jenkins)
         self.assertIn("handle_response @unauth {", jenkins)
-        self.assertIn("redir * /auth/oauth2/start?rd={uri} 302", jenkins)
+        # 认证域名与业务域名分离：跳转必须是绝对地址，rd 带完整原始 URL
+        self.assertIn(
+            "redir * https://auth.org-devops.com/oauth2/start"
+            "?rd={scheme}://{host}{uri} 302", jenkins)
         self.assertLess(jenkins.index("forward_auth"), jenkins.index("reverse_proxy"))
         self.assertEqual(content.count("forward_auth "), 1)
 
     def test_auth_defaults_to_false_and_explicit_false_is_unprotected(self):
         self.routes.write_text(
-            'listen: ":8080"\nroutes:\n'
-            '  - path: /legacy\n    upstream: legacy:80\n'
-            '  - path: /public\n    upstream: public:80\n    auth: false\n    strip: true\n'
-            '  - path: /private\n    upstream: private:80\n    auth: true\n'
+            'routes:\n'
+            '  - subdomain: legacy\n    upstream: legacy:80\n'
+            '  - subdomain: public\n    upstream: public:80\n    auth: false\n'
+            '  - subdomain: private\n    upstream: private:80\n    auth: true\n'
         )
         self.assertEqual(self.run_render().returncode, 0)
         content = self.out.read_text()
         self.assertEqual(content.count("reverse_proxy "), 3)
         self.assertEqual(content.count("forward_auth "), 1)
-        self.assertIn("\thandle_path /public* {", content)
-        self.assertNotIn("forward_auth", content.split("\thandle /private*", 1)[0])
+        self.assertIn("https://public.org-devops.com {", content)
+        self.assertNotIn("forward_auth",
+                         content.split("https://private.org-devops.com {", 1)[0])
 
     def test_reload_success_and_rejection_preserve_last_good_file(self):
         self.out.write_text("old file\n")
@@ -246,7 +273,7 @@ class RouterTests(unittest.TestCase):
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.headers.get_content_type(), "application/json")
                 self.assertEqual(json.load(response), {"ok": True, "routes": 5})
-            self.routes.write_text('routes:\n  - path: /one\n    upstream: one:80\n')
+            self.routes.write_text('routes:\n  - subdomain: one\n    upstream: one:80\n')
             self.wait_for(lambda: "one:80" in self.out.read_text())
             with urllib.request.urlopen(url, timeout=2) as response:
                 self.assertEqual(json.load(response), {"ok": True, "routes": 1})

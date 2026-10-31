@@ -5,14 +5,21 @@
   render.py --routes config/routes.yaml --out out/Caddyfile
   render.py --routes config/routes.yaml --out out/Caddyfile --watch
 
-设计：只支持本项目约定的极简 schema（listen + routes[path/upstream/strip_prefix/auth]），
-不依赖 PyYAML，保证零第三方依赖即可运行。
+设计：只支持本项目约定的极简 schema，不依赖 PyYAML，保证零第三方依赖。
+
+域名路由模型（M0 ADR-13）：
+  每个 route 是一个独立站点 https://<subdomain>.<gateway_domain>
+  - gateway_domain 默认取 routes.yaml，可被环境变量 GATEWAY_DOMAIN 覆盖
+  - 认证网关域名由 auth_subdomain 决定（默认 auth）
+  - 全部站点用 Caddy 内部 CA（local_certs），不向公网申请证书
+  - 未登录访问受保护站点时，跳转到认证域名登录，登录后回到原 URL
 """
 import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import math
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -20,65 +27,109 @@ import time
 import urllib.error
 import urllib.request
 
+DEFAULT_DOMAIN = "org-devops.com"
+DEFAULT_AUTH_SUBDOMAIN = "auth"
+SUBDOMAIN_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
+
+
+def _value(s, key):
+    return s.split(":", 1)[1].strip().strip('"').strip("'")
+
 
 def parse_routes(path):
-    listen = ":8080"
+    """解析极简 YAML：顶层键 + routes 列表。返回 (settings, routes)。"""
+    settings = {
+        "gateway_domain": DEFAULT_DOMAIN,
+        "auth_subdomain": DEFAULT_AUTH_SUBDOMAIN,
+    }
     routes = []
     cur = None
     with open(path, "r", encoding="utf-8") as f:
         for raw in f:
-            line = raw.rstrip("\n")
-            s = line.strip()
+            s = raw.strip()
             if not s or s.startswith("#"):
-                continue
-            if s.startswith("listen:"):
-                listen = s.split(":", 1)[1].strip().strip('"').strip("'")
                 continue
             if s.startswith("- "):
                 cur = {}
                 routes.append(cur)
                 s = s[2:].strip()
             if cur is None:
+                for key in ("gateway_domain", "auth_subdomain"):
+                    if s.startswith(key + ":"):
+                        settings[key] = _value(s, key)
                 continue
-            if s.startswith("path:"):
-                cur["path"] = s.split(":", 1)[1].strip().strip('"').strip("'")
+            if s.startswith("name:"):
+                cur["name"] = _value(s, "name")
+            elif s.startswith("subdomain:"):
+                cur["subdomain"] = _value(s, "subdomain")
             elif s.startswith("upstream:"):
-                cur["upstream"] = s.split(":", 1)[1].strip().strip('"').strip("'")
-            elif s.startswith(("strip_prefix:", "strip:")):
-                v = s.split(":", 1)[1].strip().lower()
-                cur["strip_prefix"] = v in ("true", "1", "yes")
+                cur["upstream"] = _value(s, "upstream")
             elif s.startswith("auth:"):
-                v = s.split(":", 1)[1].strip().lower()
-                cur["auth"] = v in ("true", "1", "yes")
-    return listen, routes
+                cur["auth"] = _value(s, "auth").lower() in ("true", "1", "yes")
+    return settings, routes
 
 
-def render(listen, routes):
-    out = ["{", "\tadmin 0.0.0.0:2019", "}", "", f"{listen} {{"]
+def apply_env(settings):
+    """环境变量覆盖（部署时由 .env 注入，便于一套配置多环境复用）。"""
+    for key, env in (("gateway_domain", "GATEWAY_DOMAIN"),
+                     ("auth_subdomain", "AUTH_SUBDOMAIN")):
+        value = os.environ.get(env, "").strip()
+        if value:
+            settings[key] = value
+    return settings
+
+
+def render(settings, routes):
+    domain = settings["gateway_domain"].strip().strip(".")
+    auth = settings["auth_subdomain"].strip().strip(".")
+    if not domain:
+        raise ValueError("gateway_domain is required")
+    if not auth:
+        raise ValueError("auth_subdomain is required")
+
+    out = [
+        "{",
+        "\tadmin 0.0.0.0:2019",
+        # 内部 CA：不向公网申请证书，根证书由 scripts/ca-install.sh 分发
+        "\tlocal_certs",
+        "}",
+        "",
+    ]
+
+    seen = set()
     for r in routes:
-        p = r.get("path", "").rstrip("/") or "/"
+        sub = (r.get("subdomain") or "").strip().strip(".")
         up = r.get("upstream", "")
+        if not sub:
+            raise ValueError("route missing subdomain (域名路由必须声明 subdomain)")
+        if not SUBDOMAIN_RE.match(sub):
+            raise ValueError(f"route {sub}: invalid subdomain (只允许小写字母/数字/连字符)")
+        if sub in seen:
+            raise ValueError(f"route {sub}: duplicate subdomain")
+        seen.add(sub)
         if not up:
-            raise ValueError(f"route {p}: upstream is required")
-        if r.get("strip_prefix"):
-            out.append(f"\thandle_path {p}* {{")
-        else:
-            out.append(f"\thandle {p}* {{")
+            raise ValueError(f"route {sub}: upstream is required")
+
+        out.append(f"https://{sub}.{domain} {{")
         if r.get("auth", False):
             out.extend([
-                "\t\tforward_auth oauth2-proxy:4180 {",
-                "\t\t\turi /oauth2/auth",
-                "\t\t\tcopy_headers X-Auth-Request-User X-Auth-Request-Email",
-                "\t\t\t@unauth status 401",
-                "\t\t\thandle_response @unauth {",
-                "\t\t\t\tredir * /auth/oauth2/start?rd={uri} 302",
-                "\t\t\t}",
+                "\tforward_auth oauth2-proxy:4180 {",
+                "\t\turi /oauth2/auth",
+                "\t\tcopy_headers X-Auth-Request-User X-Auth-Request-Email",
+                "\t\t@unauth status 401",
+                "\t\thandle_response @unauth {",
+                # 认证域名与业务域名分离后，登录跳转必须是绝对地址；
+                # rd 带完整原始 URL，登录后回到用户本来要去的页面。
+                f"\t\t\tredir * https://{auth}.{domain}/oauth2/start"
+                "?rd={scheme}://{host}{uri} 302",
                 "\t\t}",
+                "\t}",
             ])
-        out.append(f"\t\treverse_proxy {up}")
-        out.append("\t}")
-    out.extend(["\thandle {", '\t\trespond "not found" 404', "\t}", "}"])
-    return "\n".join(out) + "\n"
+        out.append(f"\treverse_proxy {up}")
+        out.append("}")
+        out.append("")
+
+    return "\n".join(out).rstrip("\n") + "\n"
 
 
 def content_matches(path, content):
@@ -179,8 +230,9 @@ def main():
         threading.Thread(target=health.serve_forever, daemon=True).start()
 
     def once(force_reload=False):
-        listen, routes = parse_routes(args.routes)
-        content = render(listen, routes)
+        settings, routes = parse_routes(args.routes)
+        settings = apply_env(settings)
+        content = render(settings, routes)
         changed = not content_matches(args.out, content)
         # Bootstrap only in watch mode: Caddy needs a file before it can start.
         if args.watch and not os.path.exists(args.out):
