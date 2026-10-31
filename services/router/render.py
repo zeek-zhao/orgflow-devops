@@ -10,7 +10,7 @@
 域名路由模型（M0 ADR-13）：
   每个 route 是一个独立站点 https://<subdomain>.<gateway_domain>
   - gateway_domain 默认取 routes.yaml，可被环境变量 GATEWAY_DOMAIN 覆盖
-  - 认证网关域名由 auth_subdomain 决定（默认 auth）
+  - 认证网关域名由 name: auth 那条路由的 subdomain 决定（单一真源，无独立变量）
   - 全部站点用 Caddy 内部 CA（local_certs），不向公网申请证书
   - 未登录访问受保护站点时，跳转到认证域名登录，登录后回到原 URL
 """
@@ -28,7 +28,10 @@ import urllib.error
 import urllib.request
 
 DEFAULT_DOMAIN = "org-devops.com"
-DEFAULT_AUTH_SUBDOMAIN = "auth"
+# 认证网关站点的路由名。它的 subdomain 就是登录跳转的目标域名。
+# 刻意不做成独立环境变量：AUTH_SUBDOMAIN 会与 Caddyfile 站点、dex 的 issuer、
+# oauth2-proxy 的 redirect_url 形成四处独立声明，改一处不改另一处就静默错位。
+AUTH_ROUTE_NAME = "auth"
 SUBDOMAIN_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
 
 
@@ -38,10 +41,7 @@ def _value(s, key):
 
 def parse_routes(path):
     """解析极简 YAML：顶层键 + routes 列表。返回 (settings, routes)。"""
-    settings = {
-        "gateway_domain": DEFAULT_DOMAIN,
-        "auth_subdomain": DEFAULT_AUTH_SUBDOMAIN,
-    }
+    settings = {"gateway_domain": DEFAULT_DOMAIN}
     routes = []
     cur = None
     with open(path, "r", encoding="utf-8") as f:
@@ -54,9 +54,8 @@ def parse_routes(path):
                 routes.append(cur)
                 s = s[2:].strip()
             if cur is None:
-                for key in ("gateway_domain", "auth_subdomain"):
-                    if s.startswith(key + ":"):
-                        settings[key] = _value(s, key)
+                if s.startswith("gateway_domain:"):
+                    settings["gateway_domain"] = _value(s, "gateway_domain")
                 continue
             if s.startswith("name:"):
                 cur["name"] = _value(s, "name")
@@ -71,21 +70,43 @@ def parse_routes(path):
 
 def apply_env(settings):
     """环境变量覆盖（部署时由 .env 注入，便于一套配置多环境复用）。"""
-    for key, env in (("gateway_domain", "GATEWAY_DOMAIN"),
-                     ("auth_subdomain", "AUTH_SUBDOMAIN")):
-        value = os.environ.get(env, "").strip()
-        if value:
-            settings[key] = value
+    value = os.environ.get("GATEWAY_DOMAIN", "").strip()
+    if value:
+        settings["gateway_domain"] = value
     return settings
 
 
 def render(settings, routes):
     domain = settings["gateway_domain"].strip().strip(".")
-    auth = settings["auth_subdomain"].strip().strip(".")
     if not domain:
         raise ValueError("gateway_domain is required")
+
+    # 顺序很重要：先逐条校验路由，再去解析认证站点。
+    # 反过来的话，一份连 subdomain 都没写的配置会先报「缺 auth 路由」，
+    # 把真正的输入错误盖住，排查时会被带偏。
+    seen = set()
+    for r in routes:
+        sub = (r.get("subdomain") or "").strip().strip(".")
+        if not sub:
+            raise ValueError("route missing subdomain (域名路由必须声明 subdomain)")
+        if not SUBDOMAIN_RE.match(sub):
+            raise ValueError(f"route {sub}: invalid subdomain (只允许小写字母/数字/连字符)")
+        if sub in seen:
+            raise ValueError(f"route {sub}: duplicate subdomain")
+        seen.add(sub)
+        if not r.get("upstream", ""):
+            raise ValueError(f"route {sub}: upstream is required")
+
+    auth = ""
+    for r in routes:
+        if (r.get("name") or "").strip() == AUTH_ROUTE_NAME:
+            auth = r["subdomain"].strip().strip(".")
+            break
     if not auth:
-        raise ValueError("auth_subdomain is required")
+        raise ValueError(
+            f"缺少 name: {AUTH_ROUTE_NAME} 的路由；认证网关站点必须自己声明，"
+            "否则登录跳转无处可去"
+        )
 
     out = [
         "{",
@@ -96,19 +117,9 @@ def render(settings, routes):
         "",
     ]
 
-    seen = set()
     for r in routes:
         sub = (r.get("subdomain") or "").strip().strip(".")
-        up = r.get("upstream", "")
-        if not sub:
-            raise ValueError("route missing subdomain (域名路由必须声明 subdomain)")
-        if not SUBDOMAIN_RE.match(sub):
-            raise ValueError(f"route {sub}: invalid subdomain (只允许小写字母/数字/连字符)")
-        if sub in seen:
-            raise ValueError(f"route {sub}: duplicate subdomain")
-        seen.add(sub)
-        if not up:
-            raise ValueError(f"route {sub}: upstream is required")
+        up = r["upstream"]
 
         out.append(f"https://{sub}.{domain} {{")
         if r.get("auth", False):

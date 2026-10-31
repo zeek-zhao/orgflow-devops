@@ -124,11 +124,41 @@ class RouterTests(unittest.TestCase):
                 self.assertFalse(self.out.exists())
 
     def test_gateway_domain_env_override(self):
-        self.env = dict(self.env, GATEWAY_DOMAIN="example.internal", AUTH_SUBDOMAIN="sso")
+        self.env = dict(self.env, GATEWAY_DOMAIN="example.internal")
         self.assertEqual(self.run_render().returncode, 0)
         content = self.out.read_text()
         self.assertIn("https://jenkins.example.internal {", content)
-        self.assertIn("https://sso.example.internal/oauth2/start", content)
+        # 认证域名跟着 name: auth 那条路由走，没有独立的环境变量可覆盖
+        self.assertIn("https://auth.example.internal/oauth2/start", content)
+        self.assertNotIn("org-devops.com", content)
+
+    def test_auth_route_is_required(self):
+        """登录跳转的目标域名只能来自 routes.yaml 里 name: auth 的站点。"""
+        self.routes.write_text(
+            'routes:\n'
+            '  - name: jenkins\n    subdomain: jenkins\n    upstream: jenkins:8080\n'
+            '    auth: true\n'
+        )
+        result = self.run_render()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("缺少 name: auth 的路由", result.stderr)
+        self.assertFalse(self.out.exists())
+
+    def test_auth_route_subdomain_drives_the_redirect(self):
+        """改 auth 路由的 subdomain，跳转地址随之变化——单一真源，不会错位。"""
+        self.routes.write_text(
+            self.routes.read_text().replace(
+                "  - name: auth\n    subdomain: auth\n",
+                "  - name: auth\n    subdomain: sso\n",
+            )
+        )
+        self.assertEqual(self.run_render().returncode, 0)
+        content = self.out.read_text()
+        self.assertIn("https://sso.org-devops.com {", content)
+        self.assertIn(
+            "redir * https://sso.org-devops.com/oauth2/start"
+            "?rd={scheme}://{host}{uri} 302", content)
+        self.assertNotIn("https://auth.org-devops.com/oauth2/start", content)
 
     def test_auth_forward_auth_precedes_jenkins_proxy(self):
         self.assertEqual(self.run_render().returncode, 0)
@@ -152,10 +182,12 @@ class RouterTests(unittest.TestCase):
             '  - subdomain: legacy\n    upstream: legacy:80\n'
             '  - subdomain: public\n    upstream: public:80\n    auth: false\n'
             '  - subdomain: private\n    upstream: private:80\n    auth: true\n'
+            # 认证站点本身不设 auth:true，但必须存在：跳转目标由它决定
+            '  - name: auth\n    subdomain: auth\n    upstream: oauth2-proxy:4180\n'
         )
         self.assertEqual(self.run_render().returncode, 0)
         content = self.out.read_text()
-        self.assertEqual(content.count("reverse_proxy "), 3)
+        self.assertEqual(content.count("reverse_proxy "), 4)
         self.assertEqual(content.count("forward_auth "), 1)
         self.assertIn("https://public.org-devops.com {", content)
         self.assertNotIn("forward_auth",

@@ -121,12 +121,6 @@ config = json.load(sys.stdin)
 env = config["services"]["router"].get("environment") or {}
 print(env.get("GATEWAY_DOMAIN") or "org-devops.com")
 ')"
-AUTH_SUBDOMAIN="$(printf '%s' "$DEPLOY_CONFIG" | python3 -c '
-import json, sys
-config = json.load(sys.stdin)
-env = config["services"]["router"].get("environment") or {}
-print(env.get("AUTH_SUBDOMAIN") or "auth")
-')"
 HTTPS_PORT="$(printf '%s' "$DEPLOY_CONFIG" | python3 -c '
 import json, sys
 ports = json.load(sys.stdin)["services"]["caddy"]["ports"]
@@ -139,7 +133,8 @@ print(next(p["published"] for p in ports if p["target"] == 80))
 ')"
 
 mkdir -p out
-export GATEWAY_DOMAIN AUTH_SUBDOMAIN
+# 认证站点域名由 routes.yaml 的 name: auth 路由决定，这里只注入域名后缀
+export GATEWAY_DOMAIN
 python3 services/router/render.py --routes config/routes.yaml --out out/Caddyfile --admin ""
 
 # dex 的 issuer / redirectURI 必须是浏览器可达的绝对 URL，按当前域名渲染
