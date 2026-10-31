@@ -95,7 +95,7 @@ if args[0] == "inspect":
         expected = [f"{ref}@{digest}" for line in (self.root / "tests/images.lock").read_text().splitlines()
                     if not line.startswith("#") for _, ref, digest in [line.split("\t")]]
         self.assertEqual([call[-1] for call in self.calls() if call[0] == "pull"], expected)
-        self.assertEqual(self.calls()[-1], ["compose", "build", "router", "dnsmasq", "jenkins"])
+        self.assertEqual(self.calls()[-1], ["compose", "build", "router", "dnsmasq", "jenkins", "jenkins-agent"])
 
     def test_failed_pull_is_not_hidden(self):
         result = self.run_script("tests/images.sh", "ensure",
@@ -110,21 +110,21 @@ if args[0] == "inspect":
         result = self.run_script("scripts/pin-images.sh")
         self.assertEqual(result.returncode, 0, result.stderr)
         first = path.read_bytes()
-        # jenkins 已从「mirror 上游」改成自建（#44），所以它从保留列表挪到回写列表：
-        # 上游 digest 不再适用，digest 只能由 images.yml 构建后回写。
+        # jenkins / jenkins-agent 都是自建（#44 / #45），从「mirror 上游」改成「自建」后
+        # 它们从保留列表挪到回写列表：上游 digest 不再适用，digest 只能由 images.yml 构建后回写。
         for name in ("caddy", "ldap", "ldapadmin", "dex", "oauth2-proxy", "nexus"):
             pattern = rf"^  {name}:\n    image: [^\n]+\n"
             self.assertEqual(re.search(pattern, path.read_text(), re.MULTILINE).group(),
                              re.search(pattern, original, re.MULTILINE).group())
-        for name in ("router", "jjb", "m0-test", "dnsmasq", "jenkins"):
+        for name in ("router", "jjb", "m0-test", "dnsmasq", "jenkins", "jenkins-agent"):
             self.assertIn(f"/{name}:24.04-v1@{DIGEST}", path.read_text())
         self.assertIn("x-m0-test-image:", path.read_text())
         result = self.run_script("scripts/pin-images.sh")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(path.read_bytes(), first)
         self.assertEqual((self.root / "tests/images.lock").read_bytes(), lock)
-        # 五个自建镜像（router/jjb/m0-test/dnsmasq/jenkins）各查一次 digest，脚本跑两遍 → 10
-        self.assertEqual(len([call for call in self.calls() if "inspect" in call]), 10)
+        # 六个自建镜像各查一次 digest，脚本跑两遍 → 12
+        self.assertEqual(len([call for call in self.calls() if "inspect" in call]), 12)
         self.assertTrue(all(call[-1].endswith(":latest") for call in self.calls() if "inspect" in call))
 
     def test_explicit_sha_tag_supports_premerge_acceptance(self):

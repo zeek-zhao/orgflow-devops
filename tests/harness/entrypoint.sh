@@ -90,6 +90,12 @@ GATEWAY_HTTP_PORT=$GW_HTTP_PORT
 GATEWAY_HTTPS_PORT=$GW_HTTPS_PORT
 EOF
 
+# agent 的 SSH 密钥必须在 compose up 之前生成：jenkins 与 jenkins-agent 都 bind 了
+# secrets/ 下的文件，文件不存在时 compose 直接报
+# 「bind source path does not exist」，看不出是密钥没生成。
+stage="generating agent ssh key"
+bash /repo/scripts/gen-agent-key.sh >/dev/null
+
 # 域名相关产物必须在容器启动前就绪：
 #   out/Caddyfile    caddy 挂载 /etc/caddy，缺文件会起不来
 #   out/dex/config.yaml  dex 是 scratch 镜像，无法在启动期渲染
@@ -128,8 +134,8 @@ done < <(jq -r '.name as $project | .services | to_entries[] |
 
 stage="starting inner stack"
 compose up -d --no-build --pull never
-stage="waiting for ten healthy services"
-services=(dnsmasq jenkins caddy router ldap ldapadmin dex oauth2-proxy nexus homepage)
+stage="waiting for eleven healthy services"
+services=(dnsmasq jenkins jenkins-agent caddy router ldap ldapadmin dex oauth2-proxy nexus homepage)
 deadline=$((SECONDS + 300))
 while :; do
     pending=()

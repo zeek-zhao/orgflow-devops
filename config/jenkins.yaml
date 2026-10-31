@@ -10,6 +10,32 @@ jenkins:
   authorizationStrategy:
     loggedInUsersCanDoAnything:
       allowAnonymousRead: false
+  # agent 节点（#45）。三个 pipeline job 都写 node('orgflow-docker')，
+  # 之前没有这个节点，所以那三个 job 从建起来就一直 pending。
+  #
+  # 为什么用「永久节点 + SSH launcher」而不是 SSH cloud：
+  #   cloud 是按需拉起的，标签不可控；这里要的是一个固定 label 的节点。
+  #
+  # ★ requireInitialManualTrust 必须是 false：ssh-agent 镜像的 host key 在
+  #   /etc/ssh 里，容器一重建就换新的；要人工点信任的话，每次重启 agent 都得
+  #   有人去点一次，job 会一直挂到有人发现为止。
+  nodes:
+    - permanent:
+        name: "orgflow-docker"
+        remoteFS: "/home/jenkins/agent"
+        numExecutors: 2
+        labelString: "orgflow-docker"
+        mode: NORMAL
+        retentionStrategy: "always"
+        launcher:
+          ssh:
+            host: "jenkins-agent"
+            port: 22
+            credentialsId: "jenkins-agent-ssh"
+            javaPath: "/opt/java/openjdk/bin/java"
+            sshHostKeyVerificationStrategy:
+              manuallyTrustedKeyVerificationStrategy:
+                requireInitialManualTrust: false
 unclassified:
   globalLibraries:
     libraries:
@@ -45,3 +71,14 @@ credentials:
               scope: GLOBAL
               id: "oauth2-cookie-secret"
               secret: "${OAUTH2_COOKIE_SECRET}"
+          # agent 的 SSH 私钥（#45）。用 fileOnMaster 指向挂进容器的文件，
+          # 而不是把 PEM 塞进 .env —— dotenv 不支持多行，硬塞只能 base64 再想办法解，
+          # 而 JCasC 不会解码。文件由 scripts/gen-agent-key.sh 生成，secrets/ 已 gitignore。
+          - basicSSHUserPrivateKey:
+              scope: GLOBAL
+              id: "jenkins-agent-ssh"
+              username: "jenkins"
+              description: "jenkins-agent 的 SSH 私钥（fileOnMaster）"
+              privateKeySource:
+                fileOnMaster:
+                  keyFile: "/var/jenkins_home/ssh/agent_ssh_key"

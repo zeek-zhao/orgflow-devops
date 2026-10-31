@@ -4,7 +4,7 @@ setup() {
     setup_gw
 }
 
-@test "stack: locked images, ten services and Ubuntu build bases" {
+@test "stack: locked images, eleven services and Ubuntu build bases" {
     local file="$M0_REPO/docker-compose.yml" image name ref digest expected
     # jenkins 改成自建后不再有 image: 行（走 build:），所以从 8 降到 7。
     # 剩下 7 个都是上游/mirror 镜像，必须逐条对得上 images.lock。
@@ -21,8 +21,8 @@ setup() {
     done < <(awk '$1 == "image:" {print $2}' "$file")
     run compose_cmd config --services
     [ "$status" -eq 0 ]
-    [ "$(printf '%s\n' "$output" | wc -l)" -eq 10 ]
-    for name in dnsmasq jenkins caddy router ldap ldapadmin dex oauth2-proxy nexus homepage; do
+    [ "$(printf '%s\n' "$output" | wc -l)" -eq 11 ]
+    for name in dnsmasq jenkins jenkins-agent caddy router ldap ldapadmin dex oauth2-proxy nexus homepage; do
         printf '%s\n' "$output" | grep -qx "$name"
     done
     expected=$(awk -F '\t' '$1 == "ubuntu" {print $2 "@" $3}' "$M0_REPO/tests/images.lock")
@@ -40,10 +40,10 @@ setup() {
 
 @test "stack: every service on the orgflow network has a fixed IPv4" {
     local file="$M0_REPO/docker-compose.yml"
-    # jjb 用 host 网络（要访问宿主上的网关入口），其余 10 个服务全部固定 IP
-    [ "$(grep -cE '^[[:space:]]+ipv4_address:' "$file")" -eq 10 ]
-    [ "$(grep -cE '^[[:space:]]+ipv4_address: 172\.31\.0\.' "$file")" -eq 10 ]
+    # jjb 用 host 网络（要访问宿主上的网关入口），其余 11 个服务全部固定 IP
+    [ "$(grep -cE '^[[:space:]]+ipv4_address:' "$file")" -eq 11 ]
+    [ "$(grep -cE '^[[:space:]]+ipv4_address: 172\.31\.0\.' "$file")" -eq 11 ]
     # 固定 IP 必须唯一，否则 compose 起不来（这里先静态证伪）
-    [ "$(grep -E '^[[:space:]]+ipv4_address:' "$file" | sort -u | wc -l)" -eq 10 ]
+    [ "$(grep -E '^[[:space:]]+ipv4_address:' "$file" | sort -u | wc -l)" -eq 11 ]
     grep -q 'subnet: 172.31.0.0/24' "$file"
 }
