@@ -177,16 +177,18 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
         self.assertNotEqual(self.run_script("gen-jjb-conf").returncode, 0)
 
     def test_deploy_selected_service_and_version(self):
+        # SERVICE_VERSION 只对「上游镜像 + images.lock 锁 digest」的服务有意义；
+        # jenkins 改自建后（#44）不再接受它，这里改用 nexus 覆盖同一条路径。
         result = self.run_script(
-            "deploy", "--service", "jenkins", SERVICE_VERSION="lts-jdk17",
+            "deploy", "--service", "nexus", SERVICE_VERSION="3.92.2",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         commands = self.deploy_calls()
         self.assertEqual(commands[0]["args"], [
-            "compose", "--env-file", ".env", "up", "-d", "--no-deps", "jenkins",
+            "compose", "--env-file", ".env", "up", "-d", "--no-deps", "nexus",
         ])
         self.assertIsNone(commands[0]["version"])
-        self.assertEqual(commands[1]["args"][-2:], ["ps", "jenkins"])
+        self.assertEqual(commands[1]["args"][-2:], ["ps", "nexus"])
 
     def test_deploy_environment_file_carries_the_gateway_port(self):
         # ADR-13 起端口不再是部署参数：唯一的入口是环境文件里的 GATEWAY_HTTP_PORT

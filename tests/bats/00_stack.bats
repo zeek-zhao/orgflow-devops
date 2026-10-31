@@ -6,8 +6,10 @@ setup() {
 
 @test "stack: locked images, ten services and Ubuntu build bases" {
     local file="$M0_REPO/docker-compose.yml" image name ref digest expected
-    [ "$(grep -cE '^[[:space:]]+image:' "$file")" -eq 8 ]
-    [ "$(grep -cE '^[[:space:]]+image:.*@sha256:' "$file")" -eq 8 ]
+    # jenkins 改成自建后不再有 image: 行（走 build:），所以从 8 降到 7。
+    # 剩下 7 个都是上游/mirror 镜像，必须逐条对得上 images.lock。
+    [ "$(grep -cE '^[[:space:]]+image:' "$file")" -eq 7 ]
+    [ "$(grep -cE '^[[:space:]]+image:.*@sha256:' "$file")" -eq 7 ]
     while read -r image; do
         expected=
         while IFS=$'\t' read -r name ref digest; do
@@ -30,6 +32,10 @@ setup() {
         grep -Fx "FROM $expected" "$M0_REPO/$file"
         grep -Eq '^FROM ubuntu:24\.04@sha256:[a-f0-9]{64}$' "$M0_REPO/$file"
     done
+    # jenkins 底座不是 ubuntu，进不了上面的 lock 循环，单独钉死：
+    # 213 拉不到 Docker Hub，镜像只在 runner 上构建，底座漂了就等于 213 上行为漂了。
+    [ "$(grep -c '^FROM ' "$M0_REPO/tools/jenkins/Dockerfile")" -eq 1 ]
+    grep -Eq '^FROM jenkins/jenkins:lts-jdk21@sha256:[a-f0-9]{64}$' "$M0_REPO/tools/jenkins/Dockerfile"
 }
 
 @test "stack: every service on the orgflow network has a fixed IPv4" {
