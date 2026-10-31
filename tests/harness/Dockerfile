@@ -3,7 +3,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # python3 要完整包：python3-minimal 不含 http/urllib，
 # 而 services/router/render.py 一开头就 import http.server，minimal 会直接 ImportError
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl jq bats docker.io docker-compose-v2 ldap-utils tini procps iproute2 openssl dnsutils python3 \
+ && apt-get install -y --no-install-recommends ca-certificates curl jq bats docker.io docker-compose-v2 ldap-utils tini procps iproute2 openssl dnsutils python3 openssh-client \
  && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /etc/docker \
  && printf '%s\n' '{"features":{"containerd-snapshotter":false},"storage-driver":"overlay2"}' > /etc/docker/daemon.json
