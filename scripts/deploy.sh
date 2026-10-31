@@ -249,16 +249,26 @@ start_batch router caddy
 start_batch jenkins nexus ldapadmin homepage
 wait_healthy dnsmasq ldap dex oauth2-proxy router caddy jenkins nexus ldapadmin homepage
 
-# 域名路由：所有自检都带 SNI/Host，走 127.0.0.1 的映射端口
+# 域名路由：所有自检都带 SNI/Host，走 127.0.0.1 的映射端口。
+#
+# URL 里**必须显式带端口**：--resolve 是按 host:port 精确匹配的，只写 https://host/
+# 的话 curl 按隐式 443 去连，映射对不上就退回真实 DNS —— 报出来是「连接失败」，
+# 看着像网关没起来，实际是自检自己把地址写错了。
+# 默认 GATEWAY_HTTPS_PORT=443 时隐式端口恰好等于映射端口，所以这个 bug 只在
+# 非 443 环境暴露（CI 用 8443、局域网自测常用 8443）。
 gw() {   # gw <子域> <路径> → HTTP 状态码
   curl -sSk --connect-timeout 5 --max-time 10 -o /dev/null -w '%{http_code}' \
     --resolve "$1.${GATEWAY_DOMAIN}:${HTTPS_PORT}:127.0.0.1" \
-    "https://$1.${GATEWAY_DOMAIN}$2"
+    "https://$1.${GATEWAY_DOMAIN}:${HTTPS_PORT}$2"
 }
+
+# 给人看的 URL 则相反：443 是隐式默认值，带上只是噪音；非 443 不带就是错的地址，
+# 复制出去必然打不开。所以显示用 VISIBLE_PORT，请求用上面的 gw()。
+if [ "$HTTPS_PORT" = "443" ]; then VISIBLE_PORT=""; else VISIBLE_PORT=":${HTTPS_PORT}"; fi
 
 for check in "auth /ping 200" "jenkins / 302" "home / 200"; do
   read -r sub path expected <<< "$check"
-  url="https://${sub}.${GATEWAY_DOMAIN}${path}"
+  url="https://${sub}.${GATEWAY_DOMAIN}${VISIBLE_PORT}${path}"
   if ! actual="$(gw "$sub" "$path")"; then
     echo "端点自检连接失败: $url（宿主端口 ${HTTPS_PORT}）" >&2
     diagnose caddy oauth2-proxy
@@ -275,11 +285,12 @@ done
 echo "== 部署完成：全部服务 healthy =="
 echo "网关端口：HTTP ${HTTP_PORT} / HTTPS ${HTTPS_PORT}（宿主映射）"
 echo "访问入口（需要先让域名解析到本机）："
-echo "  https://jenkins.${GATEWAY_DOMAIN}/     受保护，未登录 302 是认证跳转"
-echo "  https://nexus.${GATEWAY_DOMAIN}/"
-echo "  https://ldapadmin.${GATEWAY_DOMAIN}/"
-echo "  https://auth.${GATEWAY_DOMAIN}/ping    认证网关"
-echo "  https://dex.${GATEWAY_DOMAIN}/dex/     OIDC"
+echo "  https://jenkins.${GATEWAY_DOMAIN}${VISIBLE_PORT}/     受保护，未登录 302 是认证跳转"
+echo "  https://nexus.${GATEWAY_DOMAIN}${VISIBLE_PORT}/"
+echo "  https://ldapadmin.${GATEWAY_DOMAIN}${VISIBLE_PORT}/"
+echo "  https://auth.${GATEWAY_DOMAIN}${VISIBLE_PORT}/ping    认证网关"
+echo "  https://dex.${GATEWAY_DOMAIN}${VISIBLE_PORT}/dex/     OIDC"
+echo "  https://home.${GATEWAY_DOMAIN}${VISIBLE_PORT}/        统一入口（所有服务的卡片）"
 echo "域名解析：bash scripts/gen-hosts.sh      生成 /etc/hosts 片段"
 echo "证书信任：bash scripts/ca-install.sh     安装 Caddy 内部 CA 根证书"
 echo "下一步: make jobs（先配置 Jenkins 插件、API 管理入口及 GitHub 凭据）"

@@ -167,7 +167,31 @@ elif "--version" in args or "version" in args:
         self.assertNotIn("已生成随机密钥", result.stdout)
         # 端口来自 Compose 解析结果，不是硬编码
         self.assertIn("HTTPS 18443", result.stdout)
-        self.assertIn("https://jenkins.org-devops.com/", result.stdout)
+        # 非 443 时给人看的入口 URL 必须带端口，否则复制出去打不开
+        self.assertIn("https://jenkins.org-devops.com:18443/", result.stdout)
+
+    def test_self_check_url_carries_the_same_port_as_resolve(self):
+        """--resolve 是按 host:port 精确匹配的，URL 不带端口就退回真实 DNS。
+
+        只断言输出文案不够：默认 443 时 URL 的隐式端口恰好等于映射端口，
+        文案看着完全正确，而真正传给 curl 的地址可能是错的。所以这里断言
+        **curl 的实际参数**——resolve 的端口和 URL 的端口必须逐字一致。
+        """
+        (self.root / ".env").write_text("GATEWAY_HTTPS_PORT=18443\n")
+        result = self.deploy()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        checked = 0
+        for call in self.calls():
+            if call[0] != "curl" or "--resolve" not in call:
+                continue
+            resolve = call[call.index("--resolve") + 1]
+            url = call[-1]
+            self.assertIn(":18443", resolve, f"--resolve 少了端口: {resolve}")
+            self.assertIn(":18443", url, f"URL 里少了端口，curl 会退回真实 DNS: {url}")
+            checked += 1
+        # auth / jenkins / home 三个站点都走 gw()
+        self.assertEqual(checked, 3)
 
     def test_gateway_domain_override_flows_into_caddyfile_and_dex(self):
         (self.root / ".env").write_text("GATEWAY_DOMAIN=example.test\n")
