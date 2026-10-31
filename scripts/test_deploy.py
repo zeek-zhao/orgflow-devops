@@ -39,7 +39,7 @@ class DeployTests(unittest.TestCase):
         self.env = {key: value for key, value in os.environ.items()
                     if key not in ("ENV_FILE", "ENV_NAME", "COMPOSE", "CADDY_ADMIN_URL",
                                    "SERVICE_VERSION", "SERVICE_PORT", "SERVICE_DOMAIN",
-                                   "GATEWAY_DOMAIN", "AUTH_SUBDOMAIN",
+                                   "GATEWAY_DOMAIN",
                                    "GATEWAY_HTTP_PORT", "GATEWAY_HTTPS_PORT",
                                    "DEPLOY_HEALTH_TIMEOUT", "DEPLOY_POLL_INTERVAL")}
         # PATH 分隔符必须按平台取（Windows 是 ';'），否则 mock 命令找不到
@@ -71,11 +71,15 @@ elif "config" in args:
     env_file = Path(args[args.index("--env-file") + 1])
     values = dict(line.split("=", 1) for line in env_file.read_text().splitlines()
                   if "=" in line and not line.startswith("#"))
+    # 端口可被测试覆盖：doctor 会真 bind，CI 非 root 绑不了 80/443
+    ports = os.environ.get("TEST_PUBLISHED_PORTS", "").split()
+    http_port = ports[0] if ports else values.get("GATEWAY_HTTP_PORT", "80")
+    https_port = ports[1] if len(ports) > 1 else values.get("GATEWAY_HTTPS_PORT", "443")
     print(json.dumps({{"name": "orgflow-devops", "services": {{
         "router": {{"environment": values, "command": None}},
         "caddy": {{"ports": [
-            {{"target": 80, "published": values.get("GATEWAY_HTTP_PORT", "80")}},
-            {{"target": 443, "published": values.get("GATEWAY_HTTPS_PORT", "443")}}
+            {{"target": 80, "published": http_port}},
+            {{"target": 443, "published": https_port}}
         ]}}
     }}}}))
 elif "up" in args and args[-1] == os.environ.get("TEST_FAIL_SERVICE"):
@@ -104,7 +108,12 @@ elif "--version" in args or "version" in args:
         )
 
     def calls(self):
-        return [json.loads(line) for line in (self.root / "calls.jsonl").read_text().splitlines()]
+        # 前置校验（如废弃变量、Compose 解析失败）会直接 exit，一条外部命令都没调过，
+        # 日志文件根本不存在——这不是错误，就是「零调用」。
+        log = self.root / "calls.jsonl"
+        if not log.exists():
+            return []
+        return [json.loads(line) for line in log.read_text().splitlines()]
 
     def test_clean_bootstrap_and_batch_order(self):
         result = self.deploy()
@@ -154,8 +163,7 @@ elif "--version" in args or "version" in args:
         self.assertIn("https://jenkins.org-devops.com/", result.stdout)
 
     def test_gateway_domain_override_flows_into_caddyfile_and_dex(self):
-        (self.root / ".env").write_text("GATEWAY_DOMAIN=example.test\n"
-                                        "AUTH_SUBDOMAIN=sso\n")
+        (self.root / ".env").write_text("GATEWAY_DOMAIN=example.test\n")
         result = self.deploy()
         self.assertEqual(result.returncode, 0, result.stderr)
         caddyfile = (self.root / "out/Caddyfile").read_text()
@@ -226,9 +234,11 @@ elif "--version" in args or "version" in args:
                 self.assertFalse(any("up" in call for call in self.calls()))
 
     def test_doctor_is_read_only(self):
+        # doctor 会对发布端口做真 bind；CI runner 是普通用户，绑不了 80/443，
+        # 所以这里让 mock 把发布端口换成 0（内核分配），只保留「只读」这个断言目标。
         result = subprocess.run(
             [sys.executable, "scripts/doctor.py"], cwd=self.root,
-            env=dict(self.env, GATEWAY_HTTPS_PORT="0"),
+            env=dict(self.env, TEST_PUBLISHED_PORTS="0 0"),
             capture_output=True, text=True, timeout=20,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

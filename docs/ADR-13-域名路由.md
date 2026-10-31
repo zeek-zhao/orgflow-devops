@@ -59,6 +59,25 @@ M0 最初把 Caddy 当「路径前缀反代」用：`http://localhost:8080/jenki
 | `https://dex.<domain>/dex/*` | `dex:5556` | 否 |
 | `https://auth.<domain>/oauth2/*`、`/ping` | `oauth2-proxy:4180` | 否 |
 
+### 认证站点域名只有一个来源
+
+`https://auth.<domain>` 里的 `auth` 不是可配变量，而是 `config/routes.yaml` 中
+`name: auth` 那条路由的 `subdomain`。受保护站点的登录跳转目标就是它：
+
+```yaml
+  - name: auth
+    subdomain: auth
+    upstream: oauth2-proxy:4180
+```
+
+**刻意没有 `AUTH_SUBDOMAIN` 环境变量。** 同一个事实（认证域名是什么）如果同时
+由 `.env`、Caddyfile 站点、dex 的 issuer、oauth2-proxy 的 `redirect_url` 四处
+各自声明，改一处漏一处就是静默错位——CI 上真的出现过：`.env` 写 `sso`、Caddyfile
+站点仍是 `auth`，登录跳转打到不存在的域名，而所有静态检查都绿。
+
+现在缺 `name: auth` 路由会直接报错（`缺少 name: auth 的路由`），不会退化成默认值。
+`dex` 子域同理，是 M0 的固定约定（`scripts/render-dex.sh` 与站点表必须一致）。
+
 ## 名字解析
 
 两段，各管一段，互不依赖：

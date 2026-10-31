@@ -34,7 +34,6 @@ help:
 render:
 	@mkdir -p out
 	@GATEWAY_DOMAIN="$$(sed -n 's/^GATEWAY_DOMAIN=//p' $(ENV_FILE) 2>/dev/null | tail -1 | tr -d '\042\047')" \
-	 AUTH_SUBDOMAIN="$$(sed -n 's/^AUTH_SUBDOMAIN=//p' $(ENV_FILE) 2>/dev/null | tail -1 | tr -d '\042\047')" \
 	 python3 services/router/render.py --routes config/routes.yaml --out out/Caddyfile
 	@ENV_FILE=$(ENV_FILE) bash scripts/render-dex.sh
 	@echo "rendered out/Caddyfile + out/dex/config.yaml"
