@@ -19,20 +19,23 @@ setup() {
     assert_resolves_in caddy "nexus.${GW_DOMAIN}" 172.31.0.10
     assert_resolves_in caddy "jenkins.${GW_DOMAIN}" 172.31.0.10
     assert_resolves_in jenkins "dex.${GW_DOMAIN}" 172.31.0.10
-    assert_resolves_in nexus "auth.${GW_DOMAIN}" 172.31.0.10
+    # nexus 不是 compose 服务（#46），按容器名 exec
+    assert_resolves_in_container of-nexus "auth.${GW_DOMAIN}" 172.31.0.10
 }
 
 @test "dns: 服务名仍然可解析（dnsmasq 转发给 Docker 内嵌 DNS）" {
     assert_resolves_in caddy nexus 172.31.0.21
     assert_resolves_in jenkins ldap 172.31.0.22
-    assert_resolves_in nexus dex 172.31.0.24
+    # nexus 容器的 base 镜像不一定有 getent/dig，用容器版断言按工具降级
+    assert_resolves_in_container of-nexus dex 172.31.0.24
 }
 
 @test "dns: 固定 IP 表与架构图一致（排查时按 IP 定位容器）" {
     assert_fixed_ip caddy 172.31.0.10
     assert_fixed_ip router 172.31.0.11
     assert_fixed_ip jenkins 172.31.0.20
-    assert_fixed_ip nexus 172.31.0.21
+    # nexus 的 IP 由 scripts/nexus-deploy.sh 的 --ip 决定，不在 compose 里
+    assert_container_ip of-nexus 172.31.0.21
     assert_fixed_ip ldap 172.31.0.22
     assert_fixed_ip ldapadmin 172.31.0.23
     assert_fixed_ip dex 172.31.0.24

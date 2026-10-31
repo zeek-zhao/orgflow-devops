@@ -71,6 +71,12 @@ flowchart LR
 `172.31.0.1` 是 docker 网关，不要占。`jjb` 从动态段（`172.31.0.200/29`）取地址，
 无固定 IP——它只在 `make jobs` 时 `compose run` 一次性起，走内网直连 `jenkins:8080`（#30）。
 
+> **`nexus` 不在 `docker-compose.yml` 里（#46）。** 它是「被 Jenkins 部署的制品库」，
+> 由 job `nexus-deploy` 调 `scripts/nexus-deploy.sh` 用 `docker run` 拉起，
+> 固定 IP `172.31.0.21` 与网络别名 `nexus` 都由脚本负责。
+> 所以 `make deploy` 之后 `nexus.<domain>` 是 **502**（预期），跑完 job 才是 200。
+> 上面这张表的 IP 不变，只是「谁把它拉起来」换了人。
+
 `<domain>` 默认 `org-devops.com`，由 `GATEWAY_DOMAIN` 决定。
 
 **这张表是会被脚本核对的**——`bash scripts/check-arch-ips.sh` 逐行比对真实容器地址，

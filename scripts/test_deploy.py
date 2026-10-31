@@ -23,8 +23,9 @@ DEPLOY_DEPENDENCIES = (
     "config/routes.yaml",
 )
 
+# #46：nexus 移出 compose，不再参与分批启动（改由 scripts/nexus-deploy.sh 部署）
 UP_ORDER = ["dnsmasq", "ldap", "dex", "oauth2-proxy", "router", "caddy",
-            "jenkins", "jenkins-agent", "nexus", "ldapadmin", "homepage"]
+            "jenkins", "jenkins-agent", "ldapadmin", "homepage"]
 
 
 class DeployTests(unittest.TestCase):
@@ -266,13 +267,33 @@ elif "--version" in args or "version" in args:
         self.assertNotIn("__DEX_ISSUER__", dex)
         self.assertIn("https://jenkins.example.test/ = 302", result.stdout)
 
-    def test_pull_failure_identifies_service_and_logs(self):
-        result = self.deploy(TEST_FAIL_SERVICE="nexus")
+    def test_nexus_is_not_a_compose_service_any_more(self):
+        """#46：nexus 移出 compose，`--service nexus` 必须明确报错并指向 job。
+
+        静默接受最坏：调用方以为部署成功了，实际什么都没发生，
+        nexus 站点仍然是 502，而日志里一句错误都没有。
+        """
+        result = self.deploy("--service", "nexus")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("image pull failed: nexus", result.stdout)
-        self.assertIn("相关服务: nexus", result.stderr)
+        self.assertIn("nexus-deploy", result.stderr)
+        self.assertFalse(any(call[0] == "docker" for call in self.calls()))
+
+    def test_service_version_is_rejected(self):
+        """#46：唯一支持版本覆盖的 nexus 移出后，SERVICE_VERSION 没有适用对象。"""
+        result = self.deploy("--service", "router", SERVICE_VERSION="3.92.2")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("SERVICE_VERSION 已停用", result.stderr)
+        self.assertFalse(any(call[0] == "docker" for call in self.calls()))
+
+    def test_pull_failure_identifies_service_and_logs(self):
+        # 用 ldapadmin 而不是 nexus：nexus 已移出 compose（#46），
+        # 拿它注入失败会变成「什么都没跑就成功」，测试假绿。
+        result = self.deploy(TEST_FAIL_SERVICE="ldapadmin")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("image pull failed: ldapadmin", result.stdout)
+        self.assertIn("相关服务: ldapadmin", result.stderr)
         self.assertIn("test log tail", result.stderr)
-        self.assertTrue(any("logs" in call and call[-2:] == ["--tail=50", "nexus"]
+        self.assertTrue(any("logs" in call and call[-2:] == ["--tail=50", "ldapadmin"]
                             for call in self.calls()))
         self.assertNotIn("部署完成", result.stdout)
 

@@ -1,0 +1,42 @@
+- job:
+    name: nexus-deploy
+    description: >-
+      M0 制品库部署（#46）：Nexus 已移出 docker-compose.yml，由本 job 调
+      scripts/nexus-deploy.sh 拉起容器并改掉初始密码。幂等 ——
+      容器已存在就复用、密码已改过就跳过。
+    project-type: pipeline
+    sandbox: true
+    scm:
+      - git:
+          url: https://github.com/zeek-zhao/orgflow-devops.git
+          branches: [main]
+          credentials-id: github-token
+          skip-tag: true
+          wipe-workspace: false
+    dsl: |
+      @Library('orgflow-shared') _
+      node('orgflow-docker') {{
+        def scm = [$class: 'GitSCM',
+          branches: [[name: 'main']],
+          userRemoteConfigs: [[
+            url: 'https://github.com/zeek-zhao/orgflow-devops.git',
+            credentialsId: 'github-token'
+          ]]]
+        checkout(scm)
+        deployNexus(
+          environment: params.ENV,
+          dryRun: params.DRY_RUN
+        )
+      }}
+    parameters:
+      - choice:
+          name: ENV
+          choices:
+            - dev
+            - staging
+            - prod
+          description: "目标环境（决定 ENV_NAME，脚本本身不区分）"
+      - bool:
+          name: DRY_RUN
+          default: false
+          description: "只打印不执行"

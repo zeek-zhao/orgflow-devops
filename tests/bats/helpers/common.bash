@@ -124,6 +124,52 @@ assert_fixed_ip() {
     fi
 }
 
+# ------------------------------------------------- 非 compose 容器的断言（#46）
+#
+# Nexus 不再由 compose 管理，它是 job `nexus-deploy` 用 docker run 创建的。
+# `compose ps -q nexus` 对它返回空，所以上面那组按服务名查的断言全都不适用，
+# 这里按容器名直接查。
+
+docker_exec() { docker exec -i "$@"; }
+
+assert_container_healthy() {
+    local status
+    status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$1" 2>/dev/null) || return
+    if [[ $status != healthy ]]; then
+        echo "$1: expected healthy, got ${status:-missing}" >&2
+        return 1
+    fi
+}
+
+assert_container_ip() {
+    local actual
+    actual=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$1" 2>/dev/null) || return
+    if [[ $actual != "$2" ]]; then
+        echo "$1: expected fixed IP $2, got ${actual:-none}" >&2
+        return 1
+    fi
+}
+
+assert_resolves_in_container() {
+    local container=$1 name=$2 expected=$3 out
+    out=$(docker_exec "$container" sh -c "
+        if command -v getent >/dev/null 2>&1; then getent hosts '$name'
+        elif command -v nslookup >/dev/null 2>&1; then nslookup '$name'
+        elif command -v dig >/dev/null 2>&1; then dig +short '$name'
+        else echo no-resolver-tool; fi") || return
+    if [[ $out == *no-resolver-tool* ]]; then
+        # nexus3 的底座（UBI）只有 curl，没有 getent/nslookup/dig。
+        # curl 的 %{remote_ip} 一样能证明「这个名字被解析到了哪个地址」：
+        # 打一个必然拒绝连接的端口，解析成功就会打印 remote_ip，解析失败则什么都不打印。
+        out=$(docker_exec "$container" curl -s -o /dev/null -w '%{remote_ip}' \
+            --max-time 3 "http://$name:9/" 2>/dev/null || true)
+    fi
+    if [[ $out != *"$expected"* ]]; then
+        echo "$container: cannot resolve $name to $expected; got: ${out:-<empty>}" >&2
+        return 1
+    fi
+}
+
 # 容器内域名解析：验证 dnsmasq 供货，且服务确实用了它当 resolver。
 # 容器基础镜像不同（alpine 无 getent、debian 有），按可用工具降级；
 # 断言只看"输出里出现期望 IP"，不依赖某个工具的固定输出格式。
