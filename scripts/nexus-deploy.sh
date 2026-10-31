@@ -31,22 +31,20 @@ fail() { printf '[nexus-deploy] 失败: %s\n' "$*" >&2; exit 1; }
 
 # ---- 网络与卷名 ----
 #
-# 不能写死 `orgflow-devops_orgflow`：compose 的项目名默认取目录名，
-# 克隆到别的目录名就变了（本仓库的 compose 里写了 `name: orgflow-devops`，
-# 所以现在恒等于这个名字，但别依赖这一点）。
+# 两个名字都不是「猜」出来的，是 docker-compose.yml 里显式写死的：
+#   - 网络：`networks.orgflow.name: orgflow`（不是默认的 <project>_orgflow）
+#   - 项目名：`name: orgflow-devops` → 卷名 orgflow-devops_nexus_data
+# 卷名还必须与 scripts/backup-common.sh 里写死的一致 —— 卷名一漂，
+# 备份脚本会备份一个空卷而真正的数据在另一个卷里，**静默出错**，
+# 等要恢复的时候才发现。bats 里直接断言容器的挂载源就是这个名字。
 #
-# ★ 这里只用 docker CLI，**不依赖 python3/jq**：这个脚本要在 Jenkins agent
-#   上跑，而 `jenkins/ssh-agent:jdk21` 是精简 Debian，没有 python3、没有 jq。
-#   用 `docker network ls` 反而比解析 `compose config` 的 JSON 更稳。
-if [ -z "${NEXUS_NETWORK:-}" ]; then
-    NEXUS_NETWORK="$(docker network ls --format '{{.Name}}' | grep -E '_orgflow$' | head -1 || true)"
-fi
-NETWORK="${NEXUS_NETWORK:-}"
-[ -n "$NETWORK" ] || fail "找不到 orgflow 网络；先跑 make deploy（底座要先起来）"
-# 卷名沿用 compose 的命名规则：<project>_<volume>。
-# backup-common.sh 里写死的就是 orgflow-devops_nexus_data，两边必须一致，
-# 否则备份脚本会备份一个空卷，而真正的数据在另一个卷里 —— 静默出错。
-VOLUME="${NEXUS_VOLUME:-${NETWORK%_orgflow}_nexus_data}"
+# ★ 只用 docker CLI，**不依赖 python3/jq**：这个脚本要在 Jenkins agent 上跑，
+#   而 `jenkins/ssh-agent:jdk21` 是精简 Debian，没有 python3、没有 jq。
+NETWORK="${NEXUS_NETWORK:-orgflow}"
+VOLUME="${NEXUS_VOLUME:-orgflow-devops_nexus_data}"
+
+docker network inspect "$NETWORK" >/dev/null 2>&1 \
+    || fail "找不到网络 $NETWORK；先跑 make deploy（底座要先起来）"
 log "网络 $NETWORK / 卷 $VOLUME / 固定 IP $IP"
 
 # 网络存在但卷不存在时 docker 会自动建卷，这里显式建一次，

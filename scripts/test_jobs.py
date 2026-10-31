@@ -346,6 +346,18 @@ class NexusJobDefinitionTests(unittest.TestCase):
         job = (ROOT / "config/job_definitions/deploy/deploy-service.yaml").read_text(encoding="utf-8")
         self.assertNotIn("- nexus\n", job)
 
+    def test_network_and_volume_names_stay_aligned(self):
+        compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+        script = (ROOT / "scripts/nexus-deploy.sh").read_text(encoding="utf-8")
+        backup = (ROOT / "scripts/backup-common.sh").read_text(encoding="utf-8")
+        # compose 显式把网络命名成 orgflow（不是默认的 <project>_orgflow），
+        # 所以脚本里写 orgflow 是对的；哪天改成默认命名，这条会红。
+        self.assertIn("  orgflow:\n    name: orgflow\n", compose)
+        # 卷名 = <项目名>_nexus_data，三处必须一致
+        self.assertIn("name: orgflow-devops\n", compose)
+        self.assertIn("orgflow-devops_nexus_data", script)
+        self.assertIn("orgflow-devops_nexus_data", backup)
+
     def test_nexus_password_is_injected_as_a_credential(self):
         groovy = (ROOT / "shared-library/vars/deployNexus.groovy").read_text(encoding="utf-8")
         self.assertIn("credentialsId: 'nexus-admin-password'", groovy)

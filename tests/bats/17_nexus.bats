@@ -40,6 +40,13 @@ setup() {
     local locked
     locked="$(awk -F '\t' '$1 == "nexus" {print $3}' "$M0_REPO/tests/images.lock")"
     assert_contains "$(cat "$M0_REPO/scripts/nexus-deploy.sh")" "$locked"
+
+    # 卷名必须与 scripts/backup-common.sh 里写死的一致。
+    # 卷名一漂，备份脚本会备份一个空卷而真正的数据在另一个卷里 —— 静默出错，
+    # 等要恢复的时候才发现，那时候已经没有「另一个卷」可用了。
+    [ "$(docker inspect -f \
+        '{{range .Mounts}}{{if eq .Destination "/nexus-data"}}{{.Name}}{{end}}{{end}}' \
+        of-nexus)" = "orgflow-devops_nexus_data" ]
 }
 
 @test "nexus: 重跑 nexus-deploy 幂等，不重建容器" {
