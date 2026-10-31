@@ -12,6 +12,8 @@
 #   身份规则（与 docs/提交规范.md 一致）：
 #     - author    必须恒为 zeek.zhao <zeek.zhao@foxmail.com>
 #     - committer 在非主干分支上必须同上；主干允许 GitHub squash 机器人
+#     - 检查范围：本次推送真正新增的提交（新分支 = 主干..HEAD，不扫全量历史），
+#       且跳过合并提交（平台产物）
 # =============================================================================
 set -uo pipefail
 
@@ -41,11 +43,24 @@ while read -r _local_ref local_sha remote_ref remote_sha; do
   [[ "${GIT_IDENTITY_ALLOW:-0}" == 1 ]] && continue
   [[ "$local_sha" == "$zero" ]] && continue            # 删除分支，无提交可查
   if [[ "$remote_sha" == "$zero" ]]; then
-    range="$local_sha"                                  # 新分支：全量查
+    # 新分支：只查「相对主干新增」的提交，不能扫全量历史。
+    # 主干上的 rebase/squash 合并提交 committer 是 GitHub 机器人，
+    # 全量扫会让任何新分支都推不上去。
+    base=""
+    for cand in origin/main main origin/master master; do
+      if git rev-parse --verify -q "$cand" >/dev/null 2>&1; then base="$cand"; break; fi
+    done
+    if [[ -n "$base" ]]; then
+      range="$base..$local_sha"
+    else
+      range="$local_sha"
+    fi
   else
     range="$remote_sha..$local_sha"
   fi
 
+  # --no-merges：合并提交是平台产物（GitHub 为 PR 生成的 refs/pull/n/merge），
+  # 与 CI 的 identity.yml 保持一致。
   while read -r sha ae ce; do
     [[ -z "$sha" ]] && continue
 
@@ -60,7 +75,7 @@ while read -r _local_ref local_sha remote_ref remote_sha; do
       printf '  期望：%s（主干分支允许 GitHub squash 机器人）\n' "$want_email" >&2
       rc=1
     fi
-  done < <(git log --format='%H %ae %ce' "$range" 2>/dev/null)
+  done < <(git log --no-merges --format='%H %ae %ce' "$range" 2>/dev/null)
 done
 
 exit "$rc"
