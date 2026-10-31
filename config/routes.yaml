@@ -3,14 +3,14 @@
 # 域名模型：每个 route 是一个独立站点 https://<subdomain>.<gateway_domain>
 #   - gateway_domain 默认取本文件，部署时由 .env 的 GATEWAY_DOMAIN 覆盖
 #   - 全部站点使用 Caddy 内部 CA（local_certs），不向公网申请证书
-#   - 未登录访问受保护站点会跳到 https://<auth_subdomain>.<domain>/oauth2/start
+#   - 未登录访问受保护站点会跳到 name: auth 那条路由的站点 /oauth2/start
+#     （认证域名只由这一条路由决定，没有独立的 AUTH_SUBDOMAIN 变量）
 #
 # 改完执行 `make render`，或由 router 服务 watch 自动热加载。
 #
 # 注意：M0 ADR-13 起不再支持路径路由（/jenkins 这类入口已删除）。
 
 gateway_domain: org-devops.com
-auth_subdomain: auth
 
 routes:
   - name: jenkins
@@ -32,6 +32,7 @@ routes:
     upstream: dex:5556
 
   # OAuth2 Proxy：/oauth2/* 与 /ping
+  # name 必须是 auth：受保护站点的登录跳转目标就是这条路由的 subdomain
   - name: auth
     subdomain: auth
     upstream: oauth2-proxy:4180

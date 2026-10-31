@@ -15,7 +15,7 @@ setup_gw() {
     GW_HOST=${GW_HOST:-127.0.0.1}
     GW_HTTPS_PORT=${GW_HTTPS_PORT:-8443}
     GW_HTTP_PORT=${GW_HTTP_PORT:-8080}
-    # 认证网关子域：与 config/routes.yaml 的 auth_subdomain 一致
+    # 认证网关子域：与 config/routes.yaml 里 name: auth 那条路由的 subdomain 一致
     GW_AUTH=${GW_AUTH:-auth}
     M0_REPO=${M0_REPO:-/repo}
     M0_ENV_FILE=${M0_ENV_FILE:-$M0_REPO/.env}

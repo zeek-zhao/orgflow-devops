@@ -5,7 +5,6 @@ export DOCKER_HOST=unix:///var/run/docker.sock
 unset DOCKER_CONTEXT
 # 域名路由（ADR-13）：测试栈固定 org-devops.com，网关端口用非特权端口避免占宿主 80/443
 export GATEWAY_DOMAIN="${GATEWAY_DOMAIN:-org-devops.com}"
-export AUTH_SUBDOMAIN="${AUTH_SUBDOMAIN:-auth}"
 export GW_DOMAIN="$GATEWAY_DOMAIN"
 export GW_HOST=127.0.0.1
 export GW_HTTP_PORT=8080
@@ -87,7 +86,6 @@ fi
 # 追加覆盖（dotenv 后者生效）：测试栈固定域名与端口，不受调用方 .env 影响
 cat >> "$M0_ENV_FILE" <<EOF
 GATEWAY_DOMAIN=$GATEWAY_DOMAIN
-AUTH_SUBDOMAIN=$AUTH_SUBDOMAIN
 GATEWAY_HTTP_PORT=$GW_HTTP_PORT
 GATEWAY_HTTPS_PORT=$GW_HTTPS_PORT
 EOF

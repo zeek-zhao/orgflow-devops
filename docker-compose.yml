@@ -126,7 +126,6 @@ services:
       - CADDY_ADMIN_URL=${CADDY_ADMIN_URL:-http://caddy:2019}
       - ROUTES_FILE=/app/config/routes.yaml
       - GATEWAY_DOMAIN=${GATEWAY_DOMAIN:-org-devops.com}
-      - AUTH_SUBDOMAIN=${AUTH_SUBDOMAIN:-auth}
     volumes:
       - ./config:/app/config:ro
       - ./out:/app/out
