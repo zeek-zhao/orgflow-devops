@@ -34,6 +34,7 @@ jobs:
           set -euo pipefail
           want_name="zeek.zhao"
           want_email="zeek.zhao@foxmail.com"
+          ai_re='copilot|claude|chatgpt|gpt-?[0-9]|gemini|cursor|codex|codeium|windsurf|tabnine|aider|openai|anthropic'
           zero="0000000000000000000000000000000000000000"
 
           if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
@@ -81,6 +82,17 @@ jobs:
                 bad=1
               fi
             fi
+
+            # 提交消息：不允许协作者尾注，不允许 AI 署名/生成备注
+            body=$(git log -1 --format=%B "$sha")
+            if printf '%s' "$body" | grep -qiE '^[[:space:]]*(co-authored-by|signed-off-by|assisted-by)[[:space:]]*:'; then
+              echo "::error title=提交消息含协作者尾注::${sha:0:8} 只允许单一作者，去掉 Co-authored-by / Signed-off-by"
+              bad=1
+            fi
+            if printf '%s' "$body" | grep -qiE "(generated (with|by)|written by|authored by|powered by).*(${ai_re})|(${ai_re}).*(generated|assisted|co-authored)|🤖"; then
+              echo "::error title=提交消息含 AI 署名::${sha:0:8} 提交消息只写改了什么、为什么改"
+              bad=1
+            fi
           done
 
           if [[ "$bad" -ne 0 ]]; then
@@ -89,6 +101,7 @@ jobs:
             echo "  git config user.name  \"${want_name}\""
             echo "  git config user.email \"${want_email}\""
             echo "  然后 git commit --amend --reset-author（未推送时）"
+            echo "  提交消息里的 Co-authored-by / AI 署名请直接删掉"
             echo "详见 docs/提交规范.md"
             exit 1
           fi
