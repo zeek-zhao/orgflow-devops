@@ -71,14 +71,24 @@ credentials:
               scope: GLOBAL
               id: "oauth2-cookie-secret"
               secret: "${OAUTH2_COOKIE_SECRET}"
-          # agent 的 SSH 私钥（#45）。用 fileOnMaster 指向挂进容器的文件，
-          # 而不是把 PEM 塞进 .env —— dotenv 不支持多行，硬塞只能 base64 再想办法解，
-          # 而 JCasC 不会解码。文件由 scripts/gen-agent-key.sh 生成，secrets/ 已 gitignore。
+          # agent 的 SSH 私钥（#45）。
+          #
+          # ★ 不能用 fileOnMaster：那个 PrivateKeySource 已 @Deprecated，
+          #   而且**没有 @DataBoundConstructor、也没有 @Symbol**，
+          #   JCasC 根本实例化不了它，结果是 Jenkins 启动直接中断
+          #   （症状是 8080 一直不 ready，日志里只有 "still starting up"）。
+          #   它的 readResolve() 还会按 SECURITY-440 把文件内容读成 directEntry。
+          #   所以这里直接用 directEntry。
+          #
+          # 私钥怎么进来：deploy.sh / harness 在 compose 之前
+          #   export JENKINS_AGENT_SSH_PRIVATE_KEY="$(cat secrets/agent_ssh_key)"
+          # compose 用 `environment: - JENKINS_AGENT_SSH_PRIVATE_KEY` 透传。
+          # 这样私钥既不进仓库，也不进 .env（deploy.sh 有「已有 .env 绝不修改」的约定）。
           - basicSSHUserPrivateKey:
               scope: GLOBAL
               id: "jenkins-agent-ssh"
               username: "jenkins"
-              description: "jenkins-agent 的 SSH 私钥（fileOnMaster）"
+              description: "jenkins-agent 的 SSH 私钥"
               privateKeySource:
-                fileOnMaster:
-                  keyFile: "/var/jenkins_home/ssh/agent_ssh_key"
+                directEntry:
+                  privateKey: "${JENKINS_AGENT_SSH_PRIVATE_KEY}"

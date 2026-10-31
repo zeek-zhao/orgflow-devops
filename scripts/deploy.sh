@@ -107,6 +107,15 @@ fi
 # 注意：这一步**不写 .env**，只产出 secrets/ 下的两个文件。
 bash scripts/gen-agent-key.sh >/dev/null
 
+# JCasC 用 directEntry 引用私钥，compose 里写的是**裸变量**
+# （`- JENKINS_AGENT_SSH_PRIVATE_KEY`，不带 `=` 表示从宿主环境取值）。
+# 所以必须在 compose 之前 export；写进 .env 会违反「已有 .env 绝不修改」的约定，
+# 而且 dotenv 也不支持多行 PEM。
+if [ -r "$ROOT/secrets/agent_ssh_key" ]; then
+  JENKINS_AGENT_SSH_PRIVATE_KEY="$(cat "$ROOT/secrets/agent_ssh_key")"
+  export JENKINS_AGENT_SSH_PRIVATE_KEY
+fi
+
 HEALTH_TIMEOUT="${DEPLOY_HEALTH_TIMEOUT:-600}"
 POLL_INTERVAL="${DEPLOY_POLL_INTERVAL:-3}"
 for value in "$HEALTH_TIMEOUT" "$POLL_INTERVAL"; do

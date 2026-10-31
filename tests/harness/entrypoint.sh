@@ -99,6 +99,14 @@ EOF
 stage="generating agent ssh key"
 bash /repo/scripts/gen-agent-key.sh >/dev/null
 
+# JCasC 的 directEntry 引用 JENKINS_AGENT_SSH_PRIVATE_KEY，compose 里是裸变量，
+# 必须在 compose 之前 export 才有值（写 .env 不行：既有「已有 .env 绝不修改」
+# 的约定，dotenv 也不支持多行 PEM）。
+if [ -r /repo/secrets/agent_ssh_key ]; then
+  JENKINS_AGENT_SSH_PRIVATE_KEY="$(cat /repo/secrets/agent_ssh_key)"
+  export JENKINS_AGENT_SSH_PRIVATE_KEY
+fi
+
 # 域名相关产物必须在容器启动前就绪：
 #   out/Caddyfile    caddy 挂载 /etc/caddy，缺文件会起不来
 #   out/dex/config.yaml  dex 是 scratch 镜像，无法在启动期渲染
