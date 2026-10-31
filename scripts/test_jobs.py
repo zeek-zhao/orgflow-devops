@@ -17,13 +17,14 @@ class JobScriptTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        for directory in ("scripts", "config", "services/router", "tests", "bin"):
+        for directory in ("scripts", "config", "services/router", "services/auth/dex",
+                          "tests", "bin"):
             (self.root / directory).mkdir(parents=True, exist_ok=True)
         for name in (
             "scripts/gen-jjb-conf.sh", "scripts/deploy.sh", "scripts/backup.sh",
-            "scripts/backup-common.sh",
+            "scripts/backup-common.sh", "scripts/render-dex.sh",
             "config/jenkins_jobs.ini.tpl", "config/routes.yaml",
-            "services/router/render.py",
+            "services/router/render.py", "services/auth/dex/config.yaml.tmpl",
             "tests/images.lock",
         ):
             shutil.copyfile(ROOT / name, self.root / name)
@@ -46,22 +47,54 @@ class JobScriptTests(unittest.TestCase):
             PATH=f"{self.root / 'bin'}:{os.environ['PATH']}",
             JOB_TEST_LOG=str(self.log),
         )
-        mock = f"""#!{sys.executable}
-import json
+        # 普通字符串拼接而非 f-string：下面的 mock 里全是字典/JSON 花括号，
+        # 用 f-string 得把每个 { } 都写成 {{ }}，改一处漏一处就是语法错。
+        mock = "#!" + sys.executable + """
 import io
+import json
 import os
 from pathlib import Path
 import sys
 import tarfile
+
+args = sys.argv[1:]
+
+# deploy.sh 现在先解析 compose 拿网关域名与端口（ADR-13），
+# 这一步必须返回合法 JSON，否则后面的部署逻辑根本没机会跑。
+config = None
+if args[:1] == ["compose"] and "config" in args and "--format" in args:
+    env_file = Path(args[args.index("--env-file") + 1])
+    values = {}
+    if env_file.is_file():
+        values = dict(
+            line.split("=", 1) for line in env_file.read_text().splitlines()
+            if "=" in line and not line.startswith("#")
+        )
+    config = {
+        "name": "orgflow-devops",
+        "services": {
+            "router": {"environment": values, "command": None},
+            "caddy": {"ports": [
+                {"target": 80, "published": values.get("GATEWAY_HTTP_PORT", "80")},
+                {"target": 443, "published": values.get("GATEWAY_HTTPS_PORT", "443")},
+            ]},
+        },
+    }
+
 with open(os.environ["JOB_TEST_LOG"], "a") as log:
-    log.write(json.dumps({{
-        "tool": Path(sys.argv[0]).name, "args": sys.argv[1:],
+    log.write(json.dumps({
+        "tool": Path(sys.argv[0]).name,
+        "args": args,
         "version": os.environ.get("JENKINS_VERSION"),
-        "port": os.environ.get("GATEWAY_PORT"),
-    }}) + "\\n")
-if sys.argv[1:3] == ["volume", "inspect"]:
+        "port": config["services"]["caddy"]["ports"][0]["published"] if config else None,
+    }) + "\\n")
+
+if config is not None:
+    print(json.dumps(config))
+    sys.exit(0)
+if args[:2] == ["volume", "inspect"]:
     sys.exit(int(os.environ.get("JOB_TEST_INSPECT_STATUS", "0")))
-if os.environ.get("JOB_TEST_STATUS", "0") == "0" and sys.argv[1] == "run":
+if os.environ.get("JOB_TEST_STATUS", "0") == "0" and args[:1] == ["run"]:
     with tarfile.open(fileobj=sys.stdout.buffer, mode="w|gz") as archive:
         data = b"test data"
         info = tarfile.TarInfo("data")
@@ -83,6 +116,10 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
 
     def commands(self):
         return [json.loads(line) for line in self.log.read_text().splitlines()]
+
+    def deploy_calls(self):
+        """去掉 deploy.sh 开头的 compose config 探测，只看真正的部署动作。"""
+        return [call for call in self.commands() if "config" not in call["args"]]
 
     def test_conf_literals_permissions_and_no_execution(self):
         result = self.run_script("gen-jjb-conf")
@@ -124,21 +161,25 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
             "deploy", "--service", "jenkins", SERVICE_VERSION="lts-jdk17",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        commands = self.commands()
+        commands = self.deploy_calls()
         self.assertEqual(commands[0]["args"], [
             "compose", "--env-file", ".env", "up", "-d", "--no-deps", "jenkins",
         ])
         self.assertIsNone(commands[0]["version"])
         self.assertEqual(commands[1]["args"][-2:], ["ps", "jenkins"])
 
-    def test_deploy_environment_and_port(self):
-        shutil.copyfile(self.dotenv, self.root / ".env.staging")
+    def test_deploy_environment_file_carries_the_gateway_port(self):
+        # ADR-13 起端口不再是部署参数：唯一的入口是环境文件里的 GATEWAY_HTTP_PORT
+        (self.root / ".env.staging").write_text(
+            self.dotenv.read_text() + "GATEWAY_HTTP_PORT=8088\n"
+        )
         result = self.run_script(
-            "deploy", "--service", "caddy", ENV_NAME="staging", SERVICE_PORT="8088",
+            "deploy", "--service", "caddy", ENV_NAME="staging",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.commands()[0]["args"][2], ".env.staging")
-        self.assertEqual(self.commands()[0]["port"], "8088")
+        first = self.commands()[0]
+        self.assertEqual(first["args"][2], ".env.staging")
+        self.assertEqual(first["port"], "8088")
 
     def test_deploy_invalid_parameters_fail_before_docker(self):
         for args, env in (
@@ -171,8 +212,10 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
         result = self.run_script(
             "deploy", "--service", "router", JOB_TEST_STATUS="23",
         )
+        # compose config 探测成功，真正的 up 失败：退出码必须原样透出
         self.assertEqual(result.returncode, 23)
-        self.assertEqual(len(self.commands()), 1)
+        self.assertEqual(len(self.commands()), 2)
+        self.assertIn("config", self.commands()[0]["args"])
 
     def test_backup_selected_service_and_retention_scope(self):
         directory = self.root / "out/backups"

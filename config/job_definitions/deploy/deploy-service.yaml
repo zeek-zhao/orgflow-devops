@@ -24,8 +24,6 @@
           service: params.SERVICE,
           environment: params.ENV,
           version: params.VERSION,
-          port: params.PORT,
-          domain: params.DOMAIN,
           dryRun: params.DRY_RUN
         )
       }}
@@ -53,14 +51,6 @@
           name: VERSION
           default: ''
           description: "Jenkins/Nexus 镜像 tag（留空保留 Compose 默认版本）"
-      - string:
-          name: PORT
-          default: ''
-          description: "Caddy 网关端口（留空用默认；其他服务不支持）"
-      - string:
-          name: DOMAIN
-          default: ''
-          description: "预留；M0 为路径路由，请留空（域名需另行配置 routes/Caddy）"
       - bool:
           name: DRY_RUN
           default: false
