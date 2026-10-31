@@ -83,12 +83,10 @@ services:
       - .:/repo
     environment:
       - JJB_CONF=/repo/.jjb/jenkins_jobs.ini
-      # 网关用内部 CA 自签：让 jenkins-jobs 用导出的根证书校验
-      # （make ca 会生成 out/ca/root.crt；. 已挂到 /repo）
-      - REQUESTS_CA_BUNDLE=/repo/out/ca/root.crt
-    # host 网络：JJB 要访问宿主上的网关入口（https://jenkins.<domain>/），
-    # 需要宿主机 /etc/hosts 有对应记录（make hosts）
-    network_mode: host
+    # compose 内网直连 jenkins:8080（#30）：不走网关，不经 oauth2，无需 CA 与宿主 hosts。
+    # 不给固定 IP：从 ipam 动态段取（见文件末尾 iprange），与固定 IP 表互不抢占。
+    networks:
+      orgflow:
 
   caddy:
     image: caddy:2@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e # lock: caddy
@@ -361,6 +359,9 @@ networks:
       config:
         # 避开 devops 仓库环境用的 172.30.0.0/24
         - subnet: 172.31.0.0/24
+        # 动态分配段：jjb 这类 `compose run` 的一次性容器没有固定 IP，
+        # 从这里取地址（172.31.0.200-207），不会抢占 .2-.26 的固定 IP
+        - ip_range: 172.31.0.200/29
 
 volumes:
   jenkins_home:
