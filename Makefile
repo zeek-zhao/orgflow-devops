@@ -133,9 +133,14 @@ hooks:
 	@echo "已安装钩子：$(shell ls .githooks | tr '\n' ' ')"
 	@echo "钩子内容：pre-commit 校验提交身份，pre-push 拦主干 + 校验身份"
 
-# 校验 author 是否唯一（main 上 committer 允许 GitHub squash 机器人）
+# 校验 author 是否唯一（main 上 committer 允许 GitHub 平台）
 # --no-merges 必须保留：GitHub 为 PR 生成的合成合并提交，其 author 是
 # 账号的 noreply 邮箱、committer 是 GitHub，属平台产物，不该计入身份校验。
+#
+# ★ 这条过滤**只管合并提交**。squash 合并的产物只有单父，--no-merges 不生效，
+#   author 会被改写成 noreply 而这里照样红——2026-10-31 就这么红过一次（PR #25）。
+#   而 squash 提交和 rebase 后的提交在脚本层面无法区分（都是单父 + committer 是
+#   noreply），所以补不了：合并一律 rebase，见 docs/提交规范.md 第 1 节。
 identity-check:
 	@bad=0; \
 	for ae in $$(git log --no-merges --format='%ae' | sort -u); do \
