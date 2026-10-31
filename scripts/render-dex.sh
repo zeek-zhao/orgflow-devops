@@ -41,6 +41,11 @@ sed -e "s|__DEX_ISSUER__|${issuer}|g" \
     -e "s|__OAUTH2_REDIRECT_URI__|${redirect}|g" \
     "$TEMPLATE" > "$OUTPUT"
 
+# dex 容器以 uid 1001 运行，必须能读到这份配置；调用方的 umask 可能是 077
+# （测试 harness 就是），所以这里显式放开读权限。文件里没有密钥：
+# LDAP 密码留在 ${LDAP_ADMIN_PASSWORD} 里，由容器启动时的 gomplate 展开。
+chmod 0644 "$OUTPUT"
+
 # 自检：占位符必须被清空，否则 dex 会带着字面量启动
 if grep -q '__DEX_ISSUER__\|__OAUTH2_REDIRECT_URI__' "$OUTPUT"; then
     echo "渲染失败：$OUTPUT 仍有未替换的占位符" >&2
