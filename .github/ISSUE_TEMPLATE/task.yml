@@ -1,0 +1,106 @@
+# 任务卡（Issue 模板）
+#
+# 字段与 docs/task-cards/TEMPLATE.md 一一对应：Issue 填完，派单时把内容搬进卡片即可。
+# 验收与禁止事项是必填——这两项空着的 Issue，说明需求还没想清楚，不该开工。
+name: 任务卡
+description: 一个可验收的工作单元。Issue 是需求真本，派单时按 docs/task-cards/TEMPLATE.md 展开成卡片。
+title: "[M0] "
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        填之前先想清楚一件事：**做完之后，怎么证明它做完了？**
+        写不出可执行命令的验收，就是还没想清楚。
+
+        派单前会按 `docs/task-cards/TEMPLATE.md` 展开成卡片，见 `docs/派单流程.md`。
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: 目标
+      description: 交付完成后什么变了？写终态，不要写实现步骤。
+      placeholder: |
+        例：改路由只改 config/routes.yaml，不重启 Caddy；
+        渲染失败时保持上一版生效，不把 Caddy 弄挂。
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 背景与取证
+      description: |
+        只写执行方自己查不到的事实：实测数据、环境限制、上游行为、踩过的坑。
+        每条带来源（命令 + 输出）。不要写猜测。
+      placeholder: |
+        | 事实 | 值 / 结论 | 怎么来的 |
+        |---|---|---|
+        | oauth2-proxy 7.x 已无 LDAP provider | --help 里 --ldap-* 为 0 项 | docker run --rm ... --help \| grep -c ldap |
+    validations:
+      required: false
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 范围
+      description: 逐文件列出。改什么、新增什么、删什么。
+      placeholder: |
+        **改**
+        - `services/router/render.py`：……
+
+        **新增**
+        - `tests/bats/18_public.bats`：……
+
+        **删**
+        - `Caddyfile`：两份真源会漂移
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收
+      description: |
+        每条都必须能照抄执行：命令 + 期望输出。
+        **必须至少有一条反证**——否则无法区分「真的做对了」和「断言根本没生效」。
+      placeholder: |
+        - [ ] `make test` → 退出码 0
+        - [ ] `grep -c '^https://' out/Caddyfile` → 5
+        - [ ] 反证：删掉某条 route → `14_caddy.bats` 必须红；恢复后复绿（贴两次输出）
+    validations:
+      required: true
+
+  - type: textarea
+    id: forbidden
+    attributes:
+      label: 禁止事项
+      description: 要具体。「不要乱改」没有约束力，「不得改 tests/images.lock」才有。
+      placeholder: |
+        - 不得改 `tests/images.lock` 里的 digest
+        - 不得把 token 写进 compose 或 Makefile
+        - 不得为了过测试而放宽断言
+        - 不得自行合并 PR
+    validations:
+      required: true
+
+  - type: textarea
+    id: prerequisites
+    attributes:
+      label: 依赖与前置
+      description: 开工前必须成立的条件。任一不成立就停下汇报，不要自行绕过。
+      placeholder: |
+        - 前置 Issue：#2
+        - [ ] `docker compose version` → v2.x
+        - [ ] 需要人工动作：在 GitHub UI 把某个包改成 public（无 API）
+    validations:
+      required: false
+
+  - type: input
+    id: budget
+    attributes:
+      label: token 预算
+      description: 粗估即可。超预算先停下汇报，不要硬推。
+      placeholder: "约 10 万 token"
+    validations:
+      required: false
