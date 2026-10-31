@@ -12,6 +12,7 @@ name: orgflow-devops
 #   172.31.0.23  ldapadmin
 #   172.31.0.24  dex
 #   172.31.0.25  oauth2-proxy
+#   172.31.0.26  homepage
 # 固定 IP 的意义：排查时能直接用 IP 定位到容器，不必反查随机地址。
 
 services:
@@ -309,6 +310,42 @@ services:
       timeout: 5s
       retries: 30
       start_period: 120s
+
+  # 统一入口：一屏看到所有服务，点进去直达。
+  # HOMEPAGE_ALLOWED_HOSTS 必须由 GATEWAY_DOMAIN 驱动：homepage 会校验 Host 头，
+  # 写死某个域名后换域名访问会直接 400，而且报错只说 "host not allowed"，
+  # 看不出是配置问题还是路由问题。
+  homepage:
+    image: gethomepage/homepage:v2.7.0@sha256:19c5c09184458a41b7b5915e71463a39f36cd33540f41bdbed008791b8182d5f # lock: homepage
+    container_name: of-homepage
+    restart: unless-stopped
+    environment:
+      - HOMEPAGE_ALLOWED_HOSTS=home.${GATEWAY_DOMAIN:-org-devops.com}
+      # 卡片里的链接用 {{HOMEPAGE_VAR_GATEWAY_DOMAIN}} 引用，换域名不用改 yaml
+      - HOMEPAGE_VAR_GATEWAY_DOMAIN=${GATEWAY_DOMAIN:-org-devops.com}
+      - PUID=1000
+      - PGID=1000
+    volumes:
+      # 不挂 :ro —— homepage 默认把运行日志写到 config/logs 下，只读会起不来
+      - ./config/homepage:/app/config
+    expose:
+      - "3000"
+    depends_on:
+      dnsmasq:
+        condition: service_healthy
+    dns:
+      - 172.31.0.2
+    networks:
+      orgflow:
+        ipv4_address: 172.31.0.26
+    healthcheck:
+      # 用 node 自检而不是 wget/curl：这个镜像里不一定有那两个，
+      # 但 node 一定在（它就是运行时）。用 exec 形式避免 shell 引号嵌套。
+      test: ["CMD", "node", "-e", "require('http').get({host:'127.0.0.1',port:3000,path:'/'},r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
 
 networks:
   orgflow:

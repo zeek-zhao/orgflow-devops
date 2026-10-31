@@ -1,0 +1,34 @@
+# 服务卡片。每张写清三件事：入口域名、固定 IP、这个服务是干什么的。
+# 排查时先看这张板子确认「服务在哪」，再按 docs/network/arch.md 的决策树往下走。
+#
+# 图标统一用 mdi-*：homepage 自带 Material Design Icons，不依赖外网 CDN。
+# 换成 jenkins.png 这类 dashboard-icons 名字的话，断网时整张卡片会变成裂图。
+#
+# 这里不放任何需要 token 的 widget：首页是公开可访问的（Caddy 侧不加 auth），
+# 往里塞凭据等于把凭据摆在门口。
+
+- 服务入口:
+    - Jenkins:
+        href: https://jenkins.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}
+        description: CI 流水线 · 172.31.0.20 · 需登录
+        icon: mdi-cog
+
+    - Nexus:
+        href: https://nexus.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}
+        description: 制品仓库 · 172.31.0.21
+        icon: mdi-package-variant
+
+    - LDAP Admin:
+        href: https://ldapadmin.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}
+        description: 用户与部门管理 · 172.31.0.22
+        icon: mdi-account-group
+
+    - Dex:
+        href: https://dex.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}/dex/
+        description: OIDC 身份提供方 · 172.31.0.24
+        icon: mdi-shield-key
+
+    - Homepage:
+        href: https://home.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}
+        description: 就是这一页 · 172.31.0.26
+        icon: mdi-home
