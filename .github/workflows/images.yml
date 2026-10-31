@@ -9,6 +9,7 @@ on:
       - services/dnsmasq/**
       - tools/jjb/**
       - tools/jenkins/**
+      - tools/jenkins-agent/**
       - .github/workflows/images.yml
   pull_request:
     paths:
@@ -17,6 +18,7 @@ on:
       - services/dnsmasq/**
       - tools/jjb/**
       - tools/jenkins/**
+      - tools/jenkins-agent/**
       - .github/workflows/images.yml
   workflow_dispatch:
 
@@ -39,6 +41,9 @@ jobs:
           # 而 213 拉不到 Docker Hub，只能在 runner 上构建后推 GHCR（#44）。
           - image: jenkins
             context: tools/jenkins
+          # agent 同理：底座在 Docker Hub，213 拉不到，只能 runner 上构建后推 GHCR。
+          - image: jenkins-agent
+            context: tools/jenkins-agent
           - image: m0-test
             context: tests/harness
           - image: dnsmasq
