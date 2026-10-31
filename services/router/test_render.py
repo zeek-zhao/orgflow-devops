@@ -305,10 +305,15 @@ class RouterTests(unittest.TestCase):
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.headers.get_content_type(), "application/json")
                 self.assertEqual(json.load(response), {"ok": True, "routes": 5})
-            self.routes.write_text('routes:\n  - subdomain: one\n    upstream: one:80\n')
+            # 换成一份只有两个站点的配置：auth 路由必须留着，否则渲染会直接报错
+            self.routes.write_text(
+                'routes:\n'
+                '  - subdomain: one\n    upstream: one:80\n'
+                '  - name: auth\n    subdomain: auth\n    upstream: oauth2-proxy:4180\n'
+            )
             self.wait_for(lambda: "one:80" in self.out.read_text())
             with urllib.request.urlopen(url, timeout=2) as response:
-                self.assertEqual(json.load(response), {"ok": True, "routes": 1})
+                self.assertEqual(json.load(response), {"ok": True, "routes": 2})
             with self.assertRaises(urllib.error.HTTPError) as error:
                 urllib.request.urlopen(f"http://127.0.0.1:{port}/other", timeout=2)
             self.assertEqual(error.exception.code, 404)
