@@ -241,6 +241,16 @@ elif "--version" in args or "version" in args:
         for call in ups:
             self.assertIn("--build", call, f"默认路径应 --build: {call}")
 
+    def test_service_shortcut_uses_no_build_under_ghcr(self):
+        """`--service` 默认不强制构建（沿用 compose 的缺镜像才建），
+        但 GHCR 下必须 --no-build，否则和批量路径一样撞 digest 引用。"""
+        (self.root / ".env").write_text("GATEWAY_HTTPS_PORT=443\n")
+        result = self.deploy("--service", "router", USE_GHCR="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        ups = [call for call in self.calls() if call[0] == "docker" and "up" in call]
+        self.assertEqual(len(ups), 1, f"应只 up 一次: {ups}")
+        self.assertIn("--no-build", ups[0], f"GHCR 下 --service 缺 --no-build: {ups[0]}")
+
     def test_gateway_domain_override_flows_into_caddyfile_and_dex(self):
         (self.root / ".env").write_text("GATEWAY_DOMAIN=example.test\n")
         result = self.deploy()
