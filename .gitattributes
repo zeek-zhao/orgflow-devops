@@ -1,0 +1,26 @@
+# 统一换行符：仓库内一律 LF。
+#
+# 为什么必须显式声明：Windows 开发机默认 core.autocrlf=true，
+# 检出时会把 shell 脚本 / 钩子 / 容器内配置写成 CRLF，在 Linux 侧
+# 表现为 "bad interpreter: /usr/bin/env bash^M"，而且症状和权限问题很像，
+# 排查成本很高。这个仓库的脚本要在 Docker 容器和 Linux agent 里跑，
+# 所以强制 LF，Windows 侧也不例外。
+
+* text=auto eol=lf
+
+*.sh          text eol=lf
+*.bats        text eol=lf
+*.bash        text eol=lf
+.githooks/*   text eol=lf
+Dockerfile    text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+*.py          text eol=lf
+*.md          text eol=lf
+
+# 二进制不要做任何转换
+*.png  binary
+*.jpg  binary
+*.tgz  binary
+*.gz   binary
+*.zip  binary
