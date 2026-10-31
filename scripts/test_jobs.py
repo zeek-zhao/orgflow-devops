@@ -138,6 +138,26 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
         self.assertEqual(self.run_script("gen-jjb-conf").returncode, 0)
         self.assertFalse((self.root / "injected").exists())
 
+    def test_conf_url_defaults_to_internal_jenkins(self):
+        """#30：JJB 走 compose 内网直连。没有 JJB_JENKINS_URL 的旧 .env
+        （甚至带着对外地址 JENKINS_URL）也必须生成内网地址，不再要求宿主解析域名。"""
+        result = self.run_script("gen-jjb-conf")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        parser = configparser.ConfigParser()
+        parser.read(self.root / ".jjb/jenkins_jobs.ini")
+        self.assertEqual(parser["jenkins"]["url"], "http://jenkins:8080/")
+        self.assertNotIn("org-devops.com", parser["jenkins"]["url"])
+        # 显式声明优先于默认值
+        self.dotenv.write_text(
+            "JJB_JENKINS_URL=http://jjb-direct:8080/\n"
+            "JENKINS_URL=https://jenkins.org-devops.com/\n"
+            "JENKINS_ADMIN_ID=admin\nJENKINS_ADMIN_PASSWORD=secret\n"
+        )
+        self.assertEqual(self.run_script("gen-jjb-conf").returncode, 0)
+        parser = configparser.ConfigParser()
+        parser.read(self.root / ".jjb/jenkins_jobs.ini")
+        self.assertEqual(parser["jenkins"]["url"], "http://jjb-direct:8080/")
+
     def test_conf_missing_or_empty_variables_does_not_replace_previous(self):
         self.assertEqual(self.run_script("gen-jjb-conf").returncode, 0)
         path = self.root / ".jjb/jenkins_jobs.ini"

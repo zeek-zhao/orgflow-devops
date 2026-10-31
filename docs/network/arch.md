@@ -68,7 +68,8 @@ flowchart LR
 | `172.31.0.25` | oauth2-proxy | 4180 | `auth.<domain>` | — |
 | `172.31.0.26` | homepage | 3000 | `home.<domain>` | 否 |
 
-`172.31.0.1` 是 docker 网关，不要占。`jjb` 用 host 网络，没有固定 IP。
+`172.31.0.1` 是 docker 网关，不要占。`jjb` 从动态段（`172.31.0.200/29`）取地址，
+无固定 IP——它只在 `make jobs` 时 `compose run` 一次性起，走内网直连 `jenkins:8080`（#30）。
 
 `<domain>` 默认 `org-devops.com`，由 `GATEWAY_DOMAIN` 决定。
 

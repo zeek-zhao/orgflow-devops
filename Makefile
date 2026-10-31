@@ -10,7 +10,7 @@ endif
 
 help:
 	@echo "make render   渲染 routes.yaml -> out/Caddyfile"
-	@echo "make deploy   起 M0 底座（Jenkins/权限/路由/Caddy/Nexus）"
+	@echo "make deploy   起 M0 底座（Jenkins/权限/路由/Caddy/Nexus）；SERVICE=xxx 单服务"
 	@echo "make doctor   只读环境自检（Docker/端口/配置/磁盘/镜像，不启动容器）"
 	@echo "make hosts    IP=192.168.0.50 生成 /etc/hosts 片段（域名路由必需）"
 	@echo "make ca       导出并安装 Caddy 内部 CA 根证书"
@@ -47,7 +47,7 @@ ca:
 	@bash scripts/ca-install.sh
 
 deploy: render
-	@ENV_FILE="$(ENV_FILE)" COMPOSE="$(COMPOSE)" USE_GHCR="$(USE_GHCR)" bash scripts/deploy.sh
+	@ENV_FILE="$(ENV_FILE)" COMPOSE="$(COMPOSE)" USE_GHCR="$(USE_GHCR)" bash scripts/deploy.sh $(if $(SERVICE),--service $(SERVICE),)
 
 doctor:
 	@ENV_FILE="$(ENV_FILE)" COMPOSE="$(COMPOSE)" python3 scripts/doctor.py
@@ -58,11 +58,13 @@ up:
 down:
 	$(COMPOSE) --env-file $(ENV_FILE) down
 
-# 网关是内部 CA 自签，JJB 容器通过 REQUESTS_CA_BUNDLE=/repo/out/ca/root.crt 校验
+# 网关是内部 CA 自签：导出根证书分发给需要直连网关的客户端（浏览器/局域网机器）。
+# jjb 已不走网关（#30），此目标不再是 jobs 的前置。
 out/ca/root.crt:
 	@bash scripts/ca-install.sh --export
 
-jobs: out/ca/root.crt
+# jjb 走 compose 内网 http://jenkins:8080（#30）：不经网关，无需先装 CA
+jobs:
 	@bash scripts/gen-jjb-conf.sh "$(ENV_FILE)"
 	$(COMPOSE) --env-file "$(ENV_FILE)" run --rm jjb jenkins-jobs --conf /repo/.jjb/jenkins_jobs.ini update config/job_definitions/
 
