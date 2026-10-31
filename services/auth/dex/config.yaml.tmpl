@@ -1,4 +1,14 @@
-issuer: http://localhost:8080/dex
+# Dex 配置模板 —— 由 scripts/render-dex.sh 渲染成 out/dex/config.yaml
+#
+# 为什么用模板而不是环境变量：issuer 与 redirectURIs 必须是浏览器实际访问的
+# 绝对 URL，而 dex 是 scratch 镜像（没有 shell，做不了启动期渲染）。
+# 在部署侧渲染，域名一变重新生成即可，行为可预测、可测试。
+#
+# 占位符：
+#   __DEX_ISSUER__           https://dex.<domain>/dex
+#   __OAUTH2_REDIRECT_URI__  https://auth.<domain>/oauth2/callback
+
+issuer: __DEX_ISSUER__
 storage:
   type: memory
 web:
@@ -7,7 +17,7 @@ staticClients:
   - id: jenkins
     secretEnv: OAUTH2_CLIENT_SECRET
     redirectURIs:
-      - http://localhost:8080/auth/oauth2/callback
+      - __OAUTH2_REDIRECT_URI__
     name: OrgFlow
 connectors:
   - type: ldap

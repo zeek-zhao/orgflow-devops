@@ -1,7 +1,41 @@
 name: orgflow-devops
 
-# M0 最小核心：Jenkins + 权限管理服务 + 路由注册服务 + Caddy + Nexus
+# M0 最小核心：Jenkins + 权限管理服务 + 路由注册服务 + Caddy + Nexus + 内部 DNS
+#
+# 网络模型（ADR-13）：固定 IP + 域名路由
+#   172.31.0.2   dnsmasq      *.org-devops.com → 172.31.0.10
+#   172.31.0.10  caddy        :80 跳转 / :443 站点
+#   172.31.0.11  router
+#   172.31.0.20  jenkins
+#   172.31.0.21  nexus
+#   172.31.0.22  ldap
+#   172.31.0.23  ldapadmin
+#   172.31.0.24  dex
+#   172.31.0.25  oauth2-proxy
+# 固定 IP 的意义：排查时能直接用 IP 定位到容器，不必反查随机地址。
+
 services:
+  dnsmasq:
+    build:
+      context: ./services/dnsmasq
+      tags: ["orgflow/dnsmasq:24.04-v1"]
+    container_name: of-dnsmasq
+    restart: unless-stopped
+    environment:
+      - GATEWAY_DOMAIN=${GATEWAY_DOMAIN:-org-devops.com}
+      - GATEWAY_IP=${GATEWAY_IP:-172.31.0.10}
+      # dnsmasq 只绑这个地址：0.0.0.0:53 会与 Docker 内嵌 DNS 的 127.0.0.11:53 冲突
+      - DNSMASQ_LISTEN_IP=${DNSMASQ_LISTEN_IP:-172.31.0.2}
+    networks:
+      orgflow:
+        ipv4_address: 172.31.0.2
+    healthcheck:
+      test: ["CMD-SHELL", "dig +short +time=2 +tries=1 jenkins.$$GATEWAY_DOMAIN @$$DNSMASQ_LISTEN_IP | grep -q ."]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   jenkins:
     image: jenkins/jenkins:lts-jdk17@sha256:cce1eeb79902722f3cf7a8831c41e95c39f4a42b9a2981959630cc66539b3c2d # lock: jenkins
     container_name: of-jenkins
@@ -9,7 +43,7 @@ services:
     environment:
       - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
       - CASC_JENKINS_CONFIG=/var/jenkins_home/casc/jenkins.yaml
-      - JENKINS_URL=${JENKINS_URL:-http://localhost:8080/jenkins}
+      - JENKINS_URL=${JENKINS_URL:-https://jenkins.${GATEWAY_DOMAIN:-org-devops.com}/}
       - JENKINS_ADMIN_ID=${JENKINS_ADMIN_ID:-admin}
       - JENKINS_ADMIN_PASSWORD=${JENKINS_ADMIN_PASSWORD}
       - GITHUB_USER=${GITHUB_USER:-zeek-zhao}
@@ -22,6 +56,15 @@ services:
       - ./config/jenkins.yaml:/var/jenkins_home/casc/jenkins.yaml:ro
     expose:
       - "8080"
+    # 所有容器的 resolver 都是 dnsmasq，等它就绪再起，避免启动期 DNS 抖动
+    depends_on:
+      dnsmasq:
+        condition: service_healthy
+    dns:
+      - 172.31.0.2
+    networks:
+      orgflow:
+        ipv4_address: 172.31.0.20
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8080/login >/dev/null"]
       interval: 10s
@@ -39,6 +82,11 @@ services:
       - .:/repo
     environment:
       - JJB_CONF=/repo/.jjb/jenkins_jobs.ini
+      # 网关用内部 CA 自签：让 jenkins-jobs 用导出的根证书校验
+      # （make ca 会生成 out/ca/root.crt；. 已挂到 /repo）
+      - REQUESTS_CA_BUNDLE=/repo/out/ca/root.crt
+    # host 网络：JJB 要访问宿主上的网关入口（https://jenkins.<domain>/），
+    # 需要宿主机 /etc/hosts 有对应记录（make hosts）
     network_mode: host
 
   caddy:
@@ -46,12 +94,21 @@ services:
     container_name: of-caddy
     restart: unless-stopped
     ports:
-      - "${GATEWAY_PORT:-8080}:8080"
+      - "${GATEWAY_HTTP_PORT:-80}:80"
+      - "${GATEWAY_HTTPS_PORT:-443}:443"
     volumes:
       - ./out:/etc/caddy:ro
       - caddy_data:/data
     depends_on:
-      - router
+      router:
+        condition: service_healthy
+      dnsmasq:
+        condition: service_healthy
+    dns:
+      - 172.31.0.2
+    networks:
+      orgflow:
+        ipv4_address: 172.31.0.10
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:2019/config/"]
       interval: 10s
@@ -68,11 +125,21 @@ services:
     environment:
       - CADDY_ADMIN_URL=${CADDY_ADMIN_URL:-http://caddy:2019}
       - ROUTES_FILE=/app/config/routes.yaml
+      - GATEWAY_DOMAIN=${GATEWAY_DOMAIN:-org-devops.com}
+      - AUTH_SUBDOMAIN=${AUTH_SUBDOMAIN:-auth}
     volumes:
       - ./config:/app/config:ro
       - ./out:/app/out
     expose:
       - "8090"
+    depends_on:
+      dnsmasq:
+        condition: service_healthy
+    dns:
+      - 172.31.0.2
+    networks:
+      orgflow:
+        ipv4_address: 172.31.0.11
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/healthz', timeout=4)"]
       interval: 10s
@@ -94,6 +161,14 @@ services:
       - ./services/auth:/opt/orgflow-auth:ro
     expose:
       - "389"
+    depends_on:
+      dnsmasq:
+        condition: service_healthy
+    dns:
+      - 172.31.0.2
+    networks:
+      orgflow:
+        ipv4_address: 172.31.0.22
     healthcheck:
       test:
         - CMD-SHELL
@@ -116,6 +191,14 @@ services:
       - PHPLDAPADMIN_HTTPS=false
     expose:
       - "80"
+    depends_on:
+      dnsmasq:
+        condition: service_healthy
+    dns:
+      - 172.31.0.2
+    networks:
+      orgflow:
+        ipv4_address: 172.31.0.23
     healthcheck:
       test: ["CMD", "php", "-r", "exit(file_get_contents('http://localhost/') === false ? 1 : 0);"]
       interval: 10s
@@ -132,11 +215,20 @@ services:
       - LDAP_ADMIN_PASSWORD=${LDAP_ADMIN_PASSWORD:-change-me}
       - OAUTH2_CLIENT_SECRET=${OAUTH2_CLIENT_SECRET:-change-me}
     volumes:
-      - ./services/auth/dex/config.yaml:/etc/dex/config.yaml:ro
+      # 由 scripts/render-dex.sh 从模板生成，域名变化时重新渲染
+      - ./out/dex:/etc/dex:ro
     expose:
       - "5556"
     depends_on:
-      - ldap
+      ldap:
+        condition: service_healthy
+      dnsmasq:
+        condition: service_healthy
+    dns:
+      - 172.31.0.2
+    networks:
+      orgflow:
+        ipv4_address: 172.31.0.24
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:5556/dex/healthz"]
       interval: 10s
@@ -148,32 +240,43 @@ services:
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0@sha256:dcb6ff8dd21bf3058f6a22c6fa385fa5b897a9cd3914c88a2cc2bb0a85f8065d # lock: oauth2proxy
     container_name: of-oauth2
     restart: unless-stopped
+    # 认证域名与业务域名分离：浏览器侧走 https://auth.<domain>，
+    # 服务端到服务端（redeem / jwks）走容器网络，避免绕公网。
     command:
       - --http-address=0.0.0.0:4180
       - --provider=oidc
       - --client-id=${OAUTH2_CLIENT_ID:-jenkins}
       - --client-secret=${OAUTH2_CLIENT_SECRET:-change-me}
       - --cookie-secret=${OAUTH2_COOKIE_SECRET:-0123456789abcdef0123456789abcdef}
-      - --oidc-issuer-url=http://localhost:8080/dex
+      - --oidc-issuer-url=https://dex.${GATEWAY_DOMAIN:-org-devops.com}/dex
       - --skip-oidc-discovery=true
-      - --login-url=http://localhost:8080/dex/auth
+      - --login-url=https://dex.${GATEWAY_DOMAIN:-org-devops.com}/dex/auth
       - --redeem-url=http://dex:5556/dex/token
       - --oidc-jwks-url=http://dex:5556/dex/keys
       - --insecure-oidc-skip-issuer-verification=true
       - --upstream=static://202
       - --reverse-proxy=true
       - --set-xauthrequest=true
-      - --cookie-secure=false
+      - --cookie-secure=true
+      - --cookie-domain=.${GATEWAY_DOMAIN:-org-devops.com}
       - --cookie-refresh=1h
-      - --whitelist-domain=localhost:8080
-      - --redirect-url=http://localhost:8080/auth/oauth2/callback
+      - --whitelist-domain=.${GATEWAY_DOMAIN:-org-devops.com}
+      - --redirect-url=https://auth.${GATEWAY_DOMAIN:-org-devops.com}/oauth2/callback
       - --ping-path=/ping
       - --email-domain=*
       - --skip-provider-button=true
     expose:
       - "4180"
     depends_on:
-      - dex
+      dex:
+        condition: service_healthy
+      dnsmasq:
+        condition: service_healthy
+    dns:
+      - 172.31.0.2
+    networks:
+      orgflow:
+        ipv4_address: 172.31.0.25
     healthcheck:
       test: ["CMD", "/bin/oauth2-proxy", "--version"]
       interval: 10s
@@ -189,12 +292,29 @@ services:
       - nexus_data:/nexus-data
     expose:
       - "8081"
+    depends_on:
+      dnsmasq:
+        condition: service_healthy
+    dns:
+      - 172.31.0.2
+    networks:
+      orgflow:
+        ipv4_address: 172.31.0.21
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8081/service/rest/v1/status"]
       interval: 10s
       timeout: 5s
       retries: 30
       start_period: 120s
+
+networks:
+  orgflow:
+    name: orgflow
+    ipam:
+      driver: default
+      config:
+        # 避开 devops 仓库环境用的 172.30.0.0/24
+        - subnet: 172.31.0.0/24
 
 volumes:
   jenkins_home:

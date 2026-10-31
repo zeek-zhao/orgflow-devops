@@ -6,12 +6,14 @@ ifeq ($(USE_GHCR),1)
 COMPOSE += -f docker-compose.yml -f docker-compose.ghcr.yml
 endif
 
-.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock images-pin hooks identity-check clean
+.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock images-pin hooks identity-check hosts ca clean
 
 help:
 	@echo "make render   渲染 routes.yaml -> out/Caddyfile"
 	@echo "make deploy   起 M0 底座（Jenkins/权限/路由/Caddy/Nexus）"
 	@echo "make doctor   只读环境自检（Docker/端口/配置/磁盘/镜像，不启动容器）"
+	@echo "make hosts    IP=192.168.0.50 生成 /etc/hosts 片段（域名路由必需）"
+	@echo "make ca       导出并安装 Caddy 内部 CA 根证书"
 	@echo "make jobs     推送参数化 deploy/backup/restore Job 到 Jenkins"
 	@echo "make jobs-test 本地渲染校验三个 Job（不连接 Jenkins，无需 .env）"
 	@echo "make backup   触发一次全量备份（本地脚本）"
@@ -20,7 +22,7 @@ help:
 	@echo "make lint     静态检查（shellcheck/yamllint）"
 	@echo "make test     跑 Python 侧测试（路由/导入/Job 定义）"
 	@echo "make test-groovy 跑共享库行为测试（需要 groovy，缺失则跳过）"
-	@echo "make test-bats DinD 容器内跑 9 个服务/策略用例（KEEP=1 保现场）"
+	@echo "make test-bats DinD 容器内跑 11 个服务/策略用例（KEEP=1 保现场）"
 	@echo "make images-lock 从本地镜像 digest 更新 tests/images.lock"
 	@echo "make images-pin 从 GHCR 回写自建镜像 digest（先跑 images.yml）"
 	@echo "USE_GHCR=1 make up / test-bats 使用 GHCR 锁定镜像"
@@ -28,10 +30,22 @@ help:
 	@echo "make identity-check 校验仓库提交身份是否唯一（见 docs/提交规范.md）"
 	@echo "make down     停止并移除容器"
 
+# 域名取自 $(ENV_FILE)（缺省回落 routes.yaml 的值）；render-dex.sh 自己会读 .env
 render:
 	@mkdir -p out
-	@python3 services/router/render.py --routes config/routes.yaml --out out/Caddyfile
-	@echo "rendered out/Caddyfile"
+	@GATEWAY_DOMAIN="$$(sed -n 's/^GATEWAY_DOMAIN=//p' $(ENV_FILE) 2>/dev/null | tail -1 | tr -d '\042\047')" \
+	 AUTH_SUBDOMAIN="$$(sed -n 's/^AUTH_SUBDOMAIN=//p' $(ENV_FILE) 2>/dev/null | tail -1 | tr -d '\042\047')" \
+	 python3 services/router/render.py --routes config/routes.yaml --out out/Caddyfile
+	@ENV_FILE=$(ENV_FILE) bash scripts/render-dex.sh
+	@echo "rendered out/Caddyfile + out/dex/config.yaml"
+
+# 域名解析片段（宿主机 / 局域网机器用）；IP= 可指定，默认自动探测
+hosts:
+	@bash scripts/gen-hosts.sh $(IP)
+
+# 导出并安装 Caddy 内部 CA 根证书
+ca:
+	@bash scripts/ca-install.sh
 
 deploy: render
 	@ENV_FILE="$(ENV_FILE)" COMPOSE="$(COMPOSE)" bash scripts/deploy.sh
@@ -45,7 +59,11 @@ up:
 down:
 	$(COMPOSE) --env-file $(ENV_FILE) down
 
-jobs:
+# 网关是内部 CA 自签，JJB 容器通过 REQUESTS_CA_BUNDLE=/repo/out/ca/root.crt 校验
+out/ca/root.crt:
+	@bash scripts/ca-install.sh --export
+
+jobs: out/ca/root.crt
 	@bash scripts/gen-jjb-conf.sh "$(ENV_FILE)"
 	$(COMPOSE) --env-file "$(ENV_FILE)" run --rm jjb jenkins-jobs --conf /repo/.jjb/jenkins_jobs.ini update config/job_definitions/
 
