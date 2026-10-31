@@ -1,5 +1,9 @@
 name: Images
 
+# 只构建「改动真正落进去」的镜像（#53）。以前 matrix 是全量的：改一个
+# tools/jenkins-agent/Dockerfile 也会把 jenkins / jjb / router / dnsmasq / m0-test
+# 白建一遍，2026-10-31 一天在本仓库烧掉 631 分钟免费额度，大半是这么来的。
+
 on:
   push:
     branches: [main]
@@ -11,6 +15,7 @@ on:
       - tools/jenkins/**
       - tools/jenkins-agent/**
       - .github/workflows/images.yml
+      - .github/scripts/**
   pull_request:
     paths:
       - tests/harness/**
@@ -20,34 +25,91 @@ on:
       - tools/jenkins/**
       - tools/jenkins-agent/**
       - .github/workflows/images.yml
+      - .github/scripts/**
   workflow_dispatch:
 
 permissions:
   contents: read
   packages: write
 
+# 同一分支连推时取消上一次（PR 上取消是安全的：结论已经过期）。
+# main 上不取消，避免打断正在推 GHCR 的构建。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  select:
+    name: 算出要构建的镜像
+    runs-on: ubuntu-24.04
+    outputs:
+      any: ${{ steps.pick.outputs.any }}
+      matrix: ${{ steps.pick.outputs.matrix }}
+      images: ${{ steps.pick.outputs.images }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 要 diff 出改动范围，浅克隆不够
+          fetch-depth: 0
+      - id: pick
+        name: 裁剪 matrix
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          zero=0000000000000000000000000000000000000000
+          # 判断不了影响范围就全量：多建一轮是浪费，漏建一轮是事故。
+          fallback_full() {
+            # ::warning:: 是工作流命令，必须走 stdout 才会被 runner 解析成注解
+            echo "::warning::$1；退化为全量构建"
+            bash .github/scripts/select-images.sh --all
+          }
+          case "$EVENT_NAME" in
+            workflow_dispatch)
+              bash .github/scripts/select-images.sh --all
+              ;;
+            pull_request)
+              if list="$(git diff --name-only --no-renames "${BASE_SHA:-}...${HEAD_SHA:-}")"; then
+                printf '%s\n' "$list" | bash .github/scripts/select-images.sh
+              else
+                fallback_full "算不出 PR 的改动范围"
+              fi
+              ;;
+            *)
+              if [[ -z "${BEFORE_SHA:-}" || "$BEFORE_SHA" == "$zero" ]] \
+                 || ! git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+                fallback_full "新分支或拿不到推送前的提交"
+              elif list="$(git diff --name-only --no-renames "$BEFORE_SHA" "${HEAD_SHA:-}")"; then
+                printf '%s\n' "$list" | bash .github/scripts/select-images.sh
+              else
+                fallback_full "算不出本次推送的改动范围"
+              fi
+              ;;
+          esac
+      - name: 记录裁剪结果
+        if: always()
+        env:
+          ANY: ${{ steps.pick.outputs.any }}
+          IMAGES: ${{ steps.pick.outputs.images }}
+        run: |
+          if [[ "$ANY" == "true" ]]; then
+            echo "本次构建：\`${IMAGES}\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "本次不构建任何镜像（改动没有落在任何镜像上下文里）" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   build:
+    needs: select
+    # 空 matrix 会让 GitHub 报 "Matrix vector 'include' does not contain any values"，
+    # 所以没有任何镜像要建时必须用 if 跳过整个 job，不能给空 include。
+    if: needs.select.outputs.any == 'true'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - image: router
-            context: services/router
-          - image: jjb
-            context: tools/jjb
-          # Jenkins 从「mirror 上游」改成「自建」：上游镜像不带插件，
-          # 而 213 拉不到 Docker Hub，只能在 runner 上构建后推 GHCR（#44）。
-          - image: jenkins
-            context: tools/jenkins
-          # agent 同理：底座在 Docker Hub，213 拉不到，只能 runner 上构建后推 GHCR。
-          - image: jenkins-agent
-            context: tools/jenkins-agent
-          - image: m0-test
-            context: tests/harness
-          - image: dnsmasq
-            context: services/dnsmasq
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -88,7 +150,10 @@ jobs:
           if-no-files-found: error
 
   digests:
-    needs: build
+    needs: [select, build]
+    # 只建了一部分镜像时，这里只汇总建过的那几个；未改动的镜像 digest 不会变，
+    # scripts/pin-images.sh 照旧从 registry 回写，不依赖这份汇总的完整性。
+    if: needs.select.outputs.any == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4

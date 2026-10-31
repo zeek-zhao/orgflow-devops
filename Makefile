@@ -89,7 +89,7 @@ restore backup-verify: export SERVICE := $(SERVICE)
 restore backup-verify: export BACKUP_FILE := $(BACKUP_FILE)
 
 lint:
-	@command -v shellcheck >/dev/null && shellcheck scripts/*.sh || echo "shellcheck 未安装，跳过"
+	@command -v shellcheck >/dev/null && shellcheck scripts/*.sh .github/scripts/*.sh || echo "shellcheck 未安装，跳过"
 	@command -v yamllint >/dev/null && yamllint config services docker-compose.yml || echo "yamllint 未安装，跳过"
 
 test:
