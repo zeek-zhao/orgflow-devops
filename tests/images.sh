@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# 镜像准备与 digest 回写。
+#
+# GHCR 上的 12 个包全部 public：USE_GHCR=1 的拉取走匿名，不需要 docker login，
+# 也不需要任何 PAT（凭据只用在推送侧的工作流里）。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

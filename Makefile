@@ -25,7 +25,7 @@ help:
 	@echo "make test-bats DinD 容器内跑 11 个服务/策略用例（KEEP=1 保现场）"
 	@echo "make images-lock 从本地镜像 digest 更新 tests/images.lock"
 	@echo "make images-pin 从 GHCR 回写自建镜像 digest（先跑 images.yml）"
-	@echo "USE_GHCR=1 make up / test-bats 使用 GHCR 锁定镜像"
+	@echo "USE_GHCR=1 make up / test-bats 使用 GHCR 锁定镜像（包全 public，无需 docker login）"
 	@echo "make hooks    安装 git 钩子（提交身份校验 + 主干保护），新克隆必做"
 	@echo "make identity-check 校验仓库提交身份是否唯一（见 docs/提交规范.md）"
 	@echo "make down     停止并移除容器"
