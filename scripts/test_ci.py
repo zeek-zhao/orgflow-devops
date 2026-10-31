@@ -121,7 +121,8 @@ if args[0] == "inspect":
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(path.read_bytes(), first)
         self.assertEqual((self.root / "tests/images.lock").read_bytes(), lock)
-        self.assertEqual(len([call for call in self.calls() if "inspect" in call]), 7)
+        # 四个自建镜像（router/jjb/m0-test/dnsmasq）各查一次 digest，脚本跑两遍 → 8
+        self.assertEqual(len([call for call in self.calls() if "inspect" in call]), 8)
         self.assertTrue(all(call[-1].endswith(":latest") for call in self.calls() if "inspect" in call))
 
     def test_explicit_sha_tag_supports_premerge_acceptance(self):
