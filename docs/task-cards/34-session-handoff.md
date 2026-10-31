@@ -105,6 +105,11 @@ curl -s -g -H "Authorization: Bearer $(cat ~/.config/wb/github.token)" \
 
 ## 交付后的记录
 
-- PR：#
-- 结果：
-- 与本卡的偏离：
+- PR：#35
+- 结果：新增 `docs/会话交接.md`（十节）；顺带修 `docs/提交规范.md` 重复章节号、补 `docs/派单流程.md` 卡片索引
+- 与本卡的偏离：卡里只写了「新增交接文档」，实际多改了两个索引文件（提交规范编号重复、卡片索引漏 19）。属于同类文档缺陷，一并修了，已在 PR 正文披露。
+- 交付时剔除的三条跨仓库污染（写卡时没预料到）：
+  - `DOCKER_UID`/`DOCKER_GID` 是 `orgflow` Jenkins 仓库的约定，本仓全仓 0 命中
+  - 主干保护绕过变量是 `WF4_ALLOW_PUSH_MAIN`，不是 `ORGFLOW_ALLOW_PUSH_MAIN`
+  - gerrit-trigger 判活与本仓无关
+- 纠正的一处误判：bats **在 CI 里是跑的**（`test.yml` 的 DinD 步骤），不是只在本地跑
