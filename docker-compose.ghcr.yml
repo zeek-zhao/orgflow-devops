@@ -12,9 +12,9 @@ services:
   # 自建镜像（#44 / #45）：digest 由 `make images-pin` 从 GHCR 回写，不是上游 digest。
   # 上游 jenkins/jenkins 不带插件、也不带 docker CLI，所以这两个都不能再用 mirror-*。
   jenkins:
-    image: ghcr.io/zeek-zhao/orgflow-devops/jenkins:24.04-v1@sha256:f1feaff2de19dd0ef7e019344060d4570fc185c82bd7ce23430932afdb6bd999
+    image: ghcr.io/zeek-zhao/orgflow-devops/jenkins:24.04-v1@sha256:20faa3980c3088b920de7f96d0d8afd375022abdfc6c81f134e83f8f9064af8e
   jenkins-agent:
-    image: ghcr.io/zeek-zhao/orgflow-devops/jenkins-agent:24.04-v1@sha256:87050e77b105d29d5ea5928d347e29339a177a16c0b917fc82e638fcee34a29d
+    image: ghcr.io/zeek-zhao/orgflow-devops/jenkins-agent:24.04-v1@sha256:344c379578f4cbcb38e65323d8004ba526f1917a6d7895731cd44202585c12d3
   ldap:
     image: ghcr.io/zeek-zhao/orgflow-devops/mirror-openldap:1.5.0@sha256:18742e9c449c9c1afe129d3f2f3ee15fb34cc43e5f940a20f3399728f41d7c28
   ldapadmin:
@@ -29,10 +29,10 @@ services:
   homepage:
     image: ghcr.io/zeek-zhao/orgflow-devops/mirror-homepage:v2.7.0@sha256:19c5c09184458a41b7b5915e71463a39f36cd33540f41bdbed008791b8182d5f
   router:
-    image: ghcr.io/zeek-zhao/orgflow-devops/router:24.04-v1@sha256:87de27dcf548a9a8d1d632c177d058d1af5d1991c8341d7a74da29c9ea7b73a8
+    image: ghcr.io/zeek-zhao/orgflow-devops/router:24.04-v1@sha256:e4e02225295ebfdcfc5c1918388f82d6bd8a499f7d43ab0323f088bc84d287eb
   jjb:
-    image: ghcr.io/zeek-zhao/orgflow-devops/jjb:24.04-v1@sha256:ec7e61e4a1feb6d70f8170e5c55ff6d5d5bf55cf1ef5ebcb2eaec5c88af10ffb
+    image: ghcr.io/zeek-zhao/orgflow-devops/jjb:24.04-v1@sha256:a33487cc01286687b59e1faee2620172aa2123403f4c949cd61aeac1ca802605
   dnsmasq:
-    image: ghcr.io/zeek-zhao/orgflow-devops/dnsmasq:24.04-v1@sha256:9b77b4abc1e03c80580da0b66edbe3ea97462f438a430e5c573877dde5c05e7e
+    image: ghcr.io/zeek-zhao/orgflow-devops/dnsmasq:24.04-v1@sha256:a0c4370f8ad7dfa67d3aa985bd936b8a3bc5b404e01c39897f50959915fc95a3
 
-x-m0-test-image: ghcr.io/zeek-zhao/orgflow-devops/m0-test:24.04-v1@sha256:a5e0e46073abe3595597756dbe81dc6ad90d31cd87116e7f3431a013e6414ea3
+x-m0-test-image: ghcr.io/zeek-zhao/orgflow-devops/m0-test:24.04-v1@sha256:68851f87bccad897a50f51599b6c48673f6f6ce966cb8b286349c582645ec034
