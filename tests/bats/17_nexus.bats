@@ -21,7 +21,8 @@ setup() {
     assert_container_ip of-nexus 172.31.0.21
     # 网络别名 nexus 是 Caddy 上游的解析目标。docker run 不像 compose 那样
     # 自动把服务名变成别名，漏了就是整站 502，而且报错只说 upstream 不可达。
-    assert_resolves_in_container caddy nexus 172.31.0.21
+    # 这里从 caddy 容器里查（compose 服务，有 getent/nslookup），查的就是真实链路。
+    assert_resolves_in caddy nexus 172.31.0.21
 }
 
 @test "nexus: 由 nexus-deploy 创建，且不在 compose 服务列表里" {

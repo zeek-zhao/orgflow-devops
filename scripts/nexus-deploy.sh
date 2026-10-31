@@ -67,6 +67,8 @@ else
     log "创建容器 $CONTAINER"
     # --network-alias nexus：compose 里服务名会自动成为网络别名，docker run 不会。
     # Caddy 的上游写的是 `nexus:8081`，少了这个别名网关直接 502。
+    # --dns 172.31.0.2：与其余 compose 服务一致，走 dnsmasq。
+    # 不写的话会退回 Docker 内嵌 DNS，解析不了 `*.org-devops.com` 这类网关域名。
     docker run -d \
         --name "$CONTAINER" \
         --restart unless-stopped \
@@ -74,6 +76,7 @@ else
         --network-alias nexus \
         --ip "$IP" \
         --label orgflow.managed-by=nexus-deploy \
+        --dns 172.31.0.2 \
         -v "$VOLUME:/nexus-data" \
         --health-cmd "curl -fsS http://localhost:8081/service/rest/v1/status || exit 1" \
         --health-interval 10s \
