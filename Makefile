@@ -6,7 +6,7 @@ ifeq ($(USE_GHCR),1)
 COMPOSE += -f docker-compose.yml -f docker-compose.ghcr.yml
 endif
 
-.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock images-pin clean
+.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock images-pin hooks identity-check clean
 
 help:
 	@echo "make render   渲染 routes.yaml -> out/Caddyfile"
@@ -24,6 +24,8 @@ help:
 	@echo "make images-lock 从本地镜像 digest 更新 tests/images.lock"
 	@echo "make images-pin 从 GHCR 回写自建镜像 digest（先跑 images.yml）"
 	@echo "USE_GHCR=1 make up / test-bats 使用 GHCR 锁定镜像"
+	@echo "make hooks    安装 git 钩子（提交身份校验 + 主干保护），新克隆必做"
+	@echo "make identity-check 校验仓库提交身份是否唯一（见 docs/提交规范.md）"
 	@echo "make down     停止并移除容器"
 
 render:
@@ -106,3 +108,18 @@ test-groovy:
 
 clean:
 	rm -rf out
+
+# 新克隆必做：core.hooksPath 是本地配置，不会随 clone 生效
+hooks:
+	@git config core.hooksPath .githooks
+	@chmod +x .githooks/*
+	@echo "已安装钩子：$(shell ls .githooks | tr '\n' ' ')"
+	@echo "钩子内容：pre-commit 校验提交身份，pre-push 拦主干 + 校验身份"
+
+# 校验 author 是否唯一（main 上 committer 允许 GitHub squash 机器人）
+identity-check:
+	@bad=0; \
+	for ae in $$(git log --format='%ae' | sort -u); do \
+		if [ "$$ae" != "zeek.zhao@foxmail.com" ]; then echo "✗ author 异常: $$ae"; bad=1; fi; \
+	done; \
+	if [ "$$bad" = 0 ]; then echo "✓ author 唯一: zeek.zhao@foxmail.com"; else exit 1; fi
