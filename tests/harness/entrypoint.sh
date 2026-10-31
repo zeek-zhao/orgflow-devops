@@ -27,7 +27,10 @@ diagnose() {
     echo "== failed: $stage ==" >&2
     if (( compose_ready )); then
         compose ps -a >&2 || echo "compose ps failed" >&2
-        compose logs --no-color --tail=50 >&2 || echo "compose logs failed" >&2
+        # ★ 必须滤掉 Java 栈帧：Jenkins 的启动异常有几十层 `at ...`，
+        #   `--tail=50` 会全被栈帧占满，真正的错误行反而被挤掉了。
+        compose logs --no-color --tail=200 2>&1 | grep -vE '^[^|]*\|[[:space:]]+at ' | tail -120 >&2 \
+            || echo "compose logs failed" >&2
     fi
     tail -50 /var/log/dockerd.log >&2
 }
