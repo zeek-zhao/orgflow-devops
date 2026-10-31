@@ -43,6 +43,9 @@ jobs:
           - src: docker.io/sonatype/nexus3:3.92.2
             dst: mirror-nexus
             lock: nexus
+          - src: docker.io/gethomepage/homepage:v2.7.0
+            dst: mirror-homepage
+            lock: homepage
           - src: docker.io/library/ubuntu:24.04
             dst: mirror-ubuntu
             lock: ubuntu

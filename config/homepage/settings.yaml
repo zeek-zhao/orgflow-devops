@@ -1,0 +1,13 @@
+# 站点外观与布局。域名相关的东西一律不写在这里：
+# 卡片链接用 {{HOMEPAGE_VAR_GATEWAY_DOMAIN}} 引用 compose 注入的环境变量，
+# 换域名只改 .env 的 GATEWAY_DOMAIN，不用回来改这个文件。
+title: orgflow-devops
+language: zh-CN
+theme: dark
+color: slate
+headerStyle: boxed
+
+layout:
+  服务入口:
+    style: row
+    columns: 3

@@ -40,13 +40,14 @@ manifest_code() {
     echo "$out"
 }
 
-@test "public: 12 个 GHCR 包都能匿名取到 manifest（无需登录）" {
+@test "public: 13 个 GHCR 包都能匿名取到 manifest（无需登录）" {
     local entry repo tag result code bad=()
     for entry in \
         "router:24.04-v1" "jjb:24.04-v1" "m0-test:24.04-v1" "dnsmasq:24.04-v1" \
         "mirror-caddy:2" "mirror-jenkins:lts-jdk17" "mirror-openldap:1.5.0" \
         "mirror-phpldapadmin:0.9.0" "mirror-dex:v2.41.1" \
-        "mirror-oauth2-proxy:v7.6.0" "mirror-nexus:3.92.2" "mirror-ubuntu:24.04"
+        "mirror-oauth2-proxy:v7.6.0" "mirror-nexus:3.92.2" "mirror-ubuntu:24.04" \
+        "mirror-homepage:v2.7.0"
     do
         repo=${entry%%:*}
         tag=${entry#*:}
@@ -64,7 +65,7 @@ manifest_code() {
 
 @test "public: 反证——不存在的包必须拿不到 200（否则上一条是假绿）" {
     # 如果这条也能拿到 200，说明探针根本没在判断可见性，
-    # 上面 12 个包的「全绿」就没有意义。
+    # 上面 13 个包的「全绿」就没有意义。
     local result code
     result=$(manifest_code "does-not-exist-$$" "latest")
     code=${result%% *}

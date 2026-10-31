@@ -13,6 +13,7 @@
 | 路由注册服务 | `config/routes.yaml` → 渲染 Caddyfile → Caddy admin reload |
 | Caddy | 唯一对外入口，按域名分站点（`:80` 跳转 / `:443` 站点，内部 CA 自签） |
 | dnsmasq | 容器内 DNS：`*.<domain>` → Caddy 固定 IP |
+| Homepage | 统一入口面板（`https://home.<domain>/`），一屏看到所有服务 |
 | Nexus | 制品库 / 备份目标 |
 | 备份 Job | 各服务数据卷/配置备份 |
 
@@ -28,7 +29,8 @@ make ca                     # 安装 Caddy 内部 CA 根证书（自签 TLS 必�
 make jobs                   # 推送参数化 deploy/backup Job 到 Jenkins
 ```
 
-访问入口默认是 `https://jenkins.org-devops.com/`、`https://nexus.org-devops.com/`、
+**从 `https://home.org-devops.com/` 进**——一屏看到所有服务，点进去直达。
+其它入口：`https://jenkins.org-devops.com/`（需登录）、`https://nexus.org-devops.com/`、
 `https://ldapadmin.org-devops.com/`、`https://auth.org-devops.com/ping`。
 旧路径入口（`http://localhost:8080/jenkins`）已删除。
 
@@ -47,11 +49,27 @@ tests/          镜像锁定 / bats 服务测试 / DinD harness
 
 ## 测试
 
-`make test` 跑逻辑检查，`make test-bats` 在独立 DinD 栈内跑 11 个真实服务/策略用例
-（含 `19_dns` 容器内解析与 `20_tls` 证书链）。bats 断言一律用
+`make test` 跑逻辑检查（76 项），`make test-bats` 在独立 DinD 栈内跑 12 个用例文件 / 21 条断言
+（含 `18_public` 的 GHCR 匿名可达、`19_dns` 容器内解析与 `20_tls` 证书链）。bats 断言一律用
 `curl --resolve <sub>.<domain>:<port>:127.0.0.1`，测的是 Caddy 的站点匹配而不是某个
 `IP:端口`。运行要求、`KEEP=1` 调试和镜像升级步骤见
 [M0 测试体系](docs/M0-测试体系.md)。
+
+## 文档索引
+
+| 想知道 | 去哪看 |
+|---|---|
+| 某个服务怎么用、怎么部署、坏了怎么查 | [`docs/services/`](docs/services/)（10 份，统一六段） |
+| 网络拓扑、固定 IP 表、分层排查决策树、局域网访问 | [网络架构](docs/network/arch.md) |
+| 域名路由为什么这么做 | [ADR-13](docs/ADR-13-域名路由.md) |
+| 测试怎么跑、怎么加用例、怎么升 digest | [M0 测试体系](docs/M0-测试体系.md) |
+| 镜像与 CI 流水线 | [M0 镜像与 CI](docs/M0-镜像与CI.md) |
+| 备份怎么做、怎么演练恢复 | [备份与恢复](docs/备份与恢复.md) |
+| 任务怎么派、验收怎么写 | [派单流程](docs/派单流程.md) |
+| 提交身份与分支规则 | [提交规范](docs/提交规范.md) |
+
+固定 IP 表会被脚本核对：`bash scripts/check-arch-ips.sh` 逐行比对真实容器地址，
+改完 compose 记得跑一次。
 
 ## 约定
 

@@ -36,3 +36,8 @@ routes:
   - name: auth
     subdomain: auth
     upstream: oauth2-proxy:4180
+
+  # 统一入口：一屏看到所有服务。放在最后，方便以后继续往下加。
+  - name: homepage
+    subdomain: home
+    upstream: homepage:3000

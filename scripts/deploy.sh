@@ -246,8 +246,8 @@ start_batch dnsmasq
 start_batch ldap
 start_batch dex oauth2-proxy
 start_batch router caddy
-start_batch jenkins nexus ldapadmin
-wait_healthy dnsmasq ldap dex oauth2-proxy router caddy jenkins nexus ldapadmin
+start_batch jenkins nexus ldapadmin homepage
+wait_healthy dnsmasq ldap dex oauth2-proxy router caddy jenkins nexus ldapadmin homepage
 
 # 域名路由：所有自检都带 SNI/Host，走 127.0.0.1 的映射端口
 gw() {   # gw <子域> <路径> → HTTP 状态码
@@ -256,7 +256,7 @@ gw() {   # gw <子域> <路径> → HTTP 状态码
     "https://$1.${GATEWAY_DOMAIN}$2"
 }
 
-for check in "auth /ping 200" "jenkins / 302"; do
+for check in "auth /ping 200" "jenkins / 302" "home / 200"; do
   read -r sub path expected <<< "$check"
   url="https://${sub}.${GATEWAY_DOMAIN}${path}"
   if ! actual="$(gw "$sub" "$path")"; then

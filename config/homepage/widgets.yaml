@@ -1,0 +1,24 @@
+# 组件。刻意只放不依赖凭据的：
+#   - resources：读容器自身的 cgroup，不需要额外权限
+#   - datetime：纯前端
+#   - search：纯前端，搜索引擎在浏览器侧发起
+#
+# 想要 Jenkins / Nexus 的健康 widget，需要在 compose 里注入 API token。
+# 首页是公开站点，不这么做——那种信息放到 docs/services/*.md 的排查段里，
+# 用命令现查，比把凭据摆在门口强。
+
+- resources:
+    label: 宿主资源
+    cpu: true
+    memory: true
+    disk: /
+
+- datetime:
+    text_size: xl
+    format:
+      dateStyle: short
+      timeStyle: short
+
+- search:
+    provider: duckduckgo
+    target: _blank
