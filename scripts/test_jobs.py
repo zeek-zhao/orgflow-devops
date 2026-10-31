@@ -23,6 +23,8 @@ class JobScriptTests(unittest.TestCase):
         for name in (
             "scripts/gen-jjb-conf.sh", "scripts/deploy.sh", "scripts/backup.sh",
             "scripts/backup-common.sh", "scripts/render-dex.sh",
+            # deploy.sh 在任何 compose 调用前都会先备好 agent 密钥（#45）
+            "scripts/gen-agent-key.sh",
             "config/jenkins_jobs.ini.tpl", "config/routes.yaml",
             "services/router/render.py", "services/auth/dex/config.yaml.tmpl",
             "tests/images.lock",
