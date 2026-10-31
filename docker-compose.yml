@@ -358,10 +358,14 @@ networks:
       driver: default
       config:
         # 避开 devops 仓库环境用的 172.30.0.0/24
+        # ip_range 必须与 subnet 同属一个 config 对象：写成两个列表项会被
+        # daemon 拒绝（`invalid ip-range ... parent subnet invalid`），
+        # 且 `docker compose config` 的 schema 校验发现不了，只有真正
+        # `docker network create` 才报错（CI 的 DinD 与真机都会炸）。
         - subnet: 172.31.0.0/24
-        # 动态分配段：jjb 这类 `compose run` 的一次性容器没有固定 IP，
-        # 从这里取地址（172.31.0.200-207），不会抢占 .2-.26 的固定 IP
-        - ip_range: 172.31.0.200/29
+          # 动态分配段：jjb 这类 `compose run` 的一次性容器没有固定 IP，
+          # 从这里取地址（172.31.0.200-207），不会抢占 .2-.26 的固定 IP
+          ip_range: 172.31.0.200/29
 
 volumes:
   jenkins_home:
