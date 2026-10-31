@@ -1,0 +1,35 @@
+# Jenkins 自建镜像：JDK21 + 显式插件集（#44）
+#
+# 为什么不能直接用上游镜像：上游 `jenkins/jenkins` 不带我们要的那批插件，
+# 213 上 `/var/jenkins_home/plugins/` 一直是空的 —— pipeline job 起不来
+# （没有 workflow-aggregator）、git 拉不了仓库、SSH agent 连不上。
+#
+# 插件装到 `/usr/share/jenkins/ref/plugins`，镜像自带的 entrypoint 首次启动
+# 会把它复制进 `$JENKINS_HOME/plugins`，所以卷里已有数据也能补上。
+#
+# 7 个插件各自的作用：
+#   workflow-aggregator    三个 job 都是 pipeline，没有它 job 定义都解析不了
+#   git                    拉共享库 orgflow-shared 与业务仓库（带 git-client）
+#   credentials            JCasC 声明的 4 个凭据要存在这里
+#   credentials-binding    pipeline 里 withCredentials 需要它
+#   plain-credentials      ldap-admin-password 等 Secret text 类型凭据
+#   ssh-slaves             SSH 接入 agent 容器，node('orgflow-docker') 靠它
+#   configuration-as-code  让 config/jenkins.yaml 生效
+#
+# 底座按 digest 钉死：tag 会漂，digest 不会。
+#
+# plugins.txt 刻意保持纯列表（不写注释、不钉版本）：
+#   - jenkins-plugin-cli 对 `#` 注释的容忍度不稳，宁可把理由写在这里；
+#   - 不钉版本是因为钉死后一旦某插件与 LTS 内核不兼容，构建会一直失败；
+#     可复现性由 GHCR 上的镜像 digest 保证，不是插件版本号。
+FROM jenkins/jenkins:lts-jdk21@sha256:74401de6a6f92e1afe1b02d1c8e3d0c33f263bfb5275dd8813f9150355f2367b
+
+LABEL org.opencontainers.image.base.name="jenkins/jenkins:lts-jdk21@sha256:74401de6a6f92e1afe1b02d1c8e3d0c33f263bfb5275dd8813f9150355f2367b"
+LABEL org.opencontainers.image.title="orgflow-devops jenkins"
+
+# USER root 是必需的：上游镜像末尾已经切回 jenkins 用户，
+# 而 /usr/share/jenkins/ref 只有 root 可写，不切会 EACCES。
+USER root
+COPY plugins.txt /usr/share/jenkins/ref/plugins.txt
+RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
+USER jenkins

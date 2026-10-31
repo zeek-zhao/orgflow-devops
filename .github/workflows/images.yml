@@ -8,6 +8,7 @@ on:
       - services/router/**
       - services/dnsmasq/**
       - tools/jjb/**
+      - tools/jenkins/**
       - .github/workflows/images.yml
   pull_request:
     paths:
@@ -15,6 +16,7 @@ on:
       - services/router/**
       - services/dnsmasq/**
       - tools/jjb/**
+      - tools/jenkins/**
       - .github/workflows/images.yml
   workflow_dispatch:
 
@@ -33,6 +35,10 @@ jobs:
             context: services/router
           - image: jjb
             context: tools/jjb
+          # Jenkins 从「mirror 上游」改成「自建」：上游镜像不带插件，
+          # 而 213 拉不到 Docker Hub，只能在 runner 上构建后推 GHCR（#44）。
+          - image: jenkins
+            context: tools/jenkins
           - image: m0-test
             context: tests/harness
           - image: dnsmasq
