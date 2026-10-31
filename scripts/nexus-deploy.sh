@@ -142,24 +142,23 @@ else
             || fail "初始密码登录被拒（读到 ${#initial} 字符）—— admin.password 的内容不是可用密码，检查该 Nexus 版本的初始化机制"
 
         log "用初始密码登录并改密（用户 $ADMIN_ID）"
-        # JSON 转义手写：agent 上没有 python3/jq，不能靠它们拼 body。
-        # 密码本身是 deploy.sh 生成的 hex，但允许人工改成含引号/反斜杠的串，
-        # 所以还是按 JSON 规则转义一次。
-        escaped="$(printf '%s' "$ADMIN_PASSWORD" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
-        payload="{\"password\":\"$escaped\"}"
+        # ★ change-password 端点声明的是 **text/plain**：body 就是新密码本身，
+        #   不是 JSON。发 application/json 会得到 415 Unsupported Media Type
+        #   （CI 实测：415，然后回退到 PUT /security/users/{id} 又因为缺
+        #   firstName/source/status 等必填字段报 400 —— 那条路本来就走不通）。
+        #   所以这里按 text/plain 发；万一某个版本改成要 JSON，再试一次 JSON。
+        try_change() {   # try_change <content-type> <body>
+            api -X PUT -u "$ADMIN_ID:$initial" -H "Content-Type: $1" \
+                --data-binary "$2" -w '\n%{http_code}' \
+                "http://localhost:8081/service/rest/v1/security/users/$ADMIN_ID/change-password" 2>&1 || true
+        }
 
-        resp="$(api -X PUT -u "$ADMIN_ID:$initial" -H 'Content-Type: application/json' \
-            -d "$payload" -w '\n%{http_code}' \
-            "http://localhost:8081/service/rest/v1/security/users/$ADMIN_ID/change-password" 2>&1 || true)"
+        resp="$(try_change 'text/plain' "$ADMIN_PASSWORD")"
         code="$(api_code "$resp")"
-
         if [ "$code" != "204" ] && [ "$code" != "200" ]; then
-            # 回退：直接改用户对象。个别 Nexus 版本没有 change-password 子资源，
-            # 但 PUT /security/users/{id} 一直支持改密码。
-            log "change-password 返回 $code，改用 PUT /security/users/$ADMIN_ID"
-            resp="$(api -X PUT -u "$ADMIN_ID:$initial" -H 'Content-Type: application/json' \
-                -d "$payload" -w '\n%{http_code}' \
-                "http://localhost:8081/service/rest/v1/security/users/$ADMIN_ID" 2>&1 || true)"
+            log "text/plain 返回 $code，再试 application/json"
+            escaped="$(printf '%s' "$ADMIN_PASSWORD" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
+            resp="$(try_change 'application/json' "{\"password\":\"$escaped\"}")"
             code="$(api_code "$resp")"
         fi
         case "$code" in
