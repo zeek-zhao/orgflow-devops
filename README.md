@@ -31,7 +31,7 @@ make jobs                   # 推送参数化 deploy/backup Job 到 Jenkins
 
 **从 `https://home.org-devops.com/` 进**——一屏看到所有服务，点进去直达。
 其它入口：`https://jenkins.org-devops.com/`（需登录）、`https://nexus.org-devops.com/`、
-`https://ldapadmin.org-devops.com/`、`https://auth.org-devops.com/ping`。
+`https://ldapadmin.org-devops.com/`（需登录）、`https://auth.org-devops.com/ping`。
 旧路径入口（`http://localhost:8080/jenkins`）已删除。
 
 ## 目录

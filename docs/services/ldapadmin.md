@@ -13,13 +13,14 @@ LDAP 的网页管理界面（phpLDAPadmin）。查用户、改部门、重置密
 
 ## 入口与依赖
 
-- **入口**：`https://ldapadmin.org-devops.com`，**不需要登录**（`routes.yaml` 里没有 `auth: true`）
-- **依赖谁**：`ldap`（所有数据都从它读）、`dnsmasq`
+- **入口**：`https://ldapadmin.org-devops.com`，**需要登录**（`routes.yaml` 里 `auth: true`，#36）。
+  浏览器先过 oauth2/Dex 统一登录（与 jenkins 站点同一套），登录后才是 phpLDAPadmin
+  自己的 LDAP 登录框（`cn=admin,dc=devops,dc=com` + `LDAP_ADMIN_PASSWORD`）——两层登录。
+- **依赖谁**：`ldap`（所有数据都从它读）、`dnsmasq`、`oauth2-proxy`（网关鉴权）
 - **被谁依赖**：无
 
-**这是个反直觉的地方**：管理界面自己不设防，能打开就能改数据。之所以这么定，是因为
-M0 阶段网关还没配好「管理面单独鉴权」，先靠网络可达性控制（只有能连到网关的机器才访问得到）。
-上生产前必须改成 `auth: true` 或加 IP 白名单——这一条写在 `docs/M0-最小核心.md` 的遗留项里。
+> 历史遗留已关闭：M0 阶段它曾是无鉴权站点（靠网络可达性控制），#36 起改为网关鉴权，
+> 未登录访问一律 302 到 `auth.<domain>/oauth2/start`。
 
 ## 部署与配置
 
@@ -62,11 +63,16 @@ docker compose exec -T ldapadmin php -r "echo file_get_contents('http://localhos
 curl -sS -k -o /dev/null -w '%{http_code}\n' --resolve ldapadmin.org-devops.com:443:127.0.0.1 https://ldapadmin.org-devops.com:443/
 ```
 
-期望 `200`，且页面里有 `phpLDAPadmin` 字样：
+未登录期望 `302`（跳 oauth2 登录，#36）：
 
 ```bash
-curl -sS -k --resolve ldapadmin.org-devops.com:443:127.0.0.1 https://ldapadmin.org-devops.com:443/ | grep -c phpLDAPadmin
+curl -sS -k -o /dev/null -w '%{redirect_url}\n' --resolve ldapadmin.org-devops.com:443:127.0.0.1 https://ldapadmin.org-devops.com:443/
 ```
+
+`redirect_url` 应指向 `https://auth.org-devops.com/oauth2/start?rd=...`。
+如果 `302` 都没有（直连 200 或连接失败），说明站点块没带 `forward_auth`，
+查 `out/Caddyfile` 里 `https://ldapadmin.<domain>` 块和 `routes.yaml` 的 `auth: true`。
+浏览器登录后再访问才会看到 phpLDAPadmin 页面（`grep phpLDAPadmin` 只在登录后有效）。
 
 **4. 能连上 LDAP 吗（登录转圈时查这个）**
 
