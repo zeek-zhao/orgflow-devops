@@ -153,7 +153,12 @@ fi
 
 if [ -n "$SERVICE" ]; then
   echo "== 部署 $SERVICE (${ENV_NAME:-dev}) =="
-  "${COMPOSE_COMMAND[@]}" up -d --no-deps "$BUILD_FLAG" "$SERVICE"
+  # 单服务默认沿用 compose 的「缺镜像才构建」，不强制重建；只有 GHCR（digest 锁定）必须 --no-build。
+  if [ "${USE_GHCR:-0}" = 1 ]; then
+    "${COMPOSE_COMMAND[@]}" up -d --no-deps --no-build "$SERVICE"
+  else
+    "${COMPOSE_COMMAND[@]}" up -d --no-deps "$SERVICE"
+  fi
   "${COMPOSE_COMMAND[@]}" ps "$SERVICE"
   exit 0
 fi
