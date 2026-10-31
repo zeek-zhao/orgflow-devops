@@ -16,6 +16,7 @@ DEPLOY_DEPENDENCIES = (
     "scripts/deploy.sh",
     "scripts/doctor.py",
     "scripts/render-dex.sh",
+    "scripts/gen-agent-key.sh",
     ".env.example",
     "services/router/render.py",
     "services/auth/dex/config.yaml.tmpl",
@@ -23,7 +24,7 @@ DEPLOY_DEPENDENCIES = (
 )
 
 UP_ORDER = ["dnsmasq", "ldap", "dex", "oauth2-proxy", "router", "caddy",
-            "jenkins", "nexus", "ldapadmin", "homepage"]
+            "jenkins", "jenkins-agent", "nexus", "ldapadmin", "homepage"]
 
 
 class DeployTests(unittest.TestCase):
@@ -68,7 +69,7 @@ if tool == "curl":
 elif args[0] == "inspect":
     calls = [json.loads(line) for line in Path("calls.jsonl").read_text().splitlines()]
     if (os.environ.get("TEST_FINAL_FAILURE") and args[-1] == "container-ldap"
-            and len([call for call in calls if "up" in call]) == 10):
+            and len([call for call in calls if "up" in call]) == {len(UP_ORDER)}):
         print("running unhealthy")
     else:
         print(os.environ.get("TEST_HEALTH", "running healthy"))

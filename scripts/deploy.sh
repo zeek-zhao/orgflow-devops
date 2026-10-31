@@ -29,7 +29,7 @@ if [ "$PUSH_JOBS" = 1 ]; then
 fi
 
 case "$SERVICE" in
-  ""|dnsmasq|jenkins|caddy|router|ldap|ldapadmin|dex|oauth2-proxy|nexus|homepage) ;;
+  ""|dnsmasq|jenkins|jenkins-agent|caddy|router|ldap|ldapadmin|dex|oauth2-proxy|nexus|homepage) ;;
   *) echo "不支持的服务: $SERVICE" >&2; exit 1 ;;
 esac
 case "${ENV_NAME:-dev}" in
@@ -100,6 +100,13 @@ print("已生成随机密钥，已写入 .env，请妥善保存（不在终端�
 PY
 fi
 
+# agent 的 SSH 密钥（#45）：jenkins 与 jenkins-agent 都 bind 了 secrets/ 下的文件，
+# 文件不存在时 compose 会以「bind source path does not exist」直接失败，
+# 而且这个报错完全看不出是密钥没生成 —— 所以在任何 compose 调用之前先备好。
+# 已存在就复用，不会覆盖现有密钥（覆盖等于所有 agent 立刻连不上）。
+# 注意：这一步**不写 .env**，只产出 secrets/ 下的两个文件。
+bash scripts/gen-agent-key.sh >/dev/null
+
 HEALTH_TIMEOUT="${DEPLOY_HEALTH_TIMEOUT:-600}"
 POLL_INTERVAL="${DEPLOY_POLL_INTERVAL:-3}"
 for value in "$HEALTH_TIMEOUT" "$POLL_INTERVAL"; do
@@ -112,8 +119,8 @@ done
 COMPOSE_COMMAND+=(--env-file "$ENV_FILE")
 
 # USE_GHCR=1 时镜像是 digest 锁定的，只能拉、不能建。
-# 带 `build:` 的三个服务（dnsmasq / router / jjb）一旦被 --build 强制重建，compose 会拿
-# `ghcr.io/...:tag@sha256:...` 当 tag 去写，直接报：
+# 带 `build:` 的五个服务（dnsmasq / router / jjb / jenkins / jenkins-agent）一旦被 --build
+# 强制重建，compose 会拿 `ghcr.io/...:tag@sha256:...` 当 tag 去写，直接报：
 #   refusing to create a tag with a digest reference
 # 所以构建标志必须跟着来源走，不能写死 --build。
 if [ "${USE_GHCR:-0}" = 1 ]; then BUILD_FLAG="--no-build"; else BUILD_FLAG="--build"; fi
@@ -260,8 +267,8 @@ start_batch dnsmasq
 start_batch ldap
 start_batch dex oauth2-proxy
 start_batch router caddy
-start_batch jenkins nexus ldapadmin homepage
-wait_healthy dnsmasq ldap dex oauth2-proxy router caddy jenkins nexus ldapadmin homepage
+start_batch jenkins jenkins-agent nexus ldapadmin homepage
+wait_healthy dnsmasq ldap dex oauth2-proxy router caddy jenkins jenkins-agent nexus ldapadmin homepage
 
 # 域名路由：所有自检都带 SNI/Host，走 127.0.0.1 的映射端口。
 #

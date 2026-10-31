@@ -32,4 +32,13 @@ RUN apt-get update \
  && curl -fsSL "https://download.docker.com/linux/static/stable/${dockerarch}/docker-${DOCKER_CLI_VERSION}.tgz" \
     | tar -xz --strip-components=1 -C /usr/local/bin docker/docker \
  && docker --version
-USER jenkins
+
+# 公钥从挂进来的文件读，不从 .env 读（理由见 agent-entrypoint.sh 文件头）
+COPY agent-entrypoint.sh /usr/local/bin/agent-entrypoint.sh
+RUN chmod +x /usr/local/bin/agent-entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/agent-entrypoint.sh"]
+
+# ★ 不要在这里切回 USER jenkins。上游 ssh-agent 镜像就是以 root 跑 setup-sshd 的
+#   （sshd 绑 22 这个特权端口需要 root），切走会直接起不来。
+#   `docker ps` 由 root 执行也意味着容器内 docker 建的产物属主是 root，
+#   这正是把 docker 从 controller 挪出来的原因之一。

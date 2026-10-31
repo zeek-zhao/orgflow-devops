@@ -9,10 +9,12 @@
 services:
   caddy:
     image: ghcr.io/zeek-zhao/orgflow-devops/mirror-caddy:2@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
-  # 自建镜像（#44）：digest 由 `make images-pin` 从 GHCR 回写，不是上游 digest。
-  # 上游 jenkins/jenkins 不带插件，所以这里不能再用 mirror-jenkins。
+  # 自建镜像（#44 / #45）：digest 由 `make images-pin` 从 GHCR 回写，不是上游 digest。
+  # 上游 jenkins/jenkins 不带插件、也不带 docker CLI，所以这两个都不能再用 mirror-*。
   jenkins:
-    image: ghcr.io/zeek-zhao/orgflow-devops/jenkins:24.04-v1@sha256:24ca77d0a6f9f54219b67772534da7562894965bf07cbc7ab2a7865ea40996e0
+    image: ghcr.io/zeek-zhao/orgflow-devops/jenkins:24.04-v1@sha256:f1feaff2de19dd0ef7e019344060d4570fc185c82bd7ce23430932afdb6bd999
+  jenkins-agent:
+    image: ghcr.io/zeek-zhao/orgflow-devops/jenkins-agent:24.04-v1@sha256:ddfd617c61af70a31517c42b084c0b69bacff6cbf2084f62cee219eb2b0c7bfa
   ldap:
     image: ghcr.io/zeek-zhao/orgflow-devops/mirror-openldap:1.5.0@sha256:18742e9c449c9c1afe129d3f2f3ee15fb34cc43e5f940a20f3399728f41d7c28
   ldapadmin:
