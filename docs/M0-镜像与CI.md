@@ -4,7 +4,7 @@
 
 | 工作流 | 职责 | 触发 |
 |---|---|---|
-| `images.yml` | Buildx matrix 构建 router、jjb、m0-test；非 PR 推 GHCR，每项输出 digest，汇总为 `digests.txt` artifact | main push / PR，限定 `tests/harness/**`、`services/router/**`、`tools/jjb/**` 和工作流本身；也可手动触发 |
+| `images.yml` | Buildx matrix 构建 router、jjb、m0-test、dnsmasq；非 PR 推 GHCR，每项输出 digest，汇总为 `digests.txt` artifact | main push / PR，限定 `tests/harness/**`、`services/router/**`、`services/dnsmasq/**`、`tools/jjb/**` 和工作流本身；也可手动触发 |
 | `mirror.yml` | skopeo 搬运 lock 中 7 个服务镜像和 Ubuntu 基座，逐项记录源/目标 digest | 手动（`mode=amd64` 默认 / `all`）；每周一 03:00 **UTC** 定时，默认 amd64 |
 | `test.yml` | `make test`，再 `ALLOW_PULL_DOCKER_HUB=1 make test-bats`；30 分钟超时，失败上传 `bats-failure-log` | main push、所有 PR、手动 |
 
@@ -14,7 +14,7 @@ CI 仅用 `secrets.GITHUB_TOKEN` 登录 GHCR，镜像工作流需要 `packages: 
 `/tmp/bats-run.log` 包含构建、健康闸门及 TAP 输出。
 
 包名前缀固定为小写 `ghcr.io/zeek-zhao/orgflow-devops/`：
-自建包是 `router`、`jjb`、`m0-test`，标签为 `sha-<7位>`、`24.04-v1`，
+自建包是 `router`、`jjb`、`m0-test`、`dnsmasq`，标签为 `sha-<7位>`、`24.04-v1`，
 以及只在默认分支生成的 `latest`。分支手动构建会更新 `24.04-v1`，不会更新 `latest`；
 部署始终以 `@sha256:...` 锁定，标签只是可读提示。
 
@@ -26,13 +26,13 @@ CI 仅用 `secrets.GITHUB_TOKEN` 登录 GHCR，镜像工作流需要 `packages: 
 ## 首次发布、搬运、回写
 
 1. push 并合入 main，等待 `images.yml` 绿色（路径过滤未命中时，在 main 手动运行）。
-   可在 Summary / `digests.txt` 查看三个产物。分支构建不生成 `latest`，不能代替此步骤。
+   可在 Summary / `digests.txt` 查看四个产物。分支构建不生成 `latest`，不能代替此步骤。
 2. 手动执行 `mirror.yml`，**选择 `mode=all`**，等待八项完成。
    `--all --preserve-digests` 保留多架构索引与 manifest，必须满足源 digest =
    目标 digest = lock；不一致直接失败。`mirror-caddy:2` 必须与 lock 的 caddy 一字不差。
-3. 登录 GHCR 后执行 `make images-pin`。脚本 inspect 三个自建包的 `latest`，
+3. 登录 GHCR 后执行 `make images-pin`。脚本 inspect 四个自建包的 `latest`，
    全部解析成功后才原子回写，并在写入前检查合并 Compose 配置。
-   `router` / `jjb` 增加到 `docker-compose.ghcr.yml` 的服务段，
+   `router` / `jjb` / `dnsmasq` 增加到 `docker-compose.ghcr.yml` 的服务段，
    harness 存在该文件的标准 Compose 扩展 `x-m0-test-image`，供 GHCR bats 使用。
    默认解析 `latest`；合入前验收可显式运行
    `IMAGES_TAG=sha-<工作流的7位提交号> make images-pin`，只选择已推送成功的那次产物，
@@ -85,7 +85,7 @@ USE_GHCR=1 make test-bats
 
 不设置 `USE_GHCR` 时保留本地构建行为。213 缺 Hub 镜像立即报错，不尝试不可达的网络；
 GitHub 托管 runner 无缓存，工作流显式设置 `ALLOW_PULL_DOCKER_HUB=1` 才允许拉取。
-不会改变原有九个 bats 断言。
+不会改变原有十一个 bats 断言。
 
 ## GHCR 配额
 
