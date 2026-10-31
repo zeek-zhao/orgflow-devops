@@ -22,7 +22,7 @@ DEPLOY_DEPENDENCIES = (
 )
 
 UP_ORDER = ["dnsmasq", "ldap", "dex", "oauth2-proxy", "router", "caddy",
-            "jenkins", "nexus", "ldapadmin"]
+            "jenkins", "nexus", "ldapadmin", "homepage"]
 
 
 class DeployTests(unittest.TestCase):
@@ -55,12 +55,19 @@ tool = Path(sys.argv[0]).name
 with open("calls.jsonl", "a") as log:
     log.write(json.dumps([tool, *args]) + "\\n")
 if tool == "curl":
-    # 域名路由后自检 URL 是 https://auth.<domain>/ping 与 https://jenkins.<domain>/
-    print(os.environ.get("TEST_PING", "200") if args[-1].endswith("/ping") else "302")
+    # 域名路由后自检 URL 是 https://auth.<domain>/ping、https://jenkins.<domain>/、
+    # https://home.<domain>/ —— 前两个一保一护，第三个是公开站点
+    url = args[-1]
+    if url.endswith("/ping"):
+        print(os.environ.get("TEST_PING", "200"))
+    elif "home." in url:
+        print("200")
+    else:
+        print("302")
 elif args[0] == "inspect":
     calls = [json.loads(line) for line in Path("calls.jsonl").read_text().splitlines()]
     if (os.environ.get("TEST_FINAL_FAILURE") and args[-1] == "container-ldap"
-            and len([call for call in calls if "up" in call]) == 9):
+            and len([call for call in calls if "up" in call]) == 10):
         print("running unhealthy")
     else:
         print(os.environ.get("TEST_HEALTH", "running healthy"))
@@ -271,11 +278,11 @@ class HostsSnippetTests(unittest.TestCase):
         result = self.snippet("10.0.0.5")
         self.assertEqual(result.returncode, 0, result.stderr)
         line = next(l for l in result.stdout.splitlines() if l.startswith("10.0.0.5 "))
-        # 回归点：曾用 tr -d '[:space:]' 处理多行，5 个域名被粘成一行
+        # 回归点：曾用 tr -d '[:space:]' 处理多行，多个域名被粘成一行
         self.assertEqual(line.split()[1:], [
             "jenkins.org-devops.com", "nexus.org-devops.com",
             "ldapadmin.org-devops.com", "dex.org-devops.com",
-            "auth.org-devops.com",
+            "auth.org-devops.com", "home.org-devops.com",
         ])
 
     def test_domain_override_changes_the_suffix(self):
