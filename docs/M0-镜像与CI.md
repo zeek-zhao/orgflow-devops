@@ -56,14 +56,17 @@ Summary 如实列出两者，不把相等当成功条件，也不把不同解释
 amd64 模式不负责填充当前 GHCR override；要使用它必须另行显式锁定新目标 digest，
 不能把该 digest 写回上游 lock。213 首次切换必须使用 all 模式。
 
-## 213 登录和使用
+## 213 使用（不需要登录）
 
-私有包需要有包读取权限的 PAT（至少 `read:packages`；包还需授予对应账号访问权限）。
-通过密码管理器或安全交互获取 PAT，再从 stdin 登录，不要把令牌写进命令、仓库或工作流：
+12 个包全部 public，**拉取不需要任何凭据**，213 上不用 `docker login`：
 
 ```sh
-docker login ghcr.io -u <user> --password-stdin
+docker pull ghcr.io/zeek-zhao/orgflow-devops/router:24.04-v1
 ```
+
+需要凭据的只有「推」这一侧——`images.yml` / `mirror.yml` 用工作流内置的
+`GITHUB_TOKEN`（`packages: write`）推送，同样不需要人工登录。
+`tests/bats/18_public.bats` 会匿名取一遍 manifest，谁把包改回 private 就会红。
 
 已经搬运且 pin 后：
 

@@ -1,5 +1,11 @@
-# Populate these packages with mirror.yml mode=all before using this override.
-# make images-pin adds router/jjb and the pinned harness extension after images.yml.
+# GHCR 单一来源覆盖层（ADR-12）。
+#
+# 全部 12 个包都是 public，**拉取不需要 docker login**、不需要任何凭据：
+#   docker pull ghcr.io/zeek-zhao/orgflow-devops/router:24.04-v1
+# 需要凭据的只有「推」这一侧（.github/workflows/images.yml / mirror.yml）。
+#
+# 先用 mirror.yml mode=all 填充 mirror-* 包，再跑 images.yml；
+# make images-pin 把 router/jjb/dnsmasq 与 harness 的 digest 回写到本文件。
 services:
   caddy:
     image: ghcr.io/zeek-zhao/orgflow-devops/mirror-caddy:2@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
@@ -16,11 +22,10 @@ services:
   nexus:
     image: ghcr.io/zeek-zhao/orgflow-devops/mirror-nexus:3.92.2@sha256:a32ae23e0fdacccc4f2a9cbf3aa613388d11a1495d5dd66c639c8e84ad39b179
   router:
-    image: ghcr.io/zeek-zhao/orgflow-devops/router:24.04-v1@sha256:2ba4f07e9de635a248e019c9d648accd630f0b1a383e8b7bb95dc7bc72d82501
+    image: ghcr.io/zeek-zhao/orgflow-devops/router:24.04-v1@sha256:87de27dcf548a9a8d1d632c177d058d1af5d1991c8341d7a74da29c9ea7b73a8
   jjb:
-    image: ghcr.io/zeek-zhao/orgflow-devops/jjb:24.04-v1@sha256:7b0377ac59d0cd2b6d7f588b2e44f748e66a293bf9adf74db73d4a44eef90378
-  # dnsmasq 是本次新增的自建镜像，首次 images.yml 构建后由 make images-pin 写入 digest
+    image: ghcr.io/zeek-zhao/orgflow-devops/jjb:24.04-v1@sha256:ec7e61e4a1feb6d70f8170e5c55ff6d5d5bf55cf1ef5ebcb2eaec5c88af10ffb
   dnsmasq:
-    image: ghcr.io/zeek-zhao/orgflow-devops/dnsmasq:24.04-v1
+    image: ghcr.io/zeek-zhao/orgflow-devops/dnsmasq:24.04-v1@sha256:9b77b4abc1e03c80580da0b66edbe3ea97462f438a430e5c573877dde5c05e7e
 
-x-m0-test-image: ghcr.io/zeek-zhao/orgflow-devops/m0-test:24.04-v1@sha256:9da64de59419a9c49ce86358dcc6e53d26ee4cb79fc0fbcd16b418b1cba3a09f
+x-m0-test-image: ghcr.io/zeek-zhao/orgflow-devops/m0-test:24.04-v1@sha256:a5e0e46073abe3595597756dbe81dc6ad90d31cd87116e7f3431a013e6414ea3
