@@ -5,7 +5,7 @@
 | 工作流 | 职责 | 触发 |
 |---|---|---|
 | `images.yml` | Buildx matrix 构建 router、jjb、m0-test、dnsmasq；非 PR 推 GHCR，每项输出 digest，汇总为 `digests.txt` artifact | main push / PR，限定 `tests/harness/**`、`services/router/**`、`services/dnsmasq/**`、`tools/jjb/**` 和工作流本身；也可手动触发 |
-| `mirror.yml` | skopeo 搬运 lock 中 7 个服务镜像和 Ubuntu 基座，逐项记录源/目标 digest | 手动（`mode=amd64` 默认 / `all`）；每周一 03:00 **UTC** 定时，默认 amd64 |
+| `mirror.yml` | skopeo 搬运 lock 中 8 个服务镜像和 Ubuntu 基座，逐项记录源/目标 digest | 手动（`mode=amd64` 默认 / `all`）；每周一 03:00 **UTC** 定时，默认 amd64 |
 | `test.yml` | `make test`，再 `ALLOW_PULL_DOCKER_HUB=1 make test-bats`；30 分钟超时，失败上传 `bats-failure-log` | main push、所有 PR、手动 |
 
 CI 仅用 `secrets.GITHUB_TOKEN` 登录 GHCR，镜像工作流需要 `packages: write`，
@@ -58,7 +58,7 @@ amd64 模式不负责填充当前 GHCR override；要使用它必须另行显式
 
 ## 213 使用（不需要登录）
 
-12 个包全部 public，**拉取不需要任何凭据**，213 上不用 `docker login`：
+13 个包全部 public，**拉取不需要任何凭据**，213 上不用 `docker login`：
 
 ```sh
 docker pull ghcr.io/zeek-zhao/orgflow-devops/router:24.04-v1
