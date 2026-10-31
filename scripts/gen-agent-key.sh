@@ -2,7 +2,8 @@
 # 生成 jenkins-agent 的 SSH 密钥对（#45）。
 #
 # 产物（都在 secrets/ 下，整个目录已 gitignore）：
-#   secrets/agent_ssh_key      私钥 → 挂进 jenkins 容器，JCasC 用 fileOnMaster 引用
+#   secrets/agent_ssh_key      私钥 → deploy.sh/harness 读出并 export 成
+#                              JENKINS_AGENT_SSH_PRIVATE_KEY，JCasC 用 directEntry 引用
 #   secrets/agent_ssh_key.pub  公钥 → 挂进 agent 容器当 authorized_keys
 #
 # 为什么不把公钥写进 .env：
