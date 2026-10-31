@@ -30,13 +30,14 @@ setup() {
     done
 }
 
-@test "caddy: HTTP 端口只做跳转，未知域名返回 404" {
-    # 已知域名：80 → 443 跳转
-    run http_host_header "jenkins.${GW_DOMAIN}" / Location
+@test "caddy: HTTP 端口只做跳转，未知域名没有站点承接" {
+    # 已知域名：80 → 443 跳转，且路径原样保留（路径式站点确实没了）
+    run http_host_header "jenkins.${GW_DOMAIN}" /jenkins Location
     [ "$status" -eq 0 ]
-    assert_contains "$output" "https://jenkins.${GW_DOMAIN}/"
-    # 旧入口 http://localhost:8080/jenkins 已不存在：没有站点匹配 Host 就 404
-    run http_host_code localhost /jenkins
-    [ "$status" -eq 0 ]
-    [ "$output" = 404 ]
+    assert_contains "$output" "https://jenkins.${GW_DOMAIN}/jenkins"
+    # 未知域名没有站点承接：连证书都签不出来，握手直接失败
+    run curl -sS --max-time 20 -o /dev/null -w '%{http_code}' \
+        --resolve "unknown.${GW_DOMAIN}:${GW_HTTPS_PORT}:${GW_HOST}" \
+        "https://unknown.${GW_DOMAIN}:${GW_HTTPS_PORT}/jenkins"
+    [ "$status" -ne 0 ]
 }
