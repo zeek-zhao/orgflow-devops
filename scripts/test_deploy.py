@@ -219,6 +219,28 @@ elif "--version" in args or "version" in args:
             result = self.deploy("--service", name)
             self.assertEqual(result.returncode, 0, f"--service {name} 被拒: {result.stderr}")
 
+    def test_up_build_flag_follows_image_source(self):
+        """USE_GHCR=1 时镜像钉了 digest，`--build` 会拿 digest 当 tag 写，直接报
+        `refusing to create a tag with a digest reference`（dnsmasq / router / jjb 都有 build:）。
+
+        这条只能靠真栈或本用例发现：CI 的 harness 是 `compose up --no-build --pull never`
+        直连，**从不经过 deploy.sh**，所以整条路径零覆盖。
+        """
+        result = self.deploy(USE_GHCR="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        ups = [call for call in self.calls() if call[0] == "docker" and "up" in call]
+        self.assertTrue(ups, "一次 up 都没发生")
+        for call in ups:
+            self.assertIn("--no-build", call, f"USE_GHCR=1 却缺 --no-build: {call}")
+
+    def test_up_builds_local_images_by_default(self):
+        result = self.deploy()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        ups = [call for call in self.calls() if call[0] == "docker" and "up" in call]
+        self.assertTrue(ups, "一次 up 都没发生")
+        for call in ups:
+            self.assertIn("--build", call, f"默认路径应 --build: {call}")
+
     def test_gateway_domain_override_flows_into_caddyfile_and_dex(self):
         (self.root / ".env").write_text("GATEWAY_DOMAIN=example.test\n")
         result = self.deploy()
