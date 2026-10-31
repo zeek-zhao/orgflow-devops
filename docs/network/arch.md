@@ -49,7 +49,7 @@ flowchart LR
 
 - **只有 caddy 发布宿主端口**（80/443）。其它容器一律 `expose`，宿主上连不上——
   这是刻意的，绕过网关就等于绕过鉴权
-- **认证链路是斜的**：`caddy → oauth2-proxy → dex → ldap`。登录失败可能卡在这条链的任意一环
+- **认证链路是斜的**：`caddy → oauth2-proxy → dex → ldap`。登录失败卡在这条链的某一环
 - **router 不转发业务流量**，它只往 caddy 灌配置
 - **dnsmasq 不在请求路径上**，但所有容器启动时都依赖它解析域名
 

@@ -120,7 +120,7 @@ JCasC 报错不会让容器退出，只在启动日志里打一段。搜 `SEVERE
 
 ```bash
 make jobs-test                       # 先确认定义能渲染
-ls .jjb/rendered/*.xml | wc -l       # 应该是 3
+ls .jjb/rendered/*.xml | wc -l       # 期望 3
 ```
 
 能渲染但推不上去 → 查 `config/jenkins_jobs.ini` 是否存在、Jenkins 是否可达、账号是否有建 Job 权限。

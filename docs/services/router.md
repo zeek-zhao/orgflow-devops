@@ -18,7 +18,7 @@
 
 - **入口**：不对外。只有 `caddy` 通过 `depends_on` 等它 healthy，健康检查打 `:8090/healthz`
 - **依赖谁**：`dnsmasq`（解析 `caddy` 这个名字）、`caddy` 的管理 API（`CADDY_ADMIN_URL`）
-- **被谁依赖**：`caddy` 等它 healthy 才启动（否则 Caddyfile 可能还没渲染出来）
+- **被谁依赖**：`caddy` 等它 healthy 才启动（否则启动时 Caddyfile 尚未渲染）
 
 ## 部署与配置
 

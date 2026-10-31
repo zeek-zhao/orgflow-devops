@@ -128,8 +128,8 @@ done < <(jq -r '.name as $project | .services | to_entries[] |
 
 stage="starting inner stack"
 compose up -d --no-build --pull never
-stage="waiting for nine healthy services"
-services=(dnsmasq jenkins caddy router ldap ldapadmin dex oauth2-proxy nexus)
+stage="waiting for ten healthy services"
+services=(dnsmasq jenkins caddy router ldap ldapadmin dex oauth2-proxy nexus homepage)
 deadline=$((SECONDS + 300))
 while :; do
     pending=()

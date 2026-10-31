@@ -46,7 +46,7 @@ docker compose up -d dex
 ```
 
 模板在 `services/auth/dex/config.yaml.tmpl`，渲染脚本 `scripts/render-dex.sh`。
-渲染后脚本会 `chmod 0644`——调用方的 umask 可能是 `077`，那样 uid 1001 读不到配置，
+渲染后脚本会 `chmod 0644`——调用方 umask 为 `077` 时，uid 1001 读不到配置，
 症状同样是那句误导人的 gomplate 报错。
 
 | 项 | 值 |

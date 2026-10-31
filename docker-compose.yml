@@ -339,8 +339,10 @@ services:
       orgflow:
         ipv4_address: 172.31.0.26
     healthcheck:
-      # 用 node 自检而不是 wget/curl：这个镜像里不一定有那两个，
-      # 但 node 一定在（它就是运行时）。用 exec 形式避免 shell 引号嵌套。
+      # 用 node 自检而不是 wget/curl：这个镜像里不一定有那两个，但 node 一定在（它就是运行时）。
+      # 判据是「<500 就算起来了」而不是「==200」：探针从 127.0.0.1 发，
+      # Host 头不在 HOMEPAGE_ALLOWED_HOSTS 里，正常返回 400。
+      # 要 200 的话这个健康检查永远不过——而那 400 恰好证明 HTTP 服务是活的。
       test: ["CMD", "node", "-e", "require('http').get({host:'127.0.0.1',port:3000,path:'/'},r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
       interval: 10s
       timeout: 5s

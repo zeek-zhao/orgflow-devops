@@ -73,7 +73,7 @@ docker compose exec -T dnsmasq dig +short home.org-devops.com @172.31.0.2
 docker compose exec -T dnsmasq dig +short anything.org-devops.com @172.31.0.2
 ```
 
-两条都应该是 `172.31.0.10`。如果第一条有、第二条没有，说明配的是单条记录而不是域名段。
+两条的期望输出都是 `172.31.0.10`。如果第一条有、第二条没有，说明配的是单条记录而不是域名段。
 
 **4. 从别的容器问得到吗**
 
