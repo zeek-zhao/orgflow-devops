@@ -15,6 +15,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: 提交身份校验
+        run: make identity-check
       - run: make test
       - name: Run bats in DinD
         run: |

@@ -1,0 +1,94 @@
+name: Identity
+
+# 提交身份门禁：author 必须恒为 zeek.zhao <zeek.zhao@foxmail.com>
+# committer 在 PR 分支上必须同上；main 上的 squash 合并由 GitHub 作为
+# committer，属平台行为，不做约束（见 docs/提交规范.md）。
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: identity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  identity:
+    name: 提交身份校验
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: 校验 author / committer
+        shell: bash
+        run: |
+          set -euo pipefail
+          want_name="zeek.zhao"
+          want_email="zeek.zhao@foxmail.com"
+          zero="0000000000000000000000000000000000000000"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            base_ref="${{ github.base_ref }}"
+            git fetch --no-tags origin "$base_ref"
+            range="origin/${base_ref}..HEAD"
+            scope="PR 分支"
+          else
+            before="${{ github.event.before }}"
+            after="${{ github.event.after }}"
+            if [[ "$before" == "$zero" ]]; then
+              range="$after"
+            else
+              range="$before..$after"
+            fi
+            scope="main"
+          fi
+
+          echo "检查范围：${scope} (${range})"
+          commits=$(git rev-list "$range")
+          if [[ -z "$commits" ]]; then
+            echo "范围内无提交，跳过"
+            exit 0
+          fi
+
+          bad=0
+          for sha in $commits; do
+            an=$(git log -1 --format=%an "$sha")
+            ae=$(git log -1 --format=%ae "$sha")
+            cn=$(git log -1 --format=%cn "$sha")
+            ce=$(git log -1 --format=%ce "$sha")
+            printf '%-10s author=%s <%s>  committer=%s <%s>\n' \
+              "${sha:0:8}" "$an" "$ae" "$cn" "$ce"
+
+            if [[ "$an" != "$want_name" || "$ae" != "$want_email" ]]; then
+              echo "::error title=提交身份不符::${sha:0:8} 的 author 是 ${an} <${ae}>，要求 ${want_name} <${want_email}>"
+              bad=1
+            fi
+
+            if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+              if [[ "$cn" != "$want_name" || "$ce" != "$want_email" ]]; then
+                echo "::error title=提交身份不符::${sha:0:8} 的 committer 是 ${cn} <${ce}>，要求 ${want_name} <${want_email}>"
+                bad=1
+              fi
+            fi
+          done
+
+          if [[ "$bad" -ne 0 ]]; then
+            echo
+            echo "修复："
+            echo "  git config user.name  \"${want_name}\""
+            echo "  git config user.email \"${want_email}\""
+            echo "  然后 git commit --amend --reset-author（未推送时）"
+            echo "详见 docs/提交规范.md"
+            exit 1
+          fi
+
+          echo "✓ 身份校验通过"
