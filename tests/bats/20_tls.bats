@@ -23,11 +23,14 @@ setup() {
 @test "tls: 导出的根证书能校验整条链（不带 -k 也 200）" {
     compose_cmd exec -T caddy cat /data/caddy/pki/authorities/local/root.crt > "$ROOT_CA"
     [ -s "$ROOT_CA" ]
-    local sub
-    for sub in nexus ldapadmin dex; do
+    local entry sub path
+    # dex 的端点都在 /dex 下，根路径本来就是 404，不能拿 / 当探针
+    for entry in "nexus:/" "ldapadmin:/" "dex:/dex/healthz"; do
+        sub=${entry%%:*}
+        path=${entry#*:}
         run curl -sS --max-time 20 -o /dev/null -w '%{http_code}' --cacert "$ROOT_CA" \
             --resolve "${sub}.${GW_DOMAIN}:${GW_HTTPS_PORT}:${GW_HOST}" \
-            "https://${sub}.${GW_DOMAIN}:${GW_HTTPS_PORT}/"
+            "https://${sub}.${GW_DOMAIN}:${GW_HTTPS_PORT}${path}"
         [ "$status" -eq 0 ]
         [ "$output" = 200 ]
     done
