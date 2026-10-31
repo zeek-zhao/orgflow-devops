@@ -5,8 +5,9 @@ setup() {
 }
 
 @test "dex: discovery, signing keys and health endpoint on the dex subdomain" {
-    assert_gw dex /.well-known/openid-configuration 200
-    run gw_body dex /.well-known/openid-configuration
+    # dex 的端点都挂在 issuer 路径 /dex 下（域名路由不剥前缀）
+    assert_gw dex /dex/.well-known/openid-configuration 200
+    run gw_body dex /dex/.well-known/openid-configuration
     [ "$status" -eq 0 ]
     # issuer 必须是浏览器可达的绝对域名地址（模板渲染生效的直接证据）
     run jq -r '.issuer' <<< "$output"
