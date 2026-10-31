@@ -29,7 +29,7 @@ class JobScriptTests(unittest.TestCase):
             shutil.copyfile(ROOT / name, self.root / name)
         self.dotenv = self.root / ".env"
         self.dotenv.write_text(
-            "JENKINS_URL=http://localhost:8080/jenkins\n"
+            "JENKINS_URL=https://jenkins.org-devops.com/\n"
             "JENKINS_ADMIN_ID=admin\n"
             "JENKINS_ADMIN_PASSWORD='test-only% # $literal'\n"
         )

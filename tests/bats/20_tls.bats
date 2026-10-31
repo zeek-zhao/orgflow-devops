@@ -1,0 +1,39 @@
+#!/usr/bin/env bats
+setup() {
+    load 'helpers/common'
+    setup_gw
+    ROOT_CA=/tmp/orgflow-caddy-root.crt
+}
+
+@test "tls: 每个站点都签出对应域名的证书，签发者是 Caddy 内部 CA" {
+    compose_cmd exec -T caddy cat /data/caddy/pki/authorities/local/root.crt > "$ROOT_CA"
+    [ -s "$ROOT_CA" ]
+    local sub info
+    for sub in jenkins nexus ldapadmin dex auth; do
+        info=$(echo | openssl s_client -connect "${GW_HOST}:${GW_HTTPS_PORT}" \
+            -servername "${sub}.${GW_DOMAIN}" 2>/dev/null | openssl x509 -noout -subject -issuer)
+        assert_contains "$info" "${sub}.${GW_DOMAIN}"
+        assert_contains "$info" "Caddy Local Authority"
+    done
+}
+
+@test "tls: 导出的根证书能校验整条链（不带 -k 也 200）" {
+    compose_cmd exec -T caddy cat /data/caddy/pki/authorities/local/root.crt > "$ROOT_CA"
+    [ -s "$ROOT_CA" ]
+    local sub
+    for sub in nexus ldapadmin dex; do
+        run curl -sS --max-time 20 -o /dev/null -w '%{http_code}' --cacert "$ROOT_CA" \
+            --resolve "${sub}.${GW_DOMAIN}:${GW_HTTPS_PORT}:${GW_HOST}" \
+            "https://${sub}.${GW_DOMAIN}/"
+        [ "$status" -eq 0 ]
+        [ "$output" = 200 ]
+    done
+}
+
+@test "tls: 不信任内部 CA 时握手必须失败（证明不是公共证书）" {
+    # 反证：如果这里意外返回 200，说明证书来自公共 CA，自签前提不成立
+    run curl -sS --max-time 20 -o /dev/null -w '%{http_code}' \
+        --resolve "nexus.${GW_DOMAIN}:${GW_HTTPS_PORT}:${GW_HOST}" \
+        "https://nexus.${GW_DOMAIN}/"
+    [ "$status" -ne 0 ]
+}
