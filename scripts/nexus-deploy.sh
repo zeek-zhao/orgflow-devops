@@ -110,9 +110,18 @@ log "REST API 已就绪"
 if [ -z "$ADMIN_PASSWORD" ]; then
     log "NEXUS_ADMIN_PASSWORD 未设置，跳过改密（Nexus 仍用初始密码，界面会强制改）"
 else
+    # 统一走一个函数，顺带把 HTTP 状态码带回来 ——
+    # 只用 `curl -f` 的话失败时只剩一句「改密请求失败」，
+    # 401 / 404 / 405 的排查方向完全不同，不能全靠猜。
+    #   api <curl 参数...> → stdout 是 body，最后一行是状态码
+    api() { docker exec "$CONTAINER" curl -sS "$@"; }
+    api_code() { printf '%s' "$1" | tail -n 1; }
+
+    # 用 /status/check 而不是 /security/users：后者要 nexus:users:read 权限，
+    # 前者只要求「已认证」，判「这个密码能不能登录」更直接、更少前置条件。
     login_ok() {
-        docker exec "$CONTAINER" curl -fsS -o /dev/null \
-            -u "$ADMIN_ID:$1" "http://localhost:8081/service/rest/v1/security/users?userId=$ADMIN_ID" 2>/dev/null
+        [ "$(api -o /dev/null -w '%{http_code}' -u "$ADMIN_ID:$1" \
+              http://localhost:8081/service/rest/v1/status/check 2>/dev/null)" = "200" ]
     }
 
     if login_ok "$ADMIN_PASSWORD"; then
@@ -121,24 +130,49 @@ else
         initial="$(docker exec "$CONTAINER" cat /nexus-data/admin.password 2>/dev/null | tr -d '\r\n' || true)"
         [ -n "$initial" ] || fail "配置的密码登录失败，且 /nexus-data/admin.password 不存在 —— 密码已被改过但和 .env 不一致，请人工核对"
 
+        # 只打长度和行数，不打内容：一旦 401，这两个数字就能区分
+        # 「文件读错了」和「文件读对了但认证被拒」。
+        initial_lines="$(docker exec "$CONTAINER" sh -c 'wc -l < /nexus-data/admin.password' 2>/dev/null | tr -d ' \r\n' || true)"
+        log "初始密码文件：${#initial} 字符 / ${initial_lines:-?} 行"
+
+        # 先确认「初始密码真的能登录」，再去改密。
+        # 不先确认的话，改密失败时没法区分「初始密码不对」和「改密接口不对」，
+        # 而这两件事的修法完全相反。
+        login_ok "$initial" \
+            || fail "初始密码登录被拒（读到 ${#initial} 字符）—— admin.password 的内容不是可用密码，检查该 Nexus 版本的初始化机制"
+
         log "用初始密码登录并改密（用户 $ADMIN_ID）"
         # JSON 转义手写：agent 上没有 python3/jq，不能靠它们拼 body。
         # 密码本身是 deploy.sh 生成的 hex，但允许人工改成含引号/反斜杠的串，
         # 所以还是按 JSON 规则转义一次。
         escaped="$(printf '%s' "$ADMIN_PASSWORD" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
-        docker exec "$CONTAINER" curl -fsS -o /dev/null -X PUT \
-            -u "$ADMIN_ID:$initial" \
-            -H 'Content-Type: application/json' \
-            -d "{\"password\":\"$escaped\"}" \
-            "http://localhost:8081/service/rest/v1/security/users/$ADMIN_ID/change-password" \
-            || fail "改密请求失败"
+        payload="{\"password\":\"$escaped\"}"
+
+        resp="$(api -X PUT -u "$ADMIN_ID:$initial" -H 'Content-Type: application/json' \
+            -d "$payload" -w '\n%{http_code}' \
+            "http://localhost:8081/service/rest/v1/security/users/$ADMIN_ID/change-password" 2>&1 || true)"
+        code="$(api_code "$resp")"
+
+        if [ "$code" != "204" ] && [ "$code" != "200" ]; then
+            # 回退：直接改用户对象。个别 Nexus 版本没有 change-password 子资源，
+            # 但 PUT /security/users/{id} 一直支持改密码。
+            log "change-password 返回 $code，改用 PUT /security/users/$ADMIN_ID"
+            resp="$(api -X PUT -u "$ADMIN_ID:$initial" -H 'Content-Type: application/json' \
+                -d "$payload" -w '\n%{http_code}' \
+                "http://localhost:8081/service/rest/v1/security/users/$ADMIN_ID" 2>&1 || true)"
+            code="$(api_code "$resp")"
+        fi
+        case "$code" in
+            200|204) ;;
+            *) fail "改密失败（HTTP ${code:-无响应}）：$(printf '%s' "$resp" | sed '$d' | head -c 400)" ;;
+        esac
 
         # 删掉初始密码文件：留着它等于留一把随时能用的后门，
         # 而且它是「改密成功」的唯一可靠标记（界面上不再提示改密）。
         docker exec "$CONTAINER" rm -f /nexus-data/admin.password
 
         login_ok "$ADMIN_PASSWORD" || fail "改密后仍无法用新密码登录"
-        log "改密完成，初始密码文件已删除"
+        log "改密完成（HTTP $code），初始密码文件已删除"
     fi
 fi
 
