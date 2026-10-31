@@ -21,7 +21,7 @@ if [ ! -f "$ENV_FILE" ]; then
     echo "提示：$ENV_FILE 不存在，本次使用占位值（仅本地渲染校验，不会连接 Jenkins）" >&2
     tmp_env="$(mktemp)"
     trap 'rm -f -- "$tmp_env"' EXIT
-    printf 'JENKINS_URL=https://jenkins.org-devops.com/\nJENKINS_ADMIN_ID=placeholder\nJENKINS_ADMIN_PASSWORD=placeholder\n' >"$tmp_env"
+    printf 'JJB_JENKINS_URL=http://jenkins:8080/\nJENKINS_ADMIN_ID=placeholder\nJENKINS_ADMIN_PASSWORD=placeholder\n' >"$tmp_env"
     ENV_FILE="$tmp_env"
   else
     echo "缺少 $ENV_FILE，请复制 .env.example 并填写 Jenkins 连接信息" >&2
@@ -37,7 +37,11 @@ import re
 import tempfile
 import sys
 
-keys = ("JENKINS_URL", "JENKINS_ADMIN_ID", "JENKINS_ADMIN_PASSWORD")
+keys = ("JJB_JENKINS_URL", "JENKINS_ADMIN_ID", "JENKINS_ADMIN_PASSWORD")
+# jjb 容器在 compose 网络内直连 jenkins 服务（#30），不走网关/oauth2/TLS。
+# 旧 .env 里的 JENKINS_URL 是浏览器/JCasC 用的对外地址，与 JJB 连接地址无关，
+# 缺 JJB_JENKINS_URL 时用内网默认值，不再要求单独配置。
+default_values = {"JJB_JENKINS_URL": "http://jenkins:8080/"}
 values = {}
 for raw in Path(sys.argv[1]).read_text().splitlines():
     line = raw.strip()
@@ -60,6 +64,8 @@ for raw in Path(sys.argv[1]).read_text().splitlines():
     else:
         value = re.split(r"\s+#", value, maxsplit=1)[0].rstrip()
     values[key] = value
+for key, fallback in default_values.items():
+    values.setdefault(key, fallback)
 
 missing = [key for key in keys if not values.get(key)]
 if missing:

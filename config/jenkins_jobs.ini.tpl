@@ -4,6 +4,6 @@ keep_descriptions=False
 recursive=True
 
 [jenkins]
-url=${JENKINS_URL}
+url=${JJB_JENKINS_URL}
 user=${JENKINS_ADMIN_ID}
 password=${JENKINS_ADMIN_PASSWORD}
