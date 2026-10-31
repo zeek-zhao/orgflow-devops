@@ -19,5 +19,8 @@ services:
     image: ghcr.io/zeek-zhao/orgflow-devops/router:24.04-v1@sha256:2ba4f07e9de635a248e019c9d648accd630f0b1a383e8b7bb95dc7bc72d82501
   jjb:
     image: ghcr.io/zeek-zhao/orgflow-devops/jjb:24.04-v1@sha256:7b0377ac59d0cd2b6d7f588b2e44f748e66a293bf9adf74db73d4a44eef90378
+  # dnsmasq 是本次新增的自建镜像，首次 images.yml 构建后由 make images-pin 写入 digest
+  dnsmasq:
+    image: ghcr.io/zeek-zhao/orgflow-devops/dnsmasq:24.04-v1
 
 x-m0-test-image: ghcr.io/zeek-zhao/orgflow-devops/m0-test:24.04-v1@sha256:9da64de59419a9c49ce86358dcc6e53d26ee4cb79fc0fbcd16b418b1cba3a09f
