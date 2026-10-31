@@ -1,0 +1,16 @@
+# .mailmap —— 展示层归一化
+#
+# 历史已在 2026-10-31 重写（见 docs/提交规范.md），这里只为两种情况兜底：
+#   1. 外部工具 / 旧克隆里残留的旧身份
+#   2. GitHub 网页端产生的提交
+#
+# 注意：.mailmap 只影响 `git log` 的显示，不改变 %ae / %ce 的原始值，
+# 因此它**不能替代** pre-commit 钩子与 CI 校验。
+
+zeek.zhao <zeek.zhao@foxmail.com> <42319166+zeek-zhao@users.noreply.github.com>
+zeek.zhao <zeek.zhao@foxmail.com> <zeek-zhao@users.noreply.github.com>
+zeek.zhao <zeek.zhao@foxmail.com> <dev@orgflow.internal>
+
+# 故意不映射 noreply@github.com：
+# 它是 GitHub squash 合并的 committer，属于平台事实，
+# 映射成个人身份会把"主干提交由谁落地"这条信息抹掉。

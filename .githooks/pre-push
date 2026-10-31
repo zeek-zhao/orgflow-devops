@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# =============================================================================
+# pre-push —— 主干保护 + 提交身份校验
+#
+#   装法：make hooks          （设置 core.hooksPath=.githooks）
+#   绕过主干保护：WF4_ALLOW_PUSH_MAIN=1 git push   （仅紧急情况，别常态化）
+#   绕过身份校验：GIT_IDENTITY_ALLOW=1 git push    （仅历史迁移）
+#
+#   为什么要它：私有库 + GitHub 免费计划下，branch protection / rulesets
+#   接口一律 403 Upgrade to GitHub Pro，本地钩子是唯一防线。
+#
+#   身份规则（与 docs/提交规范.md 一致）：
+#     - author    必须恒为 zeek.zhao <zeek.zhao@foxmail.com>
+#     - committer 在非主干分支上必须同上；主干允许 GitHub squash 机器人
+# =============================================================================
+set -uo pipefail
+
+want_email="zeek.zhao@foxmail.com"
+protected="main master"
+zero="0000000000000000000000000000000000000000"
+rc=0
+
+is_protected() {
+  [[ " $protected " == *" $1 "* ]]
+}
+
+while read -r _local_ref local_sha remote_ref remote_sha; do
+  [[ "$remote_ref" == refs/heads/* ]] || continue
+  br="${remote_ref#refs/heads/}"
+
+  # ---- ① 主干保护 -----------------------------------------------------------
+  if is_protected "$br" && [[ "${WF4_ALLOW_PUSH_MAIN:-0}" != 1 ]]; then
+    printf '\n[pre-push] ✗ 禁止直接推 %s\n' "$br" >&2
+    printf '  正确做法：git switch -c feat/<issue#>-<slug> → 提交 → 开 PR\n' >&2
+    printf '  紧急绕过：WF4_ALLOW_PUSH_MAIN=1 git push（请勿常态化）\n\n' >&2
+    rc=1
+    continue
+  fi
+
+  # ---- ② 身份校验 -----------------------------------------------------------
+  [[ "${GIT_IDENTITY_ALLOW:-0}" == 1 ]] && continue
+  [[ "$local_sha" == "$zero" ]] && continue            # 删除分支，无提交可查
+  if [[ "$remote_sha" == "$zero" ]]; then
+    range="$local_sha"                                  # 新分支：全量查
+  else
+    range="$remote_sha..$local_sha"
+  fi
+
+  while read -r sha ae ce; do
+    [[ -z "$sha" ]] && continue
+
+    if [[ "$ae" != "$want_email" ]]; then
+      printf '\n[pre-push] ✗ %s 的 author 邮箱是 %s\n' "${sha:0:8}" "$ae" >&2
+      printf '  期望：%s\n' "$want_email" >&2
+      rc=1
+    fi
+
+    if ! is_protected "$br" && [[ "$ce" != "$want_email" ]]; then
+      printf '\n[pre-push] ✗ %s 的 committer 邮箱是 %s\n' "${sha:0:8}" "$ce" >&2
+      printf '  期望：%s（主干分支允许 GitHub squash 机器人）\n' "$want_email" >&2
+      rc=1
+    fi
+  done < <(git log --format='%H %ae %ce' "$range" 2>/dev/null)
+done
+
+exit "$rc"
