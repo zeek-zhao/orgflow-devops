@@ -40,6 +40,10 @@ cleanup() {
     trap - EXIT
     set +e
     if (( status != 0 )); then diagnose; fi
+    # Nexus 不是 compose 服务（#46），`compose down -v` 管不到它：
+    # 容器还挂在 orgflow 网络上时 down 删不掉网络，卷也删不掉，
+    # 报出来只是 "network has active endpoints"，看着像测试栈没清干净。
+    docker rm -f of-nexus >/dev/null 2>&1 || true
     if [[ ${KEEP:-0} == 1 ]]; then
         echo "KEEP=1: preserving inner containers and m0-dind data; harness stays available for docker exec."
         echo "Stop the harness explicitly after inspection; rerun without KEEP to clean the inner stack."
@@ -81,10 +85,17 @@ if [[ -f $source_env ]]; then
     cp "$source_env" "$M0_ENV_FILE"
 else
     cp /repo/.env.example "$M0_ENV_FILE"
-    for key in LDAP_ADMIN_PASSWORD OAUTH2_CLIENT_SECRET OAUTH2_COOKIE_SECRET JENKINS_ADMIN_PASSWORD; do
+    for key in LDAP_ADMIN_PASSWORD OAUTH2_CLIENT_SECRET OAUTH2_COOKIE_SECRET JENKINS_ADMIN_PASSWORD NEXUS_ADMIN_PASSWORD; do
         secret=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
         sed -i "s/^${key}=.*/${key}=${secret}/" "$M0_ENV_FILE"
     done
+fi
+# 老 .env（#46 之前生成的）没有 NEXUS_ADMIN_*。缺了就补一个随机密码：
+# 否则 JCasC 拿到空值、nexus-deploy 跳过改密，而「改密生效」那条断言
+# 会因为根本没测到而假绿。
+if ! grep -qE '^NEXUS_ADMIN_PASSWORD=.+' "$M0_ENV_FILE"; then
+    printf 'NEXUS_ADMIN_ID=admin\nNEXUS_ADMIN_PASSWORD=%s\n' \
+        "$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')" >> "$M0_ENV_FILE"
 fi
 # 追加覆盖（dotenv 后者生效）：测试栈固定域名与端口，不受调用方 .env 影响
 cat >> "$M0_ENV_FILE" <<EOF
@@ -145,8 +156,8 @@ done < <(jq -r '.name as $project | .services | to_entries[] |
 
 stage="starting inner stack"
 compose up -d --no-build --pull never
-stage="waiting for eleven healthy services"
-services=(dnsmasq jenkins jenkins-agent caddy router ldap ldapadmin dex oauth2-proxy nexus homepage)
+stage="waiting for ten healthy services"
+services=(dnsmasq jenkins jenkins-agent caddy router ldap ldapadmin dex oauth2-proxy homepage)
 deadline=$((SECONDS + 300))
 while :; do
     pending=()
@@ -164,6 +175,28 @@ while :; do
     echo "waiting: ${pending[*]}"
     sleep 5
 done
+
+# #46：Nexus 不是 compose 服务了，它由 Jenkins job `nexus-deploy` 部署。
+# 测试栈里等价于「compose 起来之后跑一次 job」——所以直接跑脚本。
+# 镜像同样按 config ID 钉死（tag 会漂，ID 不会），口径与上面的 compose 预载一致。
+stage="deploying nexus (job equivalent)"
+nexus_ref="$(awk -F '\t' '$1 == "nexus" {print $2 "@" $3}' /repo/tests/images.lock)"
+if [[ -S /host/docker.sock ]]; then
+    nexus_id=$(docker -H unix:///host/docker.sock image inspect -f '{{.Id}}' "$nexus_ref")
+    if ! docker image inspect "$nexus_id" >/dev/null 2>&1; then
+        echo "preload nexus: $nexus_ref"
+        docker -H unix:///host/docker.sock save "$nexus_ref" | docker load
+    fi
+else
+    nexus_id=$(docker image inspect -f '{{.Id}}' "$nexus_ref") || {
+        echo "missing $nexus_ref; mount the host socket at /host/docker.sock" >&2
+        exit 1
+    }
+fi
+NEXUS_IMAGE="$nexus_id" \
+NEXUS_ADMIN_ID="$(sed -n 's/^NEXUS_ADMIN_ID=//p' "$M0_ENV_FILE" | tail -1)" \
+NEXUS_ADMIN_PASSWORD="$(sed -n 's/^NEXUS_ADMIN_PASSWORD=//p' "$M0_ENV_FILE" | tail -1)" \
+    bash /repo/scripts/nexus-deploy.sh
 
 stage="bootstrapping isolated LDAP"
 compose exec -T ldap sh -c 'LDAP_URI=ldap://localhost:389 bash /opt/orgflow-auth/bootstrap-ldif.sh'

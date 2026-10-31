@@ -71,6 +71,13 @@ credentials:
               scope: GLOBAL
               id: "oauth2-cookie-secret"
               secret: "${OAUTH2_COOKIE_SECRET}"
+          # Nexus 管理员密码（#46）。Nexus 移出 compose 后由 job `nexus-deploy`
+          # 部署并改密；job 用 withCredentials 注入，密码不出现在命令行与日志里。
+          # 空值也能过 JCasC（env 变量存在但为空），此时脚本会跳过改密并告警。
+          - string:
+              scope: GLOBAL
+              id: "nexus-admin-password"
+              secret: "${NEXUS_ADMIN_PASSWORD}"
           # agent 的 SSH 私钥（#45）。
           #
           # ★ 不能用 fileOnMaster：那个 PrivateKeySource 已 @Deprecated，

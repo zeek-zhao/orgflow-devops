@@ -1,13 +1,18 @@
 name: orgflow-devops
 
-# M0 最小核心：Jenkins + 权限管理服务 + 路由注册服务 + Caddy + Nexus + 内部 DNS
+# M0 最小核心：Jenkins + 权限管理服务 + 路由注册服务 + Caddy + 内部 DNS
+#
+# ★ Nexus 不在这里（#46）：它是「被 Jenkins 部署的制品库」，不是底座。
+#   由 job `nexus-deploy` 调 scripts/nexus-deploy.sh 用 docker run 拉起，
+#   固定 IP 与网络别名由脚本负责。所以 `make deploy` 之后 nexus 站点是 502，
+#   跑完 job 才是 200 —— 这是设计，不是故障。
 #
 # 网络模型（ADR-13）：固定 IP + 域名路由
 #   172.31.0.2   dnsmasq      *.org-devops.com → 172.31.0.10
 #   172.31.0.10  caddy        :80 跳转 / :443 站点
 #   172.31.0.11  router
 #   172.31.0.20  jenkins
-#   172.31.0.21  nexus
+#   172.31.0.21  nexus        ← 不在本文件，由 nexus-deploy.sh 创建
 #   172.31.0.22  ldap
 #   172.31.0.23  ldapadmin
 #   172.31.0.24  dex
@@ -62,6 +67,11 @@ services:
       # secrets/agent_ssh_key 读出来 export，这里只做透传（不带 = 就是从宿主环境取值）。
       # JCasC 用 directEntry 引用它 —— 私钥既不进仓库，也不进 .env。
       - JENKINS_AGENT_SSH_PRIVATE_KEY
+      # Nexus 管理员密码（#46）：Nexus 已移出 compose，由 job `nexus-deploy` 部署并改密。
+      # 密码经 JCasC 落成 Jenkins 凭据 `nexus-admin-password`，job 里 withCredentials 注入，
+      # 不出现在命令行与日志里。留空则 job 跳过改密（Nexus 仍用初始密码）。
+      - NEXUS_ADMIN_ID=${NEXUS_ADMIN_ID:-admin}
+      - NEXUS_ADMIN_PASSWORD=${NEXUS_ADMIN_PASSWORD:-}
     volumes:
       - jenkins_home:/var/jenkins_home
       - ./config/jenkins.yaml:/var/jenkins_home/casc/jenkins.yaml:ro
@@ -328,29 +338,6 @@ services:
       retries: 5
       start_period: 10s
 
-  nexus:
-    image: sonatype/nexus3:3.92.2@sha256:a32ae23e0fdacccc4f2a9cbf3aa613388d11a1495d5dd66c639c8e84ad39b179 # lock: nexus
-    container_name: of-nexus
-    restart: unless-stopped
-    volumes:
-      - nexus_data:/nexus-data
-    expose:
-      - "8081"
-    depends_on:
-      dnsmasq:
-        condition: service_healthy
-    dns:
-      - 172.31.0.2
-    networks:
-      orgflow:
-        ipv4_address: 172.31.0.21
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8081/service/rest/v1/status"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 120s
-
   # 统一入口：一屏看到所有服务，点进去直达。
   # HOMEPAGE_ALLOWED_HOSTS 必须由 GATEWAY_DOMAIN 驱动：homepage 会校验 Host 头，
   # 写死某个域名后换域名访问会直接 400，而且报错只说 "host not allowed"，
@@ -414,4 +401,9 @@ volumes:
   caddy_data:
   ldap_data:
   ldap_config:
+  # ★ 保留声明但已没有服务使用（#46：nexus 移出 compose）。
+  # 留着是为了让卷名继续由 compose 决定（`name: orgflow-devops` → orgflow-devops_nexus_data），
+  # 与 scripts/backup-common.sh 里写死的卷名对齐 —— 卷名一旦漂移，
+  # 备份脚本会备份一个空卷而真正的数据在另一个卷里，**静默出错**。
+  # 声明在这里的卷 `docker compose up` 仍会创建它，nexus-deploy.sh 直接挂这个卷。
   nexus_data:

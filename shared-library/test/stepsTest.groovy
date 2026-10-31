@@ -48,18 +48,35 @@ assert dry.bindings == null
 
 def deploy = newState()
 loadStep('deployService', deploy).call(
-    service: 'jenkins', environment: 'staging', version: 'lts-jdk17', dryRun: false
+    service: 'jenkins', environment: 'staging', dryRun: false
 )
 assert deploy.commands.size() == 1
 assert deploy.commands[0].contains('bash scripts/deploy.sh --service "$DEPLOY_SERVICE"')
 assert deploy.environment.contains('ENV_NAME=staging')
-assert deploy.environment.contains('SERVICE_VERSION=lts-jdk17')
+// #46：version 已停用，环境里不该再出现 SERVICE_VERSION
+assert !deploy.environment.any { it.startsWith('SERVICE_VERSION=') }
 assert deploy.bindings*.credentialsId == [
     'ldap-admin-password', 'oauth2-client-secret', 'oauth2-cookie-secret'
 ]
 assert deploy.bindings*.variable == [
     'LDAP_ADMIN_PASSWORD', 'OAUTH2_CLIENT_SECRET', 'OAUTH2_COOKIE_SECRET'
 ]
+
+// #46：Nexus 走独立 step —— 它已移出 compose，凭据也只用到 nexus-admin-password
+def nexusDry = newState()
+loadStep('deployNexus', nexusDry).call(environment: 'dev', dryRun: true)
+assert nexusDry.messages.size() == 1
+assert nexusDry.messages[0].contains('bash scripts/nexus-deploy.sh')
+assert nexusDry.commands.empty
+assert nexusDry.bindings == null
+
+def nexus = newState()
+loadStep('deployNexus', nexus).call(environment: 'prod', dryRun: false)
+assert nexus.commands.size() == 1
+assert nexus.commands[0].contains('bash scripts/nexus-deploy.sh')
+assert nexus.environment.contains('ENV_NAME=prod')
+assert nexus.bindings*.credentialsId == ['nexus-admin-password']
+assert nexus.bindings*.variable == ['NEXUS_ADMIN_PASSWORD']
 
 def backup = newState()
 loadStep('backupService', backup).call(service: 'all', target: 'local', retentionDays: '0')
@@ -121,7 +138,7 @@ assert restore.bindings == null
 // Compile the actual JJB output, including its resolved braces and checkout syntax.
 def loader = new GroovyClassLoader()
 loader.parseClass('@interface Library { String value(); }')
-['deploy-service', 'backup-service', 'restore-service'].each { name ->
+['deploy-service', 'backup-service', 'restore-service', 'nexus-deploy'].each { name ->
     def xmlFile = new File(".jjb/rendered/${name}/config.xml")
     assert xmlFile.exists(): 'Run make jobs-test first'
     def factory = javax.xml.parsers.DocumentBuilderFactory.newInstance()

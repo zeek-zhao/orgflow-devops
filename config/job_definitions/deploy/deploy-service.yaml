@@ -23,7 +23,6 @@
         deployService(
           service: params.SERVICE,
           environment: params.ENV,
-          version: params.VERSION,
           dryRun: params.DRY_RUN
         )
       }}
@@ -38,8 +37,7 @@
             - ldapadmin
             - dex
             - oauth2-proxy
-            - nexus
-          description: "要部署的服务"
+          description: "要部署的服务（nexus 已移出 compose，改用 job nexus-deploy，#46）"
       - choice:
           name: ENV
           choices:
@@ -47,10 +45,6 @@
             - staging
             - prod
           description: "目标环境"
-      - string:
-          name: VERSION
-          default: ''
-          description: "Jenkins/Nexus 镜像 tag（留空保留 Compose 默认版本）"
       - bool:
           name: DRY_RUN
           default: false
