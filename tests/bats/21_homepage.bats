@@ -40,3 +40,28 @@ setup() {
         return 1
     }
 }
+
+@test "homepage: 每个书签都必须有 href（缺了整页会报 Invalid URL）" {
+    # bookmarks.yaml 的值写成映射而不是列表时，homepage 会静默丢掉 href/icon，
+    # /api/bookmarks 只剩 name。前端 `new URL(e.href)` 拿到 undefined 就抛
+    #   TypeError: Failed to construct 'URL': Invalid URL
+    # 而服务端渲染完全正常（HTML 里 href 都在），只有真浏览器会炸 —— 所以
+    # 必须在接口层拦，不能靠页面状态码。
+    run gw_body home /api/bookmarks
+    [ "$status" -eq 0 ]
+
+    local total missing
+    total=$(jq '[.[] | .bookmarks[]?] | length' <<< "$output")
+    missing=$(jq '[.[] | .bookmarks[]? | select((.href // "") == "")] | length' <<< "$output")
+
+    if [[ $total -eq 0 ]]; then
+        echo "bookmarks 是空的：/api/bookmarks 没解析出任何书签" >&2
+        return 1
+    fi
+
+    if [[ $missing -ne 0 ]]; then
+        echo "有 $missing/$total 个书签没有 href，bookmarks.yaml 是不是写成了映射？" >&2
+        jq -r '.[] | .bookmarks[]? | select((.href // "") == "") | "  缺 href: " + .name' <<< "$output" >&2
+        return 1
+    fi
+}

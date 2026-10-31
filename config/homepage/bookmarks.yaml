@@ -1,17 +1,29 @@
 # 书签：外部参考文档。只放官方文档，不放需要登录的内部系统。
+#
+# ⚠ 书签的值**必须是列表**（`- 名字: [{href: ...}]`），不能直接写映射。
+# 写成映射时 homepage 会静默丢掉 href/icon，`/api/bookmarks` 只剩 name，
+# 前端 `new URL(e.href)` 拿到 undefined → 整页报
+#   TypeError: Failed to construct 'URL': Invalid URL
+# 服务端渲染是正常的，只有真浏览器才炸，所以 tests/bats/21_homepage.bats
+# 在接口层加了断言盯着这件事。
 - 官方文档:
     - Caddy:
-        href: https://caddyserver.com/docs/
-        icon: mdi-web
+        - abbr: CD
+          href: https://caddyserver.com/docs/
+          icon: mdi-web
     - Dex:
-        href: https://dexidp.io/docs/
-        icon: mdi-web
+        - abbr: DX
+          href: https://dexidp.io/docs/
+          icon: mdi-web
     - Jenkins:
-        href: https://www.jenkins.io/doc/
-        icon: mdi-web
+        - abbr: JK
+          href: https://www.jenkins.io/doc/
+          icon: mdi-web
     - oauth2-proxy:
-        href: https://oauth2-proxy.github.io/oauth2-proxy/
-        icon: mdi-web
+        - abbr: OA
+          href: https://oauth2-proxy.github.io/oauth2-proxy/
+          icon: mdi-web
     - Jenkins Job Builder:
-        href: https://docs.openstack.org/infra/jenkins-job-builder/
-        icon: mdi-web
+        - abbr: JB
+          href: https://docs.openstack.org/infra/jenkins-job-builder/
+          icon: mdi-web
