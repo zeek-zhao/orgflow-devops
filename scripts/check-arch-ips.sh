@@ -54,6 +54,12 @@ if [[ $STATIC -eq 0 ]]; then
     for svc in "${!DOC_IP[@]}"; do
         cid=$(docker compose ps -q "$svc" 2>/dev/null || true)
         if [[ -z "$cid" ]]; then
+            # nexus 不在 compose 里（#46），它是 job 用 docker run 创建的。
+            # 按容器名兜底，否则这一行会永远报「容器未运行」——
+            # 而那个报错看起来像服务挂了，其实是查法不对。
+            cid=$(docker ps -q -f "name=^of-${svc}$" 2>/dev/null || true)
+        fi
+        if [[ -z "$cid" ]]; then
             echo "  ✗ $svc: 容器未运行（文档写 ${DOC_IP[$svc]}）" >&2
             fail=1
             continue

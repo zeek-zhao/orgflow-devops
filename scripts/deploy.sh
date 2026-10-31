@@ -29,7 +29,8 @@ if [ "$PUSH_JOBS" = 1 ]; then
 fi
 
 case "$SERVICE" in
-  ""|dnsmasq|jenkins|jenkins-agent|caddy|router|ldap|ldapadmin|dex|oauth2-proxy|nexus|homepage) ;;
+  ""|dnsmasq|jenkins|jenkins-agent|caddy|router|ldap|ldapadmin|dex|oauth2-proxy|homepage) ;;
+  nexus) echo "nexus 已移出 compose（#46）：请跑 Jenkins job nexus-deploy，或直接 bash scripts/nexus-deploy.sh" >&2; exit 1 ;;
   *) echo "不支持的服务: $SERVICE" >&2; exit 1 ;;
 esac
 case "${ENV_NAME:-dev}" in
@@ -39,22 +40,11 @@ case "${ENV_NAME:-dev}" in
 esac
 
 if [ -n "${SERVICE_VERSION:-}" ]; then
-  if [[ ! "$SERVICE_VERSION" =~ ^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$ ]]; then
-    echo "SERVICE_VERSION 不是合法的镜像 tag" >&2
-    exit 1
-  fi
-  case "$SERVICE" in
-    # jenkins 已改成自建镜像（#44），不再有上游 digest 可对，所以退出这个白名单；
-    # 只剩 nexus 还是「上游镜像 + images.lock 锁 digest」的形态。
-    nexus)
-      locked_ref="$(awk -F '\t' -v service="$SERVICE" '$1 == service {print $2}' tests/images.lock)"
-      if [ "${locked_ref##*:}" != "$SERVICE_VERSION" ]; then
-        echo "SERVICE_VERSION 必须匹配 tests/images.lock；升级请先更新 digest 锁定" >&2
-        exit 1
-      fi
-      ;;
-    *) echo "SERVICE_VERSION 仅支持 Nexus" >&2; exit 1 ;;
-  esac
+  # #46：唯一支持版本覆盖的 nexus 已经移出 compose，这条通道没有适用对象了。
+  # 保留成硬错误而不是静默忽略 —— 传了却什么都没发生，是排查时最贵的一种"成功"。
+  echo "SERVICE_VERSION 已停用（#46）：nexus 移出 compose，改由 Jenkins job nexus-deploy 部署；" >&2
+  echo "镜像 digest 写在 scripts/nexus-deploy.sh 的 NEXUS_IMAGE 里。" >&2
+  exit 1
 fi
 if [ -n "${SERVICE_PORT:-}" ]; then
   echo "SERVICE_PORT 已废弃（ADR-13 域名路由）：请在 $ENV_FILE 设置 GATEWAY_HTTP_PORT / GATEWAY_HTTPS_PORT" >&2
@@ -79,6 +69,8 @@ import sys
 
 values = {key: secrets.token_hex(32) for key in (
     "JENKINS_ADMIN_PASSWORD", "LDAP_ADMIN_PASSWORD", "OAUTH2_CLIENT_SECRET",
+    # #46：Nexus 由 job 部署并改密，密码在这里生成，随 .env 落盘。
+    "NEXUS_ADMIN_PASSWORD",
 )}
 # 32 printable ASCII bytes; also a valid oauth2-proxy base64 cookie secret.
 values["OAUTH2_COOKIE_SECRET"] = "".join(
@@ -276,8 +268,8 @@ start_batch dnsmasq
 start_batch ldap
 start_batch dex oauth2-proxy
 start_batch router caddy
-start_batch jenkins jenkins-agent nexus ldapadmin homepage
-wait_healthy dnsmasq ldap dex oauth2-proxy router caddy jenkins jenkins-agent nexus ldapadmin homepage
+start_batch jenkins jenkins-agent ldapadmin homepage
+wait_healthy dnsmasq ldap dex oauth2-proxy router caddy jenkins jenkins-agent ldapadmin homepage
 
 # 域名路由：所有自检都带 SNI/Host，走 127.0.0.1 的映射端口。
 #
@@ -312,11 +304,11 @@ for check in "auth /ping 200" "jenkins / 302" "home / 200"; do
   echo "端点自检通过: $url = $actual"
 done
 
-echo "== 部署完成：全部服务 healthy =="
+echo "== 部署完成：compose 侧全部服务 healthy =="
 echo "网关端口：HTTP ${HTTP_PORT} / HTTPS ${HTTPS_PORT}（宿主映射）"
 echo "访问入口（需要先让域名解析到本机）："
 echo "  https://jenkins.${GATEWAY_DOMAIN}${VISIBLE_PORT}/     受保护，未登录 302 是认证跳转"
-echo "  https://nexus.${GATEWAY_DOMAIN}${VISIBLE_PORT}/"
+echo "  https://nexus.${GATEWAY_DOMAIN}${VISIBLE_PORT}/       ★ 现在是 502：Nexus 由 job 部署（#46）"
 echo "  https://ldapadmin.${GATEWAY_DOMAIN}${VISIBLE_PORT}/     受保护，未登录 302 是认证跳转"
 echo "  https://auth.${GATEWAY_DOMAIN}${VISIBLE_PORT}/ping    认证网关"
 echo "  https://dex.${GATEWAY_DOMAIN}${VISIBLE_PORT}/dex/     OIDC"
@@ -324,4 +316,11 @@ echo "  https://home.${GATEWAY_DOMAIN}${VISIBLE_PORT}/        统一入口（所
 echo "域名解析：bash scripts/gen-hosts.sh      生成 /etc/hosts 片段"
 echo "证书信任：bash scripts/ca-install.sh     安装 Caddy 内部 CA 根证书"
 echo "下一步: make jobs（先配置 Jenkins 插件、API 管理入口及 GitHub 凭据）"
+echo "       然后跑 Jenkins job nexus-deploy（或 bash scripts/nexus-deploy.sh）把 Nexus 拉起来"
 echo "Jenkins 管理员密码在 $ENV_FILE 的 JENKINS_ADMIN_PASSWORD"
+if ! grep -qE '^NEXUS_ADMIN_PASSWORD=.+' "$ENV_FILE" 2>/dev/null; then
+  echo "⚠ $ENV_FILE 没有 NEXUS_ADMIN_PASSWORD：nexus-deploy 会跳过改密，" >&2
+  echo "  Nexus 将停在「界面强制改初始密码」的状态。老环境请手动补上这两行：" >&2
+  echo "    NEXUS_ADMIN_ID=admin" >&2
+  echo "    NEXUS_ADMIN_PASSWORD=<你的密码>" >&2
+fi

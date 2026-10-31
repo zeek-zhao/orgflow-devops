@@ -112,7 +112,9 @@ if args[0] == "inspect":
         first = path.read_bytes()
         # jenkins / jenkins-agent 都是自建（#44 / #45），从「mirror 上游」改成「自建」后
         # 它们从保留列表挪到回写列表：上游 digest 不再适用，digest 只能由 images.yml 构建后回写。
-        for name in ("caddy", "ldap", "ldapadmin", "dex", "oauth2-proxy", "nexus"):
+        # nexus 已不在 .ghcr.yml 里（#46：移出 compose，镜像 digest 由
+        # scripts/nexus-deploy.sh 持有），所以它不再属于「保留不动的 upstream 块」。
+        for name in ("caddy", "ldap", "ldapadmin", "dex", "oauth2-proxy"):
             pattern = rf"^  {name}:\n    image: [^\n]+\n"
             self.assertEqual(re.search(pattern, path.read_text(), re.MULTILINE).group(),
                              re.search(pattern, original, re.MULTILINE).group())

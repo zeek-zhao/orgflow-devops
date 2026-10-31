@@ -178,19 +178,34 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
         self.dotenv.unlink()
         self.assertNotEqual(self.run_script("gen-jjb-conf").returncode, 0)
 
-    def test_deploy_selected_service_and_version(self):
-        # SERVICE_VERSION 只对「上游镜像 + images.lock 锁 digest」的服务有意义；
-        # jenkins 改自建后（#44）不再接受它，这里改用 nexus 覆盖同一条路径。
-        result = self.run_script(
-            "deploy", "--service", "nexus", SERVICE_VERSION="3.92.2",
-        )
+    def test_deploy_selected_service(self):
+        # #46：SERVICE_VERSION 已停用（唯一支持版本覆盖的 nexus 移出了 compose），
+        # 单服务部署只按服务名走。
+        result = self.run_script("deploy", "--service", "caddy")
         self.assertEqual(result.returncode, 0, result.stderr)
         commands = self.deploy_calls()
         self.assertEqual(commands[0]["args"], [
-            "compose", "--env-file", ".env", "up", "-d", "--no-deps", "nexus",
+            "compose", "--env-file", ".env", "up", "-d", "--no-deps", "caddy",
         ])
         self.assertIsNone(commands[0]["version"])
-        self.assertEqual(commands[1]["args"][-2:], ["ps", "nexus"])
+        self.assertEqual(commands[1]["args"][-2:], ["ps", "caddy"])
+
+    def test_deploy_rejects_service_version(self):
+        # 传了却什么都不发生，是排查时最贵的一种"成功"
+        result = self.run_script(
+            "deploy", "--service", "caddy", SERVICE_VERSION="3.92.2",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("SERVICE_VERSION 已停用", result.stderr)
+        # 前置校验就该退出：一条 docker 命令都不该跑过
+        self.assertFalse(self.log.exists())
+
+    def test_deploy_rejects_nexus(self):
+        # #46：nexus 移出 compose，必须指向 job，而不是静默 no-op
+        result = self.run_script("deploy", "--service", "nexus")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("nexus-deploy", result.stderr)
+        self.assertFalse(self.log.exists())
 
     def test_deploy_environment_file_carries_the_gateway_port(self):
         # ADR-13 起端口不再是部署参数：唯一的入口是环境文件里的 GATEWAY_HTTP_PORT
@@ -295,6 +310,50 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
                 result = self.run_script("backup", *args, **env)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse(self.log.exists())
+
+
+class NexusJobDefinitionTests(unittest.TestCase):
+    """#46 的静态约束。
+
+    这些关系一旦漂了，只有「真机上把 job 跑一遍」才会暴露 —— 而真机验证
+    是最慢、最容易被跳过的环节。能静态钉死的就别留给真机。
+    """
+
+    def test_image_digest_matches_images_lock(self):
+        rows = {}
+        for line in (ROOT / "tests/images.lock").read_text(encoding="utf-8").splitlines():
+            if not line.strip() or line.startswith("#"):
+                continue
+            name, ref, digest = line.split("\t")
+            rows[name] = (ref, digest)
+        ref, digest = rows["nexus"]
+        tag = ref.split(":", 1)[1]
+        script = (ROOT / "scripts/nexus-deploy.sh").read_text(encoding="utf-8")
+        # 213 拉不到 Docker Hub，所以脚本必须指向 GHCR 的 mirror 包；
+        # 但 digest 必须和 images.lock 一致，否则「nexus 跑的是哪个版本」有两个真源。
+        self.assertIn(f"mirror-nexus:{tag}@{digest}", script)
+
+    def test_job_runs_on_the_docker_agent_through_the_shared_library(self):
+        text = (ROOT / "config/job_definitions/nexus/nexus-deploy.yaml").read_text(encoding="utf-8")
+        # 双花括号是 JJB 模板的转义形式（渲染后是单花括号），故意按渲染前断言
+        self.assertIn("node('orgflow-docker') {{", text)
+        self.assertIn("deployNexus(", text)
+        self.assertNotIn("docker run", text)  # 部署逻辑在脚本里，job 只负责调度
+
+    def test_deploy_service_no_longer_offers_nexus(self):
+        groovy = (ROOT / "shared-library/vars/deployService.groovy").read_text(encoding="utf-8")
+        self.assertNotIn("'nexus'", groovy)
+        job = (ROOT / "config/job_definitions/deploy/deploy-service.yaml").read_text(encoding="utf-8")
+        self.assertNotIn("- nexus\n", job)
+
+    def test_nexus_password_is_injected_as_a_credential(self):
+        groovy = (ROOT / "shared-library/vars/deployNexus.groovy").read_text(encoding="utf-8")
+        self.assertIn("credentialsId: 'nexus-admin-password'", groovy)
+        self.assertIn("set +x", groovy)
+        # 密码绝不能作为参数或内联到命令里
+        self.assertNotIn("$NEXUS_ADMIN_PASSWORD", groovy)
+        jcasc = (ROOT / "config/jenkins.yaml").read_text(encoding="utf-8")
+        self.assertIn('id: "nexus-admin-password"', jcasc)
 
 
 if __name__ == "__main__":

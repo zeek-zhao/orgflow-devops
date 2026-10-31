@@ -10,7 +10,7 @@ endif
 
 help:
 	@echo "make render   渲染 routes.yaml -> out/Caddyfile"
-	@echo "make deploy   起 M0 底座（Jenkins/权限/路由/Caddy/Nexus）；SERVICE=xxx 单服务"
+	@echo "make deploy   起 M0 底座（Jenkins/权限/路由/Caddy）；SERVICE=xxx 单服务；Nexus 由 job nexus-deploy 部署"
 	@echo "make doctor   只读环境自检（Docker/端口/配置/磁盘/镜像，不启动容器）"
 	@echo "make hosts    IP=192.168.0.50 生成 /etc/hosts 片段（域名路由必需）"
 	@echo "make ca       导出并安装 Caddy 内部 CA 根证书"
@@ -22,7 +22,7 @@ help:
 	@echo "make lint     静态检查（shellcheck/yamllint）"
 	@echo "make test     跑 Python 侧测试（路由/导入/Job 定义）"
 	@echo "make test-groovy 跑共享库行为测试（需要 groovy，缺失则跳过）"
-	@echo "make test-bats DinD 容器内跑 11 个服务/策略用例（KEEP=1 保现场）"
+	@echo "make test-bats DinD 容器内跑 10 个 compose 服务 + job 部署的 nexus（KEEP=1 保现场）"
 	@echo "make images-lock 从本地镜像 digest 更新 tests/images.lock"
 	@echo "make images-pin 从 GHCR 回写自建镜像 digest（先跑 images.yml）"
 	@echo "USE_GHCR=1 make up / test-bats 使用 GHCR 锁定镜像（包全 public，无需 docker login）"
