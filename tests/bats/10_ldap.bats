@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 setup() {
     load 'helpers/common'
-    setup_http
+    setup_gw
 }
 
 ldap_query() {

@@ -1,20 +1,23 @@
 #!/usr/bin/env bats
 setup() {
     load 'helpers/common'
-    setup_http
+    setup_gw
 }
 
-@test "dex: discovery, signing keys and health endpoint" {
-    assert_http /dex/.well-known/openid-configuration 200
-    run http_body /dex/.well-known/openid-configuration
+@test "dex: discovery, signing keys and health endpoint on the dex subdomain" {
+    assert_gw dex /.well-known/openid-configuration 200
+    run gw_body dex /.well-known/openid-configuration
     [ "$status" -eq 0 ]
-    jq -e '(.issuer | endswith("/dex")) and
-        (.jwks_uri | type == "string" and length > 0) and
+    # issuer 必须是浏览器可达的绝对域名地址（模板渲染生效的直接证据）
+    run jq -r '.issuer' <<< "$output"
+    [ "$output" = "https://dex.${GW_DOMAIN}/dex" ]
+    run jq -e '(.jwks_uri | type == "string" and length > 0) and
         (.authorization_endpoint | type == "string" and length > 0) and
         (.token_endpoint | type == "string" and length > 0)' <<< "$output"
-    assert_http /dex/keys 200
-    run http_body /dex/keys
+    [ "$status" -eq 0 ]
+    assert_gw dex /dex/keys 200
+    run gw_body dex /dex/keys
     [ "$status" -eq 0 ]
     jq -e '.keys | type == "array" and length > 0' <<< "$output"
-    assert_http /dex/healthz 200
+    assert_gw dex /dex/healthz 200
 }

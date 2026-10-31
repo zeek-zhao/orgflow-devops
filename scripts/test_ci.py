@@ -95,7 +95,7 @@ if args[0] == "inspect":
         expected = [f"{ref}@{digest}" for line in (self.root / "tests/images.lock").read_text().splitlines()
                     if not line.startswith("#") for _, ref, digest in [line.split("\t")]]
         self.assertEqual([call[-1] for call in self.calls() if call[0] == "pull"], expected)
-        self.assertEqual(self.calls()[-1], ["compose", "build", "router"])
+        self.assertEqual(self.calls()[-1], ["compose", "build", "router", "dnsmasq"])
 
     def test_failed_pull_is_not_hidden(self):
         result = self.run_script("tests/images.sh", "ensure",
@@ -114,14 +114,14 @@ if args[0] == "inspect":
             pattern = rf"^  {name}:\n    image: [^\n]+\n"
             self.assertEqual(re.search(pattern, path.read_text(), re.MULTILINE).group(),
                              re.search(pattern, original, re.MULTILINE).group())
-        for name in ("router", "jjb", "m0-test"):
+        for name in ("router", "jjb", "m0-test", "dnsmasq"):
             self.assertIn(f"/{name}:24.04-v1@{DIGEST}", path.read_text())
         self.assertIn("x-m0-test-image:", path.read_text())
         result = self.run_script("scripts/pin-images.sh")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(path.read_bytes(), first)
         self.assertEqual((self.root / "tests/images.lock").read_bytes(), lock)
-        self.assertEqual(len([call for call in self.calls() if "inspect" in call]), 6)
+        self.assertEqual(len([call for call in self.calls() if "inspect" in call]), 7)
         self.assertTrue(all(call[-1].endswith(":latest") for call in self.calls() if "inspect" in call))
 
     def test_explicit_sha_tag_supports_premerge_acceptance(self):
