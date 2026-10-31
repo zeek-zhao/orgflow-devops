@@ -1,17 +1,17 @@
 # 权限管理服务（M0）
 
 ```text
-浏览器 → Caddy :8080 → oauth2-proxy :4180 → Dex :5556 → OpenLDAP :389
-           │            会话校验           OIDC IdP       用户/组
-           ├─ /jenkins    forward_auth 成功后 → Jenkins :8080
-           ├─ /auth/*    → oauth2-proxy（剥离 /auth）
-           ├─ /dex/*     → Dex（保留 /dex）
-           └─ /ldapadmin → LDAP Admin → OpenLDAP
+浏览器 → Caddy :443（按域名分站点）→ oauth2-proxy :4180 → Dex :5556 → OpenLDAP :389
+                    │                 会话校验          OIDC IdP      用户/组
+                    ├─ jenkins.<domain>   forward_auth 成功后 → Jenkins :8080
+                    ├─ auth.<domain>      → oauth2-proxy（/oauth2/*、/ping）
+                    ├─ dex.<domain>       → Dex（路径保留 /dex/*）
+                    └─ ldapadmin.<domain> → LDAP Admin → OpenLDAP
 ```
 
-仅 `/jenkins` 开启 `auth: true`，未登录时由 Caddy 返回 302，
-跳转 `/auth/oauth2/start?rd={uri}`。`/nexus`、`/ldapadmin`、`/auth`、`/dex`
-不鉴权；尤其 LDAP Admin 不应暴露到公网。认证后透传
+仅 Jenkins 站点开启 `auth: true`，未登录时由 Caddy 返回 302，跳转
+`https://auth.<domain>/oauth2/start?rd=<原始URL>`。Nexus、LDAP Admin、Dex、auth
+站点不鉴权；尤其 LDAP Admin 不应暴露到公网。认证后透传
 `X-Auth-Request-User` / `X-Auth-Request-Email`，不改 Jenkins 自身认证或授权，
 也不把 LDAP 组自动映射为 Jenkins 权限。
 
@@ -22,18 +22,21 @@ oauth2-proxy **7.x 已移除 LDAP provider**。实测 v7.3.0、v7.4.0、v7.6.0
 直接报 `unknown flag: --ldap-server`。不能使用 `--provider=ldap`；
 本项目使用 `--provider=oidc`，由 Dex 查询 LDAP 并签发 OIDC token。
 
-M0 固定浏览器入口为 `http://localhost:8080`，Dex issuer 为
-`http://localhost:8080/dex`，client ID 为 `jenkins`。远程访问时可通过
-`ssh -L 8080:localhost:8080 <部署主机>` 使用该地址。
-更换域名/端口时须同步 issuer、redirectURIs、oauth2-proxy 端点和 whitelist。
+M0 的浏览器入口是 `https://<subdomain>.<GATEWAY_DOMAIN>`（默认
+`org-devops.com`），Dex issuer 为 `https://dex.<domain>/dex`，
+oauth2-proxy 回调为 `https://auth.<domain>/oauth2/callback`，client ID 为 `jenkins`。
+Dex 配置由 `services/auth/dex/config.yaml.tmpl` + `scripts/render-dex.sh` 按当前域名
+渲染到 `out/dex/config.yaml`（dex 是 scratch 镜像，无法启动期渲染）。
+更换域名时改 `.env` 的 `GATEWAY_DOMAIN` 并重新 `make deploy`，渲染会自动同步
+issuer、redirectURIs、oauth2-proxy 端点和 whitelist。
 
 **Dex 子路径注意事项：** v2.41.1 的端点路径跟随 issuer；实测
 `/keys`、`/healthz` 为 404，`/dex/keys`、`/dex/healthz` 为 200。
-因此 `/dex` 路由必须 `strip: false`，内部地址使用
+因此 `dex.<domain>` 站点的上游是 `dex:5556` 且**保留路径**，内部地址使用
 `http://dex:5556/dex/token` 和 `http://dex:5556/dex/keys`。
 不能同时使用该 issuer、剥离 `/dex` 和根路径 `/token`、`/keys`。
-`--skip-oidc-discovery=true` 配合显式端点，使浏览器走 localhost、
-容器走 dex 服务名；`--upstream=static://202` 用于 forward_auth，
+`--skip-oidc-discovery=true` 配合显式端点，使浏览器走 `https://dex.<domain>`、
+容器走 `dex:5556`；`--upstream=static://202` 用于 forward_auth，
 真正的 Jenkins 反代仍由 Caddy 完成。
 
 ## 启动与导入
@@ -47,12 +50,14 @@ M0 固定浏览器入口为 `http://localhost:8080`，Dex issuer 为
    v2.41.1 不会展开 static client 的 `secret: ${OAUTH2_CLIENT_SECRET}`，
    直接写该占位会导致回调 `invalid_client`。LDAP connector 的 `bindPW`
    则支持 `${LDAP_ADMIN_PASSWORD}` 展开。
-2. 生成路由并启动（不需要启动 Jenkins 即可验证未登录的 302）：
+2. 生成路由并启动（不需要启动 Jenkins 即可验证未登录的 302）。
+   `dnsmasq` 必须先起：其余容器的 resolver 都指向它：
 
    ```bash
    make render
-   docker compose up -d ldap ldapadmin dex oauth2-proxy caddy router
+   docker compose up -d dnsmasq ldap ldapadmin dex oauth2-proxy caddy router
    docker compose ps
+   make hosts      # 让宿主机能解析 *.<domain>
    ```
 
 3. 等 LDAP healthy 后执行导入；脚本和 LDIF 已只读挂载到 LDAP 容器，
@@ -98,16 +103,16 @@ M0 固定浏览器入口为 `http://localhost:8080`，Dex issuer 为
 
 ## 首次登录与改密
 
-访问 `http://localhost:8080/jenkins`，依次跳转 oauth2-proxy、Dex 的
+访问 `https://jenkins.<domain>/`，依次跳转 oauth2-proxy（`auth.<domain>`）、Dex 的
 OpenLDAP 登录页。默认导入账号为 `admin.zeek`（DN：
 `cn=Admin Zeek,ou=users,dc=devops,dc=com`），初始密码为 `123456`，
 仅限首次本地验证，**立即改密**。若出现授权确认页，按提示同意。OIDC 回调
-`/auth/oauth2/callback` 写入会话 cookie 后返回 Jenkins。
+`https://auth.<domain>/oauth2/callback` 写入会话 cookie 后返回 Jenkins。
 Jenkins 未启动时，认证成功后的最终上游请求会返回 502，而不是登录失败。
 
 LDAP 管理员用 DN `cn=admin,dc=devops,dc=com` 和
 `LDAP_ADMIN_PASSWORD`（Compose 占位默认 `change-me`）登录
-`http://localhost:8080/ldapadmin/`，修改对应用户的 `userPassword`，
+`https://ldapadmin.<domain>/`，修改对应用户的 `userPassword`，
 新密码优先选择 SSHA。也可交互式执行，避免把新密码放进命令行：
 
 ```bash
@@ -127,22 +132,23 @@ docker compose config -q
 bash -n services/auth/bootstrap-ldif.sh
 python3 services/auth/test_bootstrap.py
 python3 services/router/test_render.py
-docker compose ps  # ldap、dex、oauth2-proxy 应为 healthy
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/auth/ping  # 200
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/jenkins   # 302
+docker compose ps  # dnsmasq、ldap、dex、oauth2-proxy 应为 healthy
+curl -sk -o /dev/null -w '%{http_code}\n' \
+  --resolve auth.org-devops.com:443:127.0.0.1 https://auth.org-devops.com/ping   # 200
+curl -sk -o /dev/null -w '%{http_code}\n' \
+  --resolve jenkins.org-devops.com:443:127.0.0.1 https://jenkins.org-devops.com/ # 302
 docker compose exec ldap ldapsearch -x -H ldap://ldap:389 \
   -D cn=admin,dc=devops,dc=com -W \
   -b dc=devops,dc=com -s sub '(uid=admin.zeek)' dn
 ```
 
-应急时绕过 Caddy，直接访问 **Jenkins 容器的 8080**。当前 Compose
-仅 `expose: 8080`，没有宿主机端口映射；不应把网关的 `localhost:8080`
-误认为 Jenkins 直连口，也不在此任务中改 Jenkins 配置。在 Linux Docker
-宿主机可获取其容器 IP 后访问（Jenkins 须已启动）：
+应急时绕过 Caddy，直接访问 **Jenkins 容器的 8080**。Compose 只 `expose: 8080`，
+没有宿主机端口映射；网关的 80/443 不是 Jenkins 直连口。容器 IP 现在是固定的
+`172.31.0.20`，在 Docker 宿主上可直接访问（Jenkins 须已启动）：
 
 ```bash
 docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' of-jenkins
-curl http://<上一步容器IP>:8080/
+curl http://172.31.0.20:8080/
 ```
 
 已有部署若另有 loopback 应急端口映射，应保留并使用该端口。
@@ -159,15 +165,16 @@ LDAP 使用管理员绑定探测 base DN（密码经 stdin 传递，不放进进
 不能用 CMD-SHELL/curl。其 healthcheck 只能执行
 `["CMD", "/bin/oauth2-proxy", "--version"]`：这是进程/可执行文件级探测，
 不是 HTTP 或登录可用性检查，healthy 不证明代理已就绪或 LDAP 可登录。
-实际服务由 `/auth/ping`（上游 `/ping`）及 Caddy forward_auth 验证；
+实际服务由 `auth.<domain>/ping`（上游 `/ping`）及 Caddy forward_auth 验证；
 完整 OIDC 登录还需浏览器登录测试。
 
 ## M0 限制与 M1 演进
 
 Dex 使用内存 storage，**重启会丢失 refresh token、授权状态和签名密钥**，
-现有会话可能需要重新登录。M0 仅适合可信网络内的本地验证：
-LDAP 明文连接，cookie `secure=false`，未对 LDAP Admin 或 Nexus 增加统一认证。
+现有会话可能需要重新登录。M0 仅适合可信网络内使用：网关已是 HTTPS 且
+cookie `secure=true`，但证书由 Caddy 内部 CA 自签（需 `make ca` 装根证书），
+LDAP 仍是明文连接，未对 LDAP Admin 或 Nexus 增加统一认证。
 
 M1 将 Dex 替换为 Keycloak，迁移到持久化存储并细化组/角色授权；
-启用网关 TLS、LDAP TLS，cookie 改 `secure=true`，使用正式域名并同步全部
-issuer/callback/whitelist 配置，收紧 IdP 校验、管理台入口和应急口访问。
+启用 LDAP TLS，改用公共 CA 证书（或内网 PKI），收紧 IdP 校验、
+管理台入口和应急口访问。

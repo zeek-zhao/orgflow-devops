@@ -3,10 +3,13 @@
 职责：集中管理路由（`config/routes.yaml`），渲染 Caddyfile 并通过 Caddy Admin API 热加载。
 数据面仍是 Caddy；本服务只做控制面。
 
+路由模型是**域名站点**（[ADR-13](../../docs/ADR-13-域名路由.md)）：每个 route 生成一个
+`https://<subdomain>.<gateway_domain>` 站点，路径前缀路由已删除。
+
 ## 本地验证
 
 ```bash
-make render                      # 生成 out/Caddyfile
+make render                      # 生成 out/Caddyfile（域名取自 .env）
 bash services/router/reload.sh   # 渲染 + POST /load 到 Caddy admin
 ```
 
@@ -15,22 +18,25 @@ bash services/router/reload.sh   # 渲染 + POST /load 到 Caddy admin
 1. 在 `config/routes.yaml` 追加：
 
 ```yaml
-  - path: /myservice
+  - name: myservice
+    subdomain: myservice
     upstream: myservice:8080
-    strip_prefix: true
+    auth: false
 ```
 
 2. `make render`（或等 router 服务 watch 自动热更）。
+3. 宿主机/局域网机器的 hosts 片段要重新生成：`make hosts`（或 `scripts/gen-hosts.sh`）。
 
 ## 约定
 
-- `strip_prefix: false` → Caddy 用 `handle`（保留前缀）。
-- `strip_prefix: true` → Caddy 用 `handle_path`（剥离前缀）。
-- `strip` 是 `strip_prefix` 的别名。
-- `auth: true` → 在该路由的 `reverse_proxy` 前通过 oauth2-proxy 校验会话，
-  401 重定向到 `/auth/oauth2/start?rd={uri}`，并透传用户和邮件请求头。
-  默认 `false`，旧路由不受影响；M0 仅 `/jenkins` 开启，其他四条路由公开。
-- 路由失败自动回滚由 `render.py` 的「写前比对 + reload 失败不覆盖」保证。
+- `subdomain` 必填，只允许小写字母/数字/连字符；重复或非法直接报错、不产出文件。
+- 顶层 `gateway_domain` / `auth_subdomain` 可被环境变量 `GATEWAY_DOMAIN` /
+  `AUTH_SUBDOMAIN` 覆盖（部署时由 `.env` 注入，一套配置多环境复用）。
+- 全局 `local_certs`：所有站点用 Caddy 内部 CA 自签，不向公网申请证书。
+- `auth: true` → 在该站点的 `reverse_proxy` 前通过 oauth2-proxy 校验会话，
+  401 时跳转 **绝对地址** `https://<auth_subdomain>.<domain>/oauth2/start?rd={scheme}://{host}{uri}`，
+  并透传用户和邮件请求头。默认 `false`；M0 仅 Jenkins 站点开启。
+- 渲染失败自动回滚由 `render.py` 的「写前比对 + reload 失败不覆盖」保证。
 
 ## 热加载与故障处理
 
