@@ -88,7 +88,13 @@ USE_GHCR=1 make test-bats
 
 不设置 `USE_GHCR` 时保留本地构建行为。213 缺 Hub 镜像立即报错，不尝试不可达的网络；
 GitHub 托管 runner 无缓存，工作流显式设置 `ALLOW_PULL_DOCKER_HUB=1` 才允许拉取。
-不会改变原有十一个 bats 断言。
+
+**`USE_GHCR=1` 时 `up` 必须带 `--no-build`，不能带 `--build`。** override 里 `image:` 是
+digest 引用（`repo:tag@sha256:...`），compose 若去构建就会拿它当 tag 写，直接报
+`refusing to create a tag with a digest reference`。`dnsmasq` / `router` / `jjb` 三个服务
+有 `build:`，`dnsmasq` 是第一批，所以最先炸。`scripts/deploy.sh` 用 `BUILD_FLAG` 跟着
+`USE_GHCR` 走，`make up` 早就是这么做的；这条路径直到 2026-10-31 才第一次在真机上跑，
+CI 的 harness 是 `compose up --no-build --pull never` 直连、不经过 `deploy.sh`，覆盖不到。
 
 ## GHCR 配额
 

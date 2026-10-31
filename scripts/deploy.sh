@@ -109,6 +109,13 @@ done
 
 COMPOSE_COMMAND+=(--env-file "$ENV_FILE")
 
+# USE_GHCR=1 时镜像是 digest 锁定的，只能拉、不能建。
+# 带 `build:` 的三个服务（dnsmasq / router / jjb）一旦被 --build 强制重建，compose 会拿
+# `ghcr.io/...:tag@sha256:...` 当 tag 去写，直接报：
+#   refusing to create a tag with a digest reference
+# 所以构建标志必须跟着来源走，不能写死 --build。
+if [ "${USE_GHCR:-0}" = 1 ]; then BUILD_FLAG="--no-build"; else BUILD_FLAG="--build"; fi
+
 # 域名是渲染的输入：先解析 Compose 得到 GATEWAY_DOMAIN，再渲染 Caddyfile / dex 配置。
 # 顺序反了的话，.env 改了域名而 Caddyfile 仍按 routes.yaml 的默认值生成。
 if ! DEPLOY_CONFIG="$("${COMPOSE_COMMAND[@]}" config --format json 2>/dev/null)"; then
@@ -146,7 +153,7 @@ fi
 
 if [ -n "$SERVICE" ]; then
   echo "== 部署 $SERVICE (${ENV_NAME:-dev}) =="
-  "${COMPOSE_COMMAND[@]}" up -d --no-deps "$SERVICE"
+  "${COMPOSE_COMMAND[@]}" up -d --no-deps "$BUILD_FLAG" "$SERVICE"
   "${COMPOSE_COMMAND[@]}" ps "$SERVICE"
   exit 0
 fi
@@ -233,7 +240,7 @@ start_batch() {
   echo "== 启动批次: $* =="
   for svc in "$@"; do
     echo "-- 拉取/构建/启动 $svc"
-    if ! "${COMPOSE_COMMAND[@]}" up -d --no-deps --build --quiet-pull "$svc" 2>&1 | redact; then
+    if ! "${COMPOSE_COMMAND[@]}" up -d --no-deps "$BUILD_FLAG" --quiet-pull "$svc" 2>&1 | redact; then
       diagnose "$svc"
       return 1
     fi

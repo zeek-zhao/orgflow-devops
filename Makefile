@@ -47,7 +47,7 @@ ca:
 	@bash scripts/ca-install.sh
 
 deploy: render
-	@ENV_FILE="$(ENV_FILE)" COMPOSE="$(COMPOSE)" bash scripts/deploy.sh
+	@ENV_FILE="$(ENV_FILE)" COMPOSE="$(COMPOSE)" USE_GHCR="$(USE_GHCR)" bash scripts/deploy.sh
 
 doctor:
 	@ENV_FILE="$(ENV_FILE)" COMPOSE="$(COMPOSE)" python3 scripts/doctor.py
