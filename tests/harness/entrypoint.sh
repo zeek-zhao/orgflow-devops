@@ -3,7 +3,13 @@ set -Eeuo pipefail
 set +x
 export DOCKER_HOST=unix:///var/run/docker.sock
 unset DOCKER_CONTEXT
-export GATEWAY_PORT=8080
+# 域名路由（ADR-13）：测试栈固定 org-devops.com，网关端口用非特权端口避免占宿主 80/443
+export GATEWAY_DOMAIN="${GATEWAY_DOMAIN:-org-devops.com}"
+export AUTH_SUBDOMAIN="${AUTH_SUBDOMAIN:-auth}"
+export GW_DOMAIN="$GATEWAY_DOMAIN"
+export GW_HOST=127.0.0.1
+export GW_HTTP_PORT=8080
+export GW_HTTPS_PORT=8443
 export M0_REPO=/repo
 export M0_ENV_FILE=/repo/.env
 export M0_COMPOSE_OVERRIDE=/tmp/m0-images.json
@@ -66,14 +72,35 @@ done
 
 stage="preparing environment"
 umask 077
-if [[ ! -f $M0_ENV_FILE ]]; then
-    M0_ENV_FILE=/tmp/m0.env
+# 始终用临时副本：下面要追加域名/端口覆盖，绝不能改仓库里的 .env
+source_env=$M0_ENV_FILE
+M0_ENV_FILE=/tmp/m0.env
+if [[ -f $source_env ]]; then
+    cp "$source_env" "$M0_ENV_FILE"
+else
     cp /repo/.env.example "$M0_ENV_FILE"
     for key in LDAP_ADMIN_PASSWORD OAUTH2_CLIENT_SECRET OAUTH2_COOKIE_SECRET JENKINS_ADMIN_PASSWORD; do
         secret=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
         sed -i "s/^${key}=.*/${key}=${secret}/" "$M0_ENV_FILE"
     done
 fi
+# 追加覆盖（dotenv 后者生效）：测试栈固定域名与端口，不受调用方 .env 影响
+cat >> "$M0_ENV_FILE" <<EOF
+GATEWAY_DOMAIN=$GATEWAY_DOMAIN
+AUTH_SUBDOMAIN=$AUTH_SUBDOMAIN
+GATEWAY_HTTP_PORT=$GW_HTTP_PORT
+GATEWAY_HTTPS_PORT=$GW_HTTPS_PORT
+EOF
+
+# 域名相关产物必须在容器启动前就绪：
+#   out/Caddyfile    caddy 挂载 /etc/caddy，缺文件会起不来
+#   out/dex/config.yaml  dex 是 scratch 镜像，无法在启动期渲染
+stage="rendering gateway config"
+mkdir -p /repo/out
+python3 /repo/services/router/render.py \
+    --routes /repo/config/routes.yaml --out /repo/out/Caddyfile --admin ""
+bash /repo/scripts/render-dex.sh --domain "$GATEWAY_DOMAIN" >/dev/null
+
 printf '{"services":{}}\n' > "$M0_COMPOSE_OVERRIDE"
 compose_ready=1
 stage="preloading host images"
@@ -103,8 +130,8 @@ done < <(jq -r '.name as $project | .services | to_entries[] |
 
 stage="starting inner stack"
 compose up -d --no-build --pull never
-stage="waiting for eight healthy services"
-services=(jenkins caddy router ldap ldapadmin dex oauth2-proxy nexus)
+stage="waiting for nine healthy services"
+services=(dnsmasq jenkins caddy router ldap ldapadmin dex oauth2-proxy nexus)
 deadline=$((SECONDS + 300))
 while :; do
     pending=()
@@ -127,4 +154,5 @@ stage="bootstrapping isolated LDAP"
 compose exec -T ldap sh -c 'LDAP_URI=ldap://localhost:389 bash /opt/orgflow-auth/bootstrap-ldif.sh'
 stage="running bats"
 cd /repo
-M0_BASE_URL=http://127.0.0.1:8080 bats tests/bats/*.bats
+# 断言全部走域名 + SNI（--resolve 把域名钉到 127.0.0.1:8443），不依赖 hosts 文件
+bats tests/bats/*.bats
