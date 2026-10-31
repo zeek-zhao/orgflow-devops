@@ -58,13 +58,13 @@ services:
       - LDAP_ADMIN_PASSWORD=${LDAP_ADMIN_PASSWORD}
       - OAUTH2_CLIENT_SECRET=${OAUTH2_CLIENT_SECRET}
       - OAUTH2_COOKIE_SECRET=${OAUTH2_COOKIE_SECRET}
+      # agent 的 SSH 私钥（#45）：由 deploy.sh / harness 在 compose 之前从
+      # secrets/agent_ssh_key 读出来 export，这里只做透传（不带 = 就是从宿主环境取值）。
+      # JCasC 用 directEntry 引用它 —— 私钥既不进仓库，也不进 .env。
+      - JENKINS_AGENT_SSH_PRIVATE_KEY
     volumes:
       - jenkins_home:/var/jenkins_home
       - ./config/jenkins.yaml:/var/jenkins_home/casc/jenkins.yaml:ro
-      # agent 的 SSH 私钥（#45）。放在 jenkins_home 里的子路径，JCasC 用
-      # fileOnMaster 引用它；私钥不入库（secrets/ 已 gitignore），
-      # 由 scripts/gen-agent-key.sh 生成，公钥同步进 .env 给 agent 容器。
-      - ./secrets/agent_ssh_key:/var/jenkins_home/ssh/agent_ssh_key:ro
     expose:
       - "8080"
     # 所有容器的 resolver 都是 dnsmasq，等它就绪再起，避免启动期 DNS 抖动
