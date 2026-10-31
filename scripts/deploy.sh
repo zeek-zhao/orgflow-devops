@@ -29,7 +29,7 @@ if [ "$PUSH_JOBS" = 1 ]; then
 fi
 
 case "$SERVICE" in
-  ""|dnsmasq|jenkins|caddy|router|ldap|ldapadmin|dex|oauth2-proxy|nexus) ;;
+  ""|dnsmasq|jenkins|caddy|router|ldap|ldapadmin|dex|oauth2-proxy|nexus|homepage) ;;
   *) echo "不支持的服务: $SERVICE" >&2; exit 1 ;;
 esac
 case "${ENV_NAME:-dev}" in

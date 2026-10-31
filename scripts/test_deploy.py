@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -108,9 +109,9 @@ elif "--version" in args or "version" in args:
             path.write_text(mock)
             path.chmod(0o755)
 
-    def deploy(self, **env):
+    def deploy(self, *args, **env):
         return subprocess.run(
-            ["bash", "scripts/deploy.sh"], cwd=self.root, env=dict(self.env, **env),
+            ["bash", "scripts/deploy.sh", *args], cwd=self.root, env=dict(self.env, **env),
             capture_output=True, text=True, timeout=30,
         )
 
@@ -192,6 +193,31 @@ elif "--version" in args or "version" in args:
             checked += 1
         # auth / jenkins / home 三个站点都走 gw()
         self.assertEqual(checked, 3)
+
+    def test_service_shortcut_accepts_every_compose_service(self):
+        """--service 的白名单是手写的，compose 里加了服务忘了加它就直接被拒。
+
+        homepage 当初就是这么漏的：compose 加了、部署批次加了、健康闸门加了，
+        唯独这个 case 列表没加，`bash scripts/deploy.sh --service homepage` 退出 1。
+        白名单不会随 compose 自动长，所以拿 compose 的服务集合反查。
+
+        `profiles` 里的（目前只有 `jjb`）是一次性工具容器，本来就不该进 --service，
+        排除掉而不是把它加进白名单。
+        """
+        text = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+        block = re.search(r"^services:\n(.*?)^[a-z]", text, re.M | re.S).group(1)
+        services = {}
+        for chunk in re.split(r"^  (?=[a-z][a-z0-9_-]*:$)", block, flags=re.MULTILINE):
+            match = re.match(r"([a-z][a-z0-9_-]*):$", chunk, re.MULTILINE)
+            if match:
+                services[match.group(1)] = chunk
+        deployable = [name for name, body in services.items() if "profiles:" not in body]
+        self.assertGreaterEqual(len(deployable), 10, f"compose 服务解析异常: {deployable}")
+        # --service 不做 .env 自举（那是全量部署的事），所以先备一份
+        (self.root / ".env").write_text("GATEWAY_HTTPS_PORT=443\n")
+        for name in deployable:
+            result = self.deploy("--service", name)
+            self.assertEqual(result.returncode, 0, f"--service {name} 被拒: {result.stderr}")
 
     def test_gateway_domain_override_flows_into_caddyfile_and_dex(self):
         (self.root / ".env").write_text("GATEWAY_DOMAIN=example.test\n")
