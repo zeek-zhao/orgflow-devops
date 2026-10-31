@@ -37,11 +37,18 @@ setup() {
     # 直接打容器内 8080，不走网关：网关要求 oauth2 登录，测试里没有浏览器。
     # 节点是 retentionStrategy=always，Jenkins 启动后几秒内就会去连，
     # 但 SSH 握手 + agent jar 启动需要时间，所以轮询而不是只查一次。
+    #
+    # ★ 两个坑，都踩过：
+    #   1. curl 必须加 -g：URL 里的 `computer[...]` 会被当成 glob 展开，
+    #      报 `curl: (3) bad range in URL`，body 为空 → 看起来像「节点没建出来」。
+    #   2. jq 只在 harness 里用，不在 jenkins 容器里用：官方 jenkins 镜像没装 jq，
+    #      `curl | jq` 会静默失败。所以把原始 JSON 拉回来，在 bats 侧解析。
+    local raw
     deadline=$((SECONDS + 120))
     while (( SECONDS <= deadline )); do
-        info=$(compose_exec jenkins curl -sS -u "$admin:$pass" \
-            'http://localhost:8080/computer/api/json?tree=computer[displayName,offline,assignedLabels[name]]' 2>/dev/null \
-            | jq -r '.computer[]? | select(.displayName == "orgflow-docker")
+        raw=$(compose_exec jenkins curl -sS -g -u "$admin:$pass" \
+            'http://localhost:8080/computer/api/json?tree=computer[displayName,offline,assignedLabels[name]]' 2>/dev/null || true)
+        info=$(printf '%s' "$raw" | jq -r '.computer[]? | select(.displayName == "orgflow-docker")
                      | "\(.offline) \(.assignedLabels | map(.name) | join(","))"' 2>/dev/null || true)
         [[ $info == "false "* ]] && break
         sleep 3
@@ -51,10 +58,25 @@ setup() {
         echo "orgflow-docker 节点没在线，实际: '${info:-<空>}'" >&2
         echo "  空   → JCasC 没建出节点（configuration-as-code 没生效？）" >&2
         echo "  true → 节点建出来了但 SSH 连不上（密钥/主机名/凭据 id 对不上）" >&2
-        compose_exec jenkins curl -sS -u "$admin:$pass" \
-            'http://localhost:8080/computer/api/json?tree=computer[displayName,offline]' >&2 || true
+        printf '  /computer/api/json 原文（前 800 字符）:\n%s\n' "${raw:0:800}" >&2
         return 1
     fi
 
     assert_contains "$info" "orgflow-docker"
+}
+
+@test "jenkins-agent: JCasC 把 SSH 私钥装进了系统凭据库" {
+    local admin pass raw
+    admin=$(sed -n 's/^JENKINS_ADMIN_ID=//p' "$M0_ENV_FILE" | tail -1)
+    pass=$(sed -n 's/^JENKINS_ADMIN_PASSWORD=//p' "$M0_ENV_FILE" | tail -1)
+
+    # 本卡踩过：JCasC 用了不可实例化的类（fileOnMaster），Jenkins 启动直接中断。
+    # 现在虽然启动能过，但「节点离线」有两种完全不同的原因 ——
+    # 凭据没建出来（JCasC 静默跳过）vs 凭据有了但 SSH 连不上。
+    # 这条断言把两者切开，省得下次又靠猜。
+    raw=$(compose_exec jenkins curl -sS -g -u "$admin:$pass" \
+        'http://localhost:8080/credentials/store/system/domain/_/api/json?tree=credentials[id,typeName]' 2>/dev/null || true)
+    echo "系统凭据库: $raw" >&2
+    assert_contains "$raw" "jenkins-agent-ssh"
+    assert_contains "$raw" "BasicSSHUserPrivateKey"
 }
