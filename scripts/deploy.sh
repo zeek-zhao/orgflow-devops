@@ -108,6 +108,12 @@ if [ -r "$ROOT/secrets/agent_ssh_key" ]; then
   export JENKINS_AGENT_SSH_PRIVATE_KEY
 fi
 
+# docker.sock 的 gid 必须补给 agent 容器（理由见 docker-compose.yml 的 group_add 注释）。
+# 和私钥同理：**export 到宿主环境**，不写 .env —— 既有「已有 .env 绝不修改」的约定，
+# 而且这个值随宿主变化，写进 .env 会让 .env 在不同机器间不能复用。
+DOCKER_GID="${DOCKER_GID:-$(stat -c %g /var/run/docker.sock 2>/dev/null || echo 0)}"
+export DOCKER_GID
+
 HEALTH_TIMEOUT="${DEPLOY_HEALTH_TIMEOUT:-600}"
 POLL_INTERVAL="${DEPLOY_POLL_INTERVAL:-3}"
 for value in "$HEALTH_TIMEOUT" "$POLL_INTERVAL"; do
@@ -270,6 +276,19 @@ start_batch dex oauth2-proxy
 start_batch router caddy
 start_batch jenkins jenkins-agent ldapadmin homepage
 wait_healthy dnsmasq ldap dex oauth2-proxy router caddy jenkins jenkins-agent ldapadmin homepage
+
+# agent 必须真的能连上宿主 daemon，否则三个 pipeline job 全是 pending 或假失败。
+# agent 的 SSH 会话用户是 jenkins(1000)（镜像里 PermitRootLogin no），
+# 所以 compose 用 group_add 把 docker.sock 的 gid 补给了它 —— 这里做端到端复核：
+# 光看容器 healthy 是看不出来的，healthy 只证明 sshd 在听。
+if ! docker exec -u jenkins of-jenkins-agent docker info >/dev/null 2>&1; then
+  echo "✗ agent 容器里的 jenkins 用户连不上 /var/run/docker.sock（DOCKER_GID=${DOCKER_GID:-未设置}）" >&2
+  echo "  job 会以「找不到网络 orgflow」这类假象失败。检查：" >&2
+  echo "    stat -c %g /var/run/docker.sock        # 宿主上的真实 gid" >&2
+  echo "    docker exec of-jenkins-agent id        # 容器内的组" >&2
+  exit 1
+fi
+echo "== agent 能驱动宿主 docker（gid ${DOCKER_GID:-未设置}）=="
 
 # 域名路由：所有自检都带 SNI/Host，走 127.0.0.1 的映射端口。
 #

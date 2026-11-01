@@ -22,6 +22,7 @@ flowchart LR
         CADDY["of-caddy<br/>172.31.0.10<br/>:80 跳转 / :443 站点"]
         ROUTER["of-router<br/>172.31.0.11<br/>:8090 healthz"]
         JENKINS["of-jenkins<br/>172.31.0.20:8080"]
+        AGENT["of-jenkins-agent<br/>172.31.0.27:22"]
         NEXUS["of-nexus<br/>172.31.0.21:8081"]
         LDAP["of-ldap<br/>172.31.0.22:389"]
         LDAPADMIN["of-ldapadmin<br/>172.31.0.23:80"]
@@ -39,6 +40,8 @@ flowchart LR
     OAUTH -->|"OIDC token / jwks"| DEX
     DEX -->|"LDAP 查询"| LDAP
     CADDY --> JENKINS
+    JENKINS -->|"SSH 22 建节点"| AGENT
+    AGENT -->|"挂 /var/run/docker.sock 起 job 容器"| NEXUS
     CADDY --> NEXUS
     CADDY --> LDAPADMIN
     CADDY --> DEX
@@ -67,6 +70,7 @@ flowchart LR
 | `172.31.0.24` | dex | 5556 | `dex.<domain>` | 否 |
 | `172.31.0.25` | oauth2-proxy | 4180 | `auth.<domain>` | — |
 | `172.31.0.26` | homepage | 3000 | `home.<domain>` | 否 |
+| `172.31.0.27` | jenkins-agent | 22 | — | — |
 
 `172.31.0.1` 是 docker 网关，不要占。`jjb` 从动态段（`172.31.0.200/29`）取地址，
 无固定 IP——它只在 `make jobs` 时 `compose run` 一次性起，走内网直连 `jenkins:8080`（#30）。
