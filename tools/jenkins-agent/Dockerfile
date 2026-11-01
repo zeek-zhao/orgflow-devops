@@ -44,6 +44,9 @@ ENTRYPOINT ["/usr/local/bin/agent-entrypoint.sh"]
 # ★ 但「sshd 以 root 跑」**不等于**「job 里的命令以 root 跑」。镜像里
 #   `PermitRootLogin no`，Jenkins 用 jenkins(1000) 登录，所以 job 里的 docker
 #   命令是 uid 1000 在跑。因此 /var/run/docker.sock（root:<docker 组> 0660）
-#   必须通过 compose 的 group_add 把 socket 的 gid 补给这个用户，否则
-#   `docker network inspect` 之类的调用会 permission denied。
-#   2026-11-01 真机验收就踩了这个，报错伪装成「找不到网络 orgflow」。
+#   必须让这个用户拿到 —— 由 agent-entrypoint.sh 在启动时把 socket 的 gid 写进
+#   /etc/group 并把 jenkins 加进去（2026-11-01 真机验收踩到）。
+#
+#   ★ 光靠 compose 的 group_add 不行：它只影响容器的 PID 1，而 sshd 给登录会话
+#     调 initgroups() 会按 /etc/group 重置附加组。这就是为什么
+#     `docker exec -u jenkins docker info` 通、真实 SSH 会话却 permission denied。
