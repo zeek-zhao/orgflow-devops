@@ -8,6 +8,11 @@ ENV_FILE ?= .env
 # 表现成 job 里「找不到网络 orgflow」。
 DOCKER_GID ?= $(shell stat -c %g /var/run/docker.sock 2>/dev/null || echo 0)
 export DOCKER_GID
+# agent 的 sshd host key 公钥：JCasC 的 manuallyProvidedKeyVerificationStrategy 只认
+# 「算法 base64」两列，.pub 第三列是注释必须切掉。空值会让 JCasC 直接启动失败
+# （该类构造时就 parseKey），所以 deploy.sh / harness / 这里三处都要导出。
+JENKINS_AGENT_HOST_KEY ?= $(shell awk 'NR==1{print $$1" "$$2}' secrets/agent_host_key.pub 2>/dev/null)
+export JENKINS_AGENT_HOST_KEY
 ifeq ($(USE_GHCR),1)
 COMPOSE += -f docker-compose.yml -f docker-compose.ghcr.yml
 endif
