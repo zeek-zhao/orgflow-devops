@@ -105,7 +105,11 @@ services:
       tags: ["orgflow/jenkins-agent:24.04-v1"]
     container_name: of-jenkins-agent
     restart: unless-stopped
-    # ★ 必须把 docker.sock 的 gid 补进来（2026-11-01 真机验收踩到）。
+    environment:
+      # 入口脚本用它把 gid 写进 /etc/group（理由见下面 group_add 的注释）。
+      # 不带 `=` 是从宿主环境取值，由 deploy.sh / harness / Makefile export。
+      - DOCKER_GID
+    # ★ docker.sock 的 gid 必须让 jenkins 用户拿到（2026-11-01 真机验收踩到）。
     #
     #   agent 的 SSH 会话用户是 jenkins(1000)，**不是 root** —— 上游
     #   jenkins/ssh-agent 镜像里 `PermitRootLogin no`，Jenkins 连进来就是 jenkins。
@@ -114,6 +118,12 @@ services:
     #
     #   症状极具误导性：job 里 `docker network inspect orgflow` 失败，脚本报的是
     #   「找不到网络 orgflow；先跑 make deploy」—— 看起来像底座没起，其实是权限。
+    #
+    # ★ 光有 group_add 不够：它只给容器的 PID 1 加附加组，而 sshd 给登录会话调
+    #   initgroups()，会按 /etc/group **重置**附加组。于是同一个容器里
+    #   `docker exec -u jenkins ... docker info` 能过、真实 SSH 会话却 permission denied
+    #   —— 用 docker exec 做的检查是假阳性。所以真正生效的是 agent-entrypoint.sh
+    #   里的 groupadd/usermod（改 /etc/group 本身），group_add 只保留给 exec 类工具用。
     #
     #   gid 因宿主而异，且容器内 /etc/group 的名字和宿主对不上（213 上宿主叫
     #   docker、容器内同 gid 叫 systemd-network），所以只能用**数字**，由

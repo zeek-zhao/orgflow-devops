@@ -365,8 +365,13 @@ class AgentDockerAccessTests(unittest.TestCase):
 
     上游 ssh-agent 镜像 `PermitRootLogin no`，Jenkins 连进来是 jenkins 用户，
     而 /var/run/docker.sock 是 root:<docker 组> 0660 —— 不补组就 permission denied，
-    报错还会伪装成「找不到网络 orgflow」，排查成本极高。所以四处必须同时存在，
-    缺一处就静默退回 gid 0（等于没补）。
+    报错还会伪装成「找不到网络 orgflow」，排查成本极高。
+
+    ★ 关键陷阱：**compose 的 group_add 单独不够**。它只给容器的 PID 1 加附加组，
+      而 sshd 给登录会话调 initgroups()、按 /etc/group 重置附加组。于是
+      `docker exec -u jenkins ... docker info` 能过、真实 SSH 会话却 permission denied
+      —— 拿 docker exec 做端到端检查是假阳性。所以真正的修法在 entrypoint 里
+      改 /etc/group，判据也必须走 su（和 sshd 一样调 initgroups）。
     """
 
     def test_compose_passes_the_socket_gid_to_the_agent(self):
@@ -378,6 +383,16 @@ class AgentDockerAccessTests(unittest.TestCase):
         window = "\n".join(lines[max(0, index - 40):index])
         self.assertIn("group_add:", window)
         self.assertIn('"${DOCKER_GID:-0}"', window)
+        # entrypoint 要自己改 /etc/group，所以还得把 gid 当环境变量传进去
+        self.assertIn("\n      - DOCKER_GID\n", window)
+
+    def test_entrypoint_writes_the_gid_into_etc_group(self):
+        # 这是唯一真正生效的修法：group_add 到不了 SSH 会话，改 /etc/group 才能
+        # 让 initgroups() 带上这个 gid。
+        text = (ROOT / "tools/jenkins-agent/agent-entrypoint.sh").read_text()
+        self.assertIn("usermod -aG docker jenkins", text)
+        self.assertIn("groupadd -o -g", text)
+        self.assertIn("getent group docker", text)
 
     def test_every_entry_point_detects_the_gid(self):
         # deploy.sh / harness / Makefile 是三条独立的起栈路径，少一条就是
@@ -393,8 +408,17 @@ class AgentDockerAccessTests(unittest.TestCase):
     def test_deploy_verifies_the_agent_can_reach_the_daemon(self):
         # healthy 只证明 sshd 在听，证明不了 docker 能用。必须真跑一次 docker info。
         text = (ROOT / "scripts/deploy.sh").read_text()
-        self.assertIn("docker exec -u jenkins of-jenkins-agent docker info", text)
+        self.assertIn("docker exec of-jenkins-agent su -s /bin/sh -c 'docker info' jenkins", text)
         self.assertIn("DOCKER_GID=${DOCKER_GID:-未设置}", text)
+
+    def test_deploy_never_checks_via_docker_exec_user(self):
+        # 反向断言：`docker exec -u jenkins` 会继承 OCI spec 的 AdditionalGids，
+        # 即使在真机上 job 全挂也照样通过 —— 用它当判据等于没有判据。
+        text = (ROOT / "scripts/deploy.sh").read_text()
+        code = "\n".join(
+            line for line in text.splitlines() if not line.lstrip().startswith("#")
+        )
+        self.assertNotIn("docker exec -u jenkins", code)
 
 
 class AgentHostKeyTests(unittest.TestCase):

@@ -298,17 +298,23 @@ start_batch jenkins jenkins-agent ldapadmin homepage
 wait_healthy dnsmasq ldap dex oauth2-proxy router caddy jenkins jenkins-agent ldapadmin homepage
 
 # agent 必须真的能连上宿主 daemon，否则三个 pipeline job 全是 pending 或假失败。
-# agent 的 SSH 会话用户是 jenkins(1000)（镜像里 PermitRootLogin no），
-# 所以 compose 用 group_add 把 docker.sock 的 gid 补给了它 —— 这里做端到端复核：
-# 光看容器 healthy 是看不出来的，healthy 只证明 sshd 在听。
-if ! docker exec -u jenkins of-jenkins-agent docker info >/dev/null 2>&1; then
-  echo "✗ agent 容器里的 jenkins 用户连不上 /var/run/docker.sock（DOCKER_GID=${DOCKER_GID:-未设置}）" >&2
+# agent 的 SSH 会话用户是 jenkins(1000)（镜像里 PermitRootLogin no）。
+#
+# ★ 检查方式必须走 `su`，不能用 `docker exec -u jenkins ...`：
+#   docker exec 会继承容器 OCI spec 里的 AdditionalGids（也就是 group_add 的效果），
+#   而 sshd 给登录会话调 initgroups()、按 /etc/group 重置附加组。
+#   所以 `docker exec -u jenkins docker info` 即使在真机上 job 全挂也照样通过
+#   —— 这个假阳性害我们多花了一轮真机验收（2026-11-01）。
+#   su 和 sshd 一样走 initgroups()，是等价的判据。
+if ! docker exec of-jenkins-agent su -s /bin/sh -c 'docker info' jenkins >/dev/null 2>&1; then
+  echo "✗ agent 里 jenkins 用户的 SSH 会话连不上 /var/run/docker.sock（DOCKER_GID=${DOCKER_GID:-未设置}）" >&2
   echo "  job 会以「找不到网络 orgflow」这类假象失败。检查：" >&2
-  echo "    stat -c %g /var/run/docker.sock        # 宿主上的真实 gid" >&2
-  echo "    docker exec of-jenkins-agent id        # 容器内的组" >&2
+  echo "    stat -c %g /var/run/docker.sock                       # 宿主上的真实 gid" >&2
+  echo "    docker exec of-jenkins-agent id -Gn jenkins           # jenkins 的附加组" >&2
+  echo "    docker logs of-jenkins-agent | head -20               # 入口脚本有没有改 /etc/group" >&2
   exit 1
 fi
-echo "== agent 能驱动宿主 docker（gid ${DOCKER_GID:-未设置}）=="
+echo "== agent 能驱动宿主 docker（gid ${DOCKER_GID:-未设置}，经 su 复核）=="
 
 # 域名路由：所有自检都带 SNI/Host，走 127.0.0.1 的映射端口。
 #
