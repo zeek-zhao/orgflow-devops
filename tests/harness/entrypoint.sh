@@ -118,6 +118,17 @@ if [ -r /repo/secrets/agent_ssh_key ]; then
   export JENKINS_AGENT_SSH_PRIVATE_KEY
 fi
 
+# agent 的 host key 公钥：JCasC 的 manuallyProvidedKeyVerificationStrategy 只认
+# 「算法 + base64」两列，.pub 的第三列是注释，必须切掉再 export。
+if [ -r /repo/secrets/agent_host_key.pub ]; then
+  JENKINS_AGENT_HOST_KEY="$(awk 'NR==1{print $1" "$2}' /repo/secrets/agent_host_key.pub)"
+  export JENKINS_AGENT_HOST_KEY
+fi
+if [ -z "${JENKINS_AGENT_HOST_KEY:-}" ]; then
+  echo "agent_host_key.pub 缺失或为空：JCasC 的 host key 校验会启动失败" >&2
+  exit 1
+fi
+
 # agent 容器里的 jenkins(1000) 要能读写 /var/run/docker.sock，必须把 socket 的 gid
 # 补进容器（compose 的 group_add）。DinD 里这个 gid 和真机不同，所以同样要探测。
 DOCKER_GID="${DOCKER_GID:-$(stat -c %g /var/run/docker.sock 2>/dev/null || echo 0)}"

@@ -67,6 +67,10 @@ services:
       # secrets/agent_ssh_key 读出来 export，这里只做透传（不带 = 就是从宿主环境取值）。
       # JCasC 用 directEntry 引用它 —— 私钥既不进仓库，也不进 .env。
       - JENKINS_AGENT_SSH_PRIVATE_KEY
+      # agent 的 sshd host key 公钥（同上下同理由：从宿主环境透传）。
+      # JCasC 用 manuallyProvidedKeyVerificationStrategy 声明期望值，host key 一变就
+      # 连不上 —— 所以它必须是 secrets/ 里那个固定的 key，不能靠首次自动信任。
+      - JENKINS_AGENT_HOST_KEY
       # Nexus 管理员密码（#46）：Nexus 已移出 compose，由 job `nexus-deploy` 部署并改密。
       # 密码经 JCasC 落成 Jenkins 凭据 `nexus-admin-password`，job 里 withCredentials 注入，
       # 不出现在命令行与日志里。留空则 job 跳过改密（Nexus 仍用初始密码）。
@@ -119,6 +123,12 @@ services:
     volumes:
       # 复用宿主 daemon：agent 里的 docker CLI 直接操作宿主 Docker
       - /var/run/docker.sock:/var/run/docker.sock
+      # ★ 固定 sshd 的 host key（2026-11-01 真机验收踩到）。/etc/ssh 不持久化，
+      #   每次重建 `ssh-keygen -A` 都会生成新 host key，而 JCasC 的 host key 校验
+      #   一见到 key 变化就要人工点「Trust SSH Host Key」，节点直接离线、job 全 pending。
+      #   挂一个受管 key 覆盖掉 ed25519（`ssh-keygen -A` 见到已存在就跳过），
+      #   再用 manuallyProvidedKeyVerificationStrategy 显式声明期望值。
+      - ./secrets/agent_host_key:/etc/ssh/ssh_host_ed25519_key:ro
       # 公钥单独挂一个文件，不走 .env：deploy.sh 有「已有 .env 就绝不修改」的约定，
       # 不能为了塞一个公钥去动它。私钥在同一目录，由 gen-agent-key.sh 一起生成。
       - ./secrets/agent_ssh_key.pub:/run/secrets/agent_ssh_pub:ro

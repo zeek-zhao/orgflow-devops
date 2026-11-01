@@ -16,9 +16,15 @@ jenkins:
   # 为什么用「永久节点 + SSH launcher」而不是 SSH cloud：
   #   cloud 是按需拉起的，标签不可控；这里要的是一个固定 label 的节点。
   #
-  # ★ requireInitialManualTrust 必须是 false：ssh-agent 镜像的 host key 在
-  #   /etc/ssh 里，容器一重建就换新的；要人工点信任的话，每次重启 agent 都得
-  #   有人去点一次，job 会一直挂到有人发现为止。
+  # ★ host key 校验必须用 manuallyProvided，不能用 manuallyTrusted。
+  #   一开始写的是 manuallyTrusted + requireInitialManualTrust=false，注释里
+  #   声称「避免每次重启都得有人去点信任」。实测是错的（2026-11-01 真机）：
+  #   它记的是**第一次见到的 key**，agent 容器一重建（/etc/ssh 不持久化，
+  #   `ssh-keygen -A` 会重新生成）key 就变了，节点立刻离线、页面上等一个
+  #   「Trust SSH Host Key」的点击，三个 pipeline job 全部 pending。
+  #   症状是 agent 侧 `Connection closed ... [preauth]`，完全看不出是 host key。
+  #   正解：host key 本身做成受管产物（secrets/agent_host_key，挂进容器覆盖
+  #   /etc/ssh/ssh_host_ed25519_key），这里显式声明期望值，跨重建稳定。
   nodes:
     - permanent:
         name: "orgflow-docker"
@@ -34,8 +40,10 @@ jenkins:
             credentialsId: "jenkins-agent-ssh"
             javaPath: "/opt/java/openjdk/bin/java"
             sshHostKeyVerificationStrategy:
-              manuallyTrustedKeyVerificationStrategy:
-                requireInitialManualTrust: false
+              manuallyProvidedKeyVerificationStrategy:
+                # 格式必须是 `算法 base64`（不带注释），由 deploy.sh / harness
+                # 从 secrets/agent_host_key.pub 切前两列后 export
+                key: "${JENKINS_AGENT_HOST_KEY}"
 unclassified:
   globalLibraries:
     libraries:

@@ -397,6 +397,87 @@ class AgentDockerAccessTests(unittest.TestCase):
         self.assertIn("DOCKER_GID=${DOCKER_GID:-未设置}", text)
 
 
+class AgentHostKeyTests(unittest.TestCase):
+    """agent 的 sshd host key 必须跨容器重建稳定（2026-11-01 真机验收踩到）。
+
+    原来用的是 manuallyTrustedKeyVerificationStrategy + requireInitialManualTrust=false，
+    注释声称「避免每次重启都要人点信任」——实测是错的：它记的是**第一次见到的 key**，
+    而 agent 容器的 /etc/ssh 不持久化，`ssh-keygen -A` 每次重建都换新 key。
+    结果是节点离线、三个 pipeline job 全 pending，页面上等一个没人会去点的按钮；
+    agent 侧只留一行 `Connection closed ... [preauth]`，完全看不出是 host key。
+
+    正解：host key 做成受管产物（secrets/agent_host_key 挂进容器覆盖
+    /etc/ssh/ssh_host_ed25519_key），JCasC 显式声明期望值。四件事缺一不可。
+    """
+
+    def test_gen_script_creates_and_reuses_the_host_key(self):
+        text = (ROOT / "scripts/gen-agent-key.sh").read_text()
+        self.assertIn('HOST_KEY="$KEY_DIR/agent_host_key"', text)
+        self.assertIn('ssh-keygen -t ed25519 -N \'\'', text)
+        # 幂等：已存在就必须复用。覆盖等于所有 agent 立刻连不上，
+        # 而且 Jenkins 里那份 manuallyProvided 的 key 还指着旧的。
+        self.assertIn('if [ ! -s "$HOST_KEY" ]', text)
+
+    def test_compose_mounts_the_host_key_over_the_ed25519_slot(self):
+        text = (ROOT / "docker-compose.yml").read_text()
+        # 必须覆盖 ssh_host_ed25519_key 这个名字：`ssh-keygen -A` 见到已存在就跳过，
+        # 换别的文件名等于没固定（-A 还是会生成 ed25519）。
+        self.assertIn("./secrets/agent_host_key:/etc/ssh/ssh_host_ed25519_key:ro", text)
+        # 挂到 agent 而不是别的服务：紧挨着 socket 挂载点那一小段里出现
+        lines = text.splitlines()
+        index = next(i for i, line in enumerate(lines)
+                     if line.strip() == "- /var/run/docker.sock:/var/run/docker.sock")
+        window = "\n".join(lines[index:index + 12])
+        self.assertIn("ssh_host_ed25519_key:ro", window)
+
+    def test_jcasc_provides_the_key_instead_of_trusting_first_sight(self):
+        text = (ROOT / "config/jenkins.yaml").read_text()
+        self.assertIn("manuallyProvidedKeyVerificationStrategy:", text)
+        self.assertIn('key: "${JENKINS_AGENT_HOST_KEY}"', text)
+        # 反向断言只看**非注释行**：注释里为了说明历史必然会提到旧策略名，
+        # 整份文本搜会把「解释为什么改」当成「还没改」。
+        code = "\n".join(
+            line for line in text.splitlines() if not line.lstrip().startswith("#")
+        )
+        self.assertNotIn("manuallyTrustedKeyVerificationStrategy", code)
+        self.assertNotIn("requireInitialManualTrust", code)
+
+    def test_every_entry_point_exports_the_host_key(self):
+        # deploy.sh / harness / Makefile 是三条独立的起栈路径。compose 里是**裸变量**
+        # 透传，少导出一处就是空值；而该策略在构造时就 parseKey，
+        # 空串会让 JCasC 整份配置应用失败（Jenkins 直接起不来）。
+        for name in ("scripts/deploy.sh", "tests/harness/entrypoint.sh"):
+            with self.subTest(file=name):
+                text = (ROOT / name).read_text()
+                self.assertIn("export JENKINS_AGENT_HOST_KEY", text)
+                self.assertIn("agent_host_key.pub", text)
+        makefile = (ROOT / "Makefile").read_text()
+        self.assertIn("JENKINS_AGENT_HOST_KEY ?=", makefile)
+        self.assertIn("export JENKINS_AGENT_HOST_KEY", makefile)
+
+    def test_compose_passes_the_key_to_jenkins(self):
+        text = (ROOT / "docker-compose.yml").read_text()
+        # 不带 `=` 才是「从宿主环境取值」；写成 `- JENKINS_AGENT_HOST_KEY=`
+        # 会把空串固定进去，JCasC 拿到空 key 直接启动失败。
+        self.assertIn("\n      - JENKINS_AGENT_HOST_KEY\n", text)
+
+    def test_public_key_is_trimmed_to_two_columns(self):
+        # .pub 的第三列是注释（jenkins-agent-host@orgflow-devops）。
+        # 带着注释去 parseKey 会解析失败，所以三处都必须切成前两列。
+        sample = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPwZ+PvlC5u8UlDDrz41OIt3lnNK7a5Zqb6IrVpIa7iw jenkins-agent-host@orgflow-devops\n"
+        for name in ("scripts/deploy.sh", "tests/harness/entrypoint.sh"):
+            with self.subTest(file=name):
+                self.assertIn("""awk 'NR==1{print $1" "$2}'""", (ROOT / name).read_text())
+        result = subprocess.run(
+            ["sh", "-c", """printf '%s' "$1" | awk 'NR==1{print $1" "$2}'""", "sh", sample],
+            capture_output=True, text=True, timeout=20,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        fields = result.stdout.strip().split(" ")
+        self.assertEqual(fields[0], "ssh-ed25519")
+        self.assertEqual(len(fields), 2)
+
+
 class HostsSnippetTests(unittest.TestCase):
     """gen-hosts.sh 的输出会直接写进 /etc/hosts，格式错了排查成本极高。"""
 

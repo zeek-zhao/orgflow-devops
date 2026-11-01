@@ -5,6 +5,10 @@
 #   secrets/agent_ssh_key      私钥 → deploy.sh/harness 读出并 export 成
 #                              JENKINS_AGENT_SSH_PRIVATE_KEY，JCasC 用 directEntry 引用
 #   secrets/agent_ssh_key.pub  公钥 → 挂进 agent 容器当 authorized_keys
+#   secrets/agent_host_key     agent 容器 sshd 的 host key → 挂到
+#                              /etc/ssh/ssh_host_ed25519_key，让 host key 跨重建稳定
+#   secrets/agent_host_key.pub 对应公钥 → export 成 JENKINS_AGENT_HOST_KEY，
+#                              JCasC 用 manuallyProvidedKeyVerificationStrategy 声明
 #
 # 为什么不把公钥写进 .env：
 #   deploy.sh 有「已有 .env 就绝不修改」的约定（否则「用户手填的密码被覆盖」
@@ -39,3 +43,32 @@ if [ ! -s "$PUBLIC_KEY" ]; then
     ssh-keygen -y -f "$PRIVATE_KEY" > "$PUBLIC_KEY"
     chmod 644 "$PUBLIC_KEY"
 fi
+
+# agent 容器的 **sshd host key**（2026-11-01 真机验收踩到）。
+#
+# 为什么要固定它：agent 容器的 /etc/ssh 不持久化，每次重建 `ssh-keygen -A` 都
+# 生成新的 host key。而 JCasC 用的是 manuallyTrustedKeyVerificationStrategy ——
+# 它记住第一次见到的 key，key 一变就要人点「Trust SSH Host Key」，节点直接离线，
+# 三个 pipeline job 全部 pending。真机上表现为 `Connection closed ... [preauth]`，
+# 完全看不出是 host key 的问题。
+#
+# 所以把 host key 也做成 secrets/ 里的受管产物，挂进容器覆盖
+# /etc/ssh/ssh_host_ed25519_key（`ssh-keygen -A` 见到已存在就跳过 ed25519），
+# JCasC 再用 manuallyProvidedKeyVerificationStrategy 显式声明期望的 key。
+# 这样 host key 跨重建稳定，也不需要任何人去点信任。
+HOST_KEY="$KEY_DIR/agent_host_key"
+HOST_PUB="$HOST_KEY.pub"
+
+if [ ! -s "$HOST_KEY" ]; then
+    ssh-keygen -t ed25519 -N '' -C 'jenkins-agent-host@orgflow-devops' -f "$HOST_KEY" >/dev/null
+    echo "已生成 agent host key：$HOST_KEY"
+else
+    echo "复用已有 agent host key：$HOST_KEY"
+fi
+chmod 600 "$HOST_KEY"
+
+if [ ! -s "$HOST_PUB" ]; then
+    ssh-keygen -y -f "$HOST_KEY" > "$HOST_PUB"
+    chmod 644 "$HOST_PUB"
+fi
+
