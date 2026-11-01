@@ -571,5 +571,30 @@ class HostsSnippetTests(unittest.TestCase):
         self.assertNotIn("org-devops.com", result.stdout)
 
 
+class ArchIpCheckTests(unittest.TestCase):
+    """固定 IP 表的一致性检查必须覆盖**所有**写了这张表的文档。
+
+    2026-11-01 踩到：脚本只核对 `docs/network/arch.md`，于是 `docs/会话交接.md`
+    里的同一张表漏了 `jenkins-agent` 一整行，没有任何东西会报警 —— 而交接文档
+    是接手人**最先读**的那份，它错了比 arch.md 错了更贵。
+    """
+
+    def test_checks_every_document_that_has_the_table(self):
+        text = (ROOT / "scripts/check-arch-ips.sh").read_text()
+        self.assertIn("DOCS=(", text)
+        self.assertIn("docs/network/arch.md", text)
+        self.assertIn("docs/会话交接.md", text)
+        # 反向断言：不能再退回单文档变量，那等于把这次修的洞重新打开
+        self.assertNotIn('DOC="$ROOT/docs/network/arch.md"', text)
+
+    def test_a_document_without_rows_is_an_error(self):
+        # 静默通过比报错危险：表格格式一改，检查就失效且没人知道
+        self.assertIn("没解析出任何 IP 行", (ROOT / "scripts/check-arch-ips.sh").read_text())
+
+    def test_documents_must_agree_with_each_other(self):
+        # 两份文档写同一个服务不同 IP 时必须报错，而不是「后写的覆盖先写的」
+        self.assertIn("在文档之间不一致", (ROOT / "scripts/check-arch-ips.sh").read_text())
+
+
 if __name__ == "__main__":
     unittest.main()

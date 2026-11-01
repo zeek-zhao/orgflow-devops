@@ -111,6 +111,7 @@ test:
 	@python3 scripts/test_jobs.py
 	@python3 scripts/test_backup.py
 	@python3 scripts/test_ci.py
+	@python3 scripts/test_docs.py
 	@echo "python syntax ok"
 
 test-bats:
