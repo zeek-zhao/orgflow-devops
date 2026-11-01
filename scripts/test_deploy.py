@@ -502,6 +502,39 @@ class AgentHostKeyTests(unittest.TestCase):
         self.assertEqual(len(fields), 2)
 
 
+class WinAcceptanceScriptTests(unittest.TestCase):
+    """PowerShell 验收脚本在 PS 5.1 上的三个陷阱（2026-11-01 真机）。
+
+    1. HttpClient 的自定义证书回调在**线程池线程**上执行，PS 5.1 会抛
+       「此线程中没有可用于运行脚本的运行空间」——报错完全指不到证书上，
+       看起来像「根证书没导入」。SslStream 的回调在 AuthenticateAsClient 里
+       **同步同线程**调用，ScriptBlock 委托才正常。
+    2. dex 的根路径 `/` 本来就是 404（dex 没有根 handler），
+       判据必须打 `/dex/healthz`；写成「/ 期望 302」会永远红。
+    3. .ps1 必须是 UTF-8 带 BOM + CRLF，否则中文乱码、块解析错乱。
+    """
+
+    def setUp(self):
+        self.dir = ROOT / "tools/win-acceptance"
+
+    def test_cert_info_comes_from_sslstream_not_httpclient(self):
+        text = (self.dir / "Test-OrgflowAcceptance.ps1").read_text(encoding="utf-8-sig")
+        self.assertIn("System.Net.Security.SslStream", text)
+        self.assertNotIn("System.Net.Http.HttpClient", text)
+
+    def test_dex_is_probed_at_healthz(self):
+        text = (self.dir / "Test-OrgflowAcceptance.ps1").read_text(encoding="utf-8-sig")
+        self.assertIn("'dex' = '/dex/healthz'", text)
+        self.assertIn("'dex'       = @(200)", text)
+
+    def test_scripts_are_utf8_bom_with_crlf(self):
+        for path in sorted(self.dir.glob("*.ps1")):
+            with self.subTest(file=path.name):
+                raw = path.read_bytes()
+                self.assertTrue(raw.startswith(b"\xef\xbb\xbf"), "缺 UTF-8 BOM")
+                self.assertEqual(raw.count(b"\n") - raw.count(b"\r\n"), 0, "存在裸 LF")
+
+
 class HostsSnippetTests(unittest.TestCase):
     """gen-hosts.sh 的输出会直接写进 /etc/hosts，格式错了排查成本极高。"""
 
