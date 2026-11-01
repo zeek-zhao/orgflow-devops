@@ -5,13 +5,15 @@
 .DESCRIPTION
     只读，不改任何东西。三项全过才算通过，退出码 0；否则 1。
 
-    ★ 证书链刻意用默认校验（SslStream / HttpClient 的默认行为），
-      不用 X509Chain.Build()。后者只拿叶子证书，不会用服务端送来的中间证书，
-      对 Caddy 这种「根 + 中间」的结构会给出假阴性（PartialChain）。
+    ★ 证书链刻意用默认校验，不用 X509Chain.Build()。后者只拿叶子证书，
+      不会用服务端送来的中间证书，对 Caddy 这种「根 + 中间」的结构会给出
+      假阴性（PartialChain）。实现上用 SslStream + 默认校验回调，理由见 Get-TlsInfo。
 
 .NOTES
-    期望状态码不是「全部 200」：jenkins / ldapadmin / dex / auth 是受保护站点，
+    期望状态码不是「全部 200」：jenkins / ldapadmin / auth 是受保护站点，
     未登录时 302 到 oauth2 才是对的；返回 200 反而是漏了认证。
+    ★ dex 例外：它的根路径 `/` 本来就是 404（dex 没有根 handler），
+      判据打的是 `/dex/healthz` = 200。2026-11-01 真机实测。
 #>
 [CmdletBinding()]
 param(
@@ -27,10 +29,13 @@ $Expectations = [ordered]@{
     'jenkins'   = @(302)
     'nexus'     = @(200)
     'ldapadmin' = @(302)
-    'dex'       = @(302)
+    'dex'       = @(200)
     'auth'      = @(302)
     'home'      = @(200)
 }
+
+# 子域 -> 探测路径（缺省是 /）
+$ProbePaths = @{ 'dex' = '/dex/healthz' }
 
 $HostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
 $failures = New-Object System.Collections.Generic.List[string]
@@ -65,43 +70,88 @@ function Test-RootCa {
     return $true
 }
 
+function Get-TlsInfo {
+    <#
+        ★ 为什么不用 HttpClient 的自定义校验回调（2026-11-01 实测）：
+          PS 5.1 里把 ScriptBlock 赋给 ServerCertificateCustomValidationCallback 后，
+          回调在**线程池线程**上执行，会抛
+          「此线程中没有可用于运行脚本的运行空间」——脚本直接崩，而这条报错
+          完全指不到证书上。SslStream 的校验回调是在 AuthenticateAsClient 里
+          **同步、同线程**调用的，ScriptBlock 委托可以正常工作。
+    #>
+    param([string]$HostName)
+
+    $script:certOk = $false
+    $script:certErr = ''
+    $script:certSubject = ''
+    $script:certIssuer = ''
+
+    $tcp = $null
+    $ssl = $null
+    try {
+        $tcp = New-Object System.Net.Sockets.TcpClient
+        $tcp.Connect($HostName, 443)
+        $ssl = New-Object System.Net.Security.SslStream($tcp.GetStream(), $false, {
+            param($sender, $cert, $chain, $errors)
+            $script:certOk = ($errors -eq [System.Net.Security.SslPolicyErrors]::None)
+            $script:certErr = "$errors"
+            if ($cert) {
+                $script:certSubject = $cert.Subject
+                $script:certIssuer = $cert.Issuer
+            }
+            # 一律放行，由调用方按 $certOk 判定；否则拿不到证书信息
+            return $true
+        })
+        $ssl.AuthenticateAsClient($HostName)
+    } catch {
+        $script:certErr = "握手失败：$($_.Exception.GetBaseException().Message)"
+    } finally {
+        if ($ssl) { $ssl.Dispose() }
+        if ($tcp) { $tcp.Close() }
+    }
+    return @{
+        Ok      = $script:certOk
+        Error   = $script:certErr
+        Subject = $script:certSubject
+        Issuer  = $script:certIssuer
+    }
+}
+
 function Test-Site {
     param([string]$Sub, [int[]]$Expect)
 
-    $url = "https://$Sub.$Domain/"
-    $state = @{ Ok = $false; Error = ''; Subject = ''; Issuer = '' }
+    $hostName = "$Sub.$Domain"
+    $path = if ($ProbePaths.ContainsKey($Sub)) { $ProbePaths[$Sub] } else { '/' }
+    $url = "https://$hostName$path"
+    $tls = Get-TlsInfo -HostName $hostName
 
-    $handler = New-Object System.Net.Http.HttpClientHandler
-    $handler.AllowAutoRedirect = $false
-    # 默认校验，但把证书信息留下来，出错时能直接看出是「没装 CA」还是「域名不对」
-    $handler.ServerCertificateCustomValidationCallback = {
-        param($request, $cert, $chain, $errors)
-        $state.Ok = ($errors -eq [System.Net.Security.SslPolicyErrors]::None)
-        $state.Error = "$errors"
-        if ($cert) {
-            $state.Subject = $cert.Subject
-            $state.Issuer = $cert.Issuer
-        }
-        return $state.Ok
-    }
-
-    $client = New-Object System.Net.Http.HttpClient($handler)
-    $client.Timeout = [TimeSpan]::FromSeconds(20)
-
+    # 状态码用 HttpWebRequest：.NET Framework 自带，不需要 Add-Type 加载
+    # System.Net.Http（PS 5.1 里那个类型默认不在，加载时机还很脆）。
+    # AllowAutoRedirect=$false 时 302 不抛异常，直接返回响应。
     $code = -1
+    $req = $null
     try {
-        $response = $client.GetAsync($url).GetAwaiter().GetResult()
-        $code = [int]$response.StatusCode
-    } catch {
-        $code = -1
-        $message = $_.Exception.GetBaseException().Message
-        if (-not $state.Ok) {
-            $failures.Add("$Sub`: 证书校验失败（$($state.Error)）——根证书没导入？")
+        $req = [System.Net.HttpWebRequest]::Create($url)
+        $req.AllowAutoRedirect = $false
+        $req.Timeout = 20000
+        $req.ReadWriteTimeout = 20000
+        $req.UserAgent = 'orgflow-acceptance'
+        $resp = $req.GetResponse()
+        $code = [int]$resp.StatusCode
+        $resp.Close()
+    } catch [System.Net.WebException] {
+        $web = $_.Exception
+        if ($web.Response) {
+            # 4xx/5xx 也走这里，但状态码依然是有效判据
+            $code = [int]$web.Response.StatusCode
+            $web.Response.Close()
+        } elseif (-not $tls.Ok) {
+            $failures.Add("$Sub`: 证书校验失败（$($tls.Error)）——根证书没导入？")
         } else {
-            $failures.Add("$Sub`: 请求失败 —— $message")
+            $failures.Add("$Sub`: 请求失败 —— $($web.GetBaseException().Message)")
         }
     } finally {
-        $client.Dispose()
+        if ($req) { $req.Abort() }
     }
 
     $ok = $false
@@ -116,7 +166,7 @@ function Test-Site {
     $flag = if ($ok) { 'OK  ' } else { 'FAIL' }
     $colour = if ($ok) { 'Green' } else { 'Red' }
     Write-Host ("  [{0}] {1,-10} {2,4}  期望 {3,-6} {4}" -f
-        $flag, $Sub, $code, ($Expect -join '/'), $state.Issuer) -ForegroundColor $colour
+        $flag, $Sub, $code, ($Expect -join '/'), $tls.Issuer) -ForegroundColor $colour
     return $ok
 }
 
