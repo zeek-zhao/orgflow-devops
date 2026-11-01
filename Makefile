@@ -2,6 +2,12 @@
 SHELL := /bin/bash
 COMPOSE ?= docker compose
 ENV_FILE ?= .env
+# agent 容器里的 jenkins(1000) 要驱动宿主 daemon，必须拿到 docker.sock 的 gid
+# （compose 里是 group_add: ${DOCKER_GID}）。deploy.sh 与 harness 会自己探测，
+# 这里是为了 `make up` 直接起栈时也有值 —— 少一个地方就会静默退回 0，
+# 表现成 job 里「找不到网络 orgflow」。
+DOCKER_GID ?= $(shell stat -c %g /var/run/docker.sock 2>/dev/null || echo 0)
+export DOCKER_GID
 ifeq ($(USE_GHCR),1)
 COMPOSE += -f docker-compose.yml -f docker-compose.ghcr.yml
 endif

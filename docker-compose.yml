@@ -101,6 +101,21 @@ services:
       tags: ["orgflow/jenkins-agent:24.04-v1"]
     container_name: of-jenkins-agent
     restart: unless-stopped
+    # ★ 必须把 docker.sock 的 gid 补进来（2026-11-01 真机验收踩到）。
+    #
+    #   agent 的 SSH 会话用户是 jenkins(1000)，**不是 root** —— 上游
+    #   jenkins/ssh-agent 镜像里 `PermitRootLogin no`，Jenkins 连进来就是 jenkins。
+    #   而 /var/run/docker.sock 是 `root:<宿主 docker 组>` 0660，不补组就是
+    #   `permission denied ... /var/run/docker.sock`。
+    #
+    #   症状极具误导性：job 里 `docker network inspect orgflow` 失败，脚本报的是
+    #   「找不到网络 orgflow；先跑 make deploy」—— 看起来像底座没起，其实是权限。
+    #
+    #   gid 因宿主而异，且容器内 /etc/group 的名字和宿主对不上（213 上宿主叫
+    #   docker、容器内同 gid 叫 systemd-network），所以只能用**数字**，由
+    #   deploy.sh / harness / Makefile 探测后 export，compose 从这里取。
+    group_add:
+      - "${DOCKER_GID:-0}"
     volumes:
       # 复用宿主 daemon：agent 里的 docker CLI 直接操作宿主 Docker
       - /var/run/docker.sock:/var/run/docker.sock

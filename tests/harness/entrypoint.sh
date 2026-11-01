@@ -118,6 +118,11 @@ if [ -r /repo/secrets/agent_ssh_key ]; then
   export JENKINS_AGENT_SSH_PRIVATE_KEY
 fi
 
+# agent 容器里的 jenkins(1000) 要能读写 /var/run/docker.sock，必须把 socket 的 gid
+# 补进容器（compose 的 group_add）。DinD 里这个 gid 和真机不同，所以同样要探测。
+DOCKER_GID="${DOCKER_GID:-$(stat -c %g /var/run/docker.sock 2>/dev/null || echo 0)}"
+export DOCKER_GID
+
 # 域名相关产物必须在容器启动前就绪：
 #   out/Caddyfile    caddy 挂载 /etc/caddy，缺文件会起不来
 #   out/dex/config.yaml  dex 是 scratch 镜像，无法在启动期渲染
