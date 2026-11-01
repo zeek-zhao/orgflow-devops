@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
-# 核对 docs/network/arch.md 的固定 IP 表与真实容器是否一致。
+# 核对所有含固定 IP 表的文档与真实容器是否一致。
 #
 # 为什么需要这个：架构图上的 IP 是排查时唯一的定位依据。表错了不会报错，
 # 只会让人对着错误的地址查半天，最后得出「服务没起来」的假结论。
 #
+# ★ 为什么要核对**多份**文档（2026-11-01 踩到）：
+#   原来只查 docs/network/arch.md，于是 docs/会话交接.md 的同一张表漏了
+#   jenkins-agent（172.31.0.27）一整行，没有任何东西会报警。而交接文档是
+#   接手人**最先读**的那份 —— 它错了比 arch.md 错了更贵。
+#
 # 双向比对：
-#   1. 表里每一行 → 容器真实地址
-#   2. compose 里每个 ipv4_address → 表里有没有这一行（防止新增服务忘了写表）
+#   1. 每份文档表里每一行 → 容器真实地址
+#   2. compose 里每个 ipv4_address → 至少有一份文档写了这一行
+#   3. 文档之间同一服务的 IP 必须相同（防止两份表各自漂移）
 #
 # 用法：
 #   bash scripts/check-arch-ips.sh            # 需要栈已启动
@@ -15,13 +21,21 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DOC="$ROOT/docs/network/arch.md"
 COMPOSE_FILE="$ROOT/docker-compose.yml"
 STATIC=0
 [[ "${1:-}" == "--static" ]] && STATIC=1
 
-[[ -f "$DOC" ]] || { echo "找不到 $DOC" >&2; exit 1; }
+# 新增含固定 IP 表的文档时，加到这个数组里。每一份都必须能解析出至少一行，
+# 否则判定为「表格格式变了」—— 静默通过比报错危险得多。
+DOCS=(
+    "$ROOT/docs/network/arch.md"
+    "$ROOT/docs/会话交接.md"
+)
+
 [[ -f "$COMPOSE_FILE" ]] || { echo "找不到 $COMPOSE_FILE" >&2; exit 1; }
+for doc in "${DOCS[@]}"; do
+    [[ -f "$doc" ]] || { echo "找不到 $doc" >&2; exit 1; }
+done
 
 # 文档表格行形如：| `172.31.0.2` | dnsmasq | 53 | — | — |
 doc_rows() {
@@ -32,23 +46,44 @@ doc_rows() {
             gsub(/[[:space:]]/, "", svc)
             if (ip != "" && svc != "") print ip "\t" svc
         }
-    ' "$DOC"
+    ' "$1"
 }
 
 fail=0
 
-# ---- 1. 表 → 真实容器 ----
+# ---- 1. 文档表 → 汇总（顺带检查文档之间是否一致）----
 declare -A DOC_IP=()
-while IFS=$'\t' read -r ip svc; do
-    DOC_IP["$svc"]="$ip"
-done < <(doc_rows)
+declare -A DOC_ORIGIN=()
+
+for doc in "${DOCS[@]}"; do
+    name="$(basename "$doc")"
+    count=0
+    while IFS=$'\t' read -r ip svc; do
+        [[ -z "${ip:-}" ]] && continue
+        if [[ -n "${DOC_IP[$svc]:-}" && "${DOC_IP[$svc]}" != "$ip" ]]; then
+            echo "  ✗ $svc 在文档之间不一致：${DOC_ORIGIN[$svc]} 写 ${DOC_IP[$svc]}，$name 写 $ip" >&2
+            fail=1
+        fi
+        DOC_IP["$svc"]="$ip"
+        DOC_ORIGIN["$svc"]="$name"
+        count=$((count + 1))
+    done < <(doc_rows "$doc")
+
+    if [[ $count -eq 0 ]]; then
+        echo "  ✗ $name 里没解析出任何 IP 行，表格格式可能变了" >&2
+        fail=1
+    else
+        echo "  ✓ $name 解析到 $count 行"
+    fi
+done
 
 if [[ ${#DOC_IP[@]} -eq 0 ]]; then
-    echo "文档里没解析出任何 IP 行，表格格式可能变了" >&2
+    echo "所有文档都没解析出 IP 行，表格格式可能变了" >&2
     exit 1
 fi
 
-echo "文档表格解析到 ${#DOC_IP[@]} 行"
+echo
+echo "文档表格合计 ${#DOC_IP[@]} 个服务"
 
 if [[ $STATIC -eq 0 ]]; then
     for svc in "${!DOC_IP[@]}"; do
@@ -102,7 +137,7 @@ done < <(awk '
 
 if [[ $fail -ne 0 ]]; then
     echo
-    echo "不一致。改 compose 或改 docs/network/arch.md，两边必须逐行相同。" >&2
+    echo "不一致。改 compose 或改文档里的 IP 表（${DOCS[*]##*/}），三方必须逐行相同。" >&2
     exit 1
 fi
 

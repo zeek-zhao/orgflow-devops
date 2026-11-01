@@ -2,7 +2,11 @@
 
 企业级 DevOps 平台单仓（**M0 最小核心**）。以 Jenkins 为唯一编排入口，自举「权限管理服务 + 路由注册服务 + Caddy 代理 + Nexus 制品 + 备份」底座；各服务的部署/备份由 **参数化 Jenkins Job** 驱动。
 
-> 需求与架构见 vault：`40-项目/orgflow-devops/orgflow-devops-需求方案.md`（v0.2.0）
+**M0 已关闭**（2026-11-01，三段验收全过）。现在什么状态、下一步做什么，看
+[会话交接](docs/会话交接.md) 与 [待办](docs/待办.md)。
+
+> 需求真本在 vault：`40-项目/orgflow-devops/orgflow-devops-需求方案.md`（v0.2.0）。
+> 除需求外，本仓库的文档是**自洽**的 —— 接手不需要任何外部资料。
 
 ## M0 组件
 
@@ -49,7 +53,8 @@ tests/          镜像锁定 / bats 服务测试 / DinD harness
 
 ## 测试
 
-`make test` 跑逻辑检查（81 项），`make test-bats` 在独立 DinD 栈内跑 13 个用例文件 / 23 条断言
+`make test` 跑逻辑检查（124 个用例，含**文档相对链接**与**IP 表一致性**），
+`make test-bats` 在独立 DinD 栈内跑 13 个用例文件 / 23 条断言
 （含 `18_public` 的 GHCR 匿名可达、`19_dns` 容器内解析与 `20_tls` 证书链）。bats 断言一律用
 `curl --resolve <sub>.<domain>:<port>:127.0.0.1`，测的是 Caddy 的站点匹配而不是某个
 `IP:端口`。运行要求、`KEEP=1` 调试和镜像升级步骤见
@@ -59,15 +64,19 @@ tests/          镜像锁定 / bats 服务测试 / DinD harness
 
 | 想知道 | 去哪看 |
 |---|---|
-| **刚接手这个仓库，先读这一份** | [会话交接](docs/会话交接.md)（现状 + 未解决项 + 陷阱速查） |
-| 某个服务怎么用、怎么部署、坏了怎么查 | [`docs/services/`](docs/services/)（10 份，统一六段） |
+| **刚接手这个仓库，先读这一份** | [会话交接](docs/会话交接.md)（现状 + 下一步 + 陷阱速查） |
+| **现在还有哪些事没做** | [待办](docs/待办.md)（Issue 索引，需求真本在 Issue 里） |
+| **M0 是怎么验的、验出了什么** | [M0 验收记录](docs/M0-验收记录.md)（三个真机缺陷复盘在 §12） |
+| M0 设计：是什么、怎么跑、Job 怎么定义 | [M0 最小核心](docs/M0-最小核心.md) |
+| 测试怎么跑、三层验证怎么分、怎么升 digest | [M0 测试体系](docs/M0-测试体系.md) |
+| 某个服务怎么用、怎么部署、坏了怎么查 | [`docs/services/`](docs/services/)（11 份，统一六段） |
 | 网络拓扑、固定 IP 表、分层排查决策树、局域网访问 | [网络架构](docs/network/arch.md) |
 | 域名路由为什么这么做 | [ADR-13](docs/ADR-13-域名路由.md) |
-| 测试怎么跑、怎么加用例、怎么升 digest | [M0 测试体系](docs/M0-测试体系.md) |
 | 镜像与 CI 流水线 | [M0 镜像与 CI](docs/M0-镜像与CI.md) |
 | 备份怎么做、怎么演练恢复 | [备份与恢复](docs/备份与恢复.md) |
 | 任务怎么派、验收怎么写 | [派单流程](docs/派单流程.md) |
 | 提交身份与分支规则 | [提交规范](docs/提交规范.md) |
+| Windows 侧验收脚本怎么用 | [win-acceptance](tools/win-acceptance/README.md) |
 
 固定 IP 表会被脚本核对：`bash scripts/check-arch-ips.sh` 逐行比对真实容器地址，
 改完 compose 记得跑一次。
