@@ -360,6 +360,43 @@ elif "--version" in args or "version" in args:
             self.assertFalse(set(call) & {"up", "run", "start", "pull", "build"})
 
 
+class AgentDockerAccessTests(unittest.TestCase):
+    """agent 容器里的 jenkins(1000) 必须能驱动宿主 docker（2026-11-01 真机验收踩到）。
+
+    上游 ssh-agent 镜像 `PermitRootLogin no`，Jenkins 连进来是 jenkins 用户，
+    而 /var/run/docker.sock 是 root:<docker 组> 0660 —— 不补组就 permission denied，
+    报错还会伪装成「找不到网络 orgflow」，排查成本极高。所以四处必须同时存在，
+    缺一处就静默退回 gid 0（等于没补）。
+    """
+
+    def test_compose_passes_the_socket_gid_to_the_agent(self):
+        # 不按服务切块（切块规则一改服务顺序就失效），直接看 socket 挂载点前面
+        # 那一段里有没有 group_add —— 两者必须挨在一起，否则就是给别的服务补的组。
+        lines = (ROOT / "docker-compose.yml").read_text().splitlines()
+        index = next(i for i, line in enumerate(lines)
+                     if line.strip() == "- /var/run/docker.sock:/var/run/docker.sock")
+        window = "\n".join(lines[max(0, index - 40):index])
+        self.assertIn("group_add:", window)
+        self.assertIn('"${DOCKER_GID:-0}"', window)
+
+    def test_every_entry_point_detects_the_gid(self):
+        # deploy.sh / harness / Makefile 是三条独立的起栈路径，少一条就是
+        # 「make deploy 正常、make up 挂」这种最难查的形态。
+        for name in ("scripts/deploy.sh", "tests/harness/entrypoint.sh"):
+            with self.subTest(file=name):
+                text = (ROOT / name).read_text()
+                self.assertIn("stat -c %g /var/run/docker.sock", text)
+                self.assertIn("export DOCKER_GID", text)
+        self.assertIn("DOCKER_GID ?= $(shell stat -c %g /var/run/docker.sock",
+                      (ROOT / "Makefile").read_text())
+
+    def test_deploy_verifies_the_agent_can_reach_the_daemon(self):
+        # healthy 只证明 sshd 在听，证明不了 docker 能用。必须真跑一次 docker info。
+        text = (ROOT / "scripts/deploy.sh").read_text()
+        self.assertIn("docker exec -u jenkins of-jenkins-agent docker info", text)
+        self.assertIn("DOCKER_GID=${DOCKER_GID:-未设置}", text)
+
+
 class HostsSnippetTests(unittest.TestCase):
     """gen-hosts.sh 的输出会直接写进 /etc/hosts，格式错了排查成本极高。"""
 

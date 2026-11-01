@@ -40,5 +40,10 @@ ENTRYPOINT ["/usr/local/bin/agent-entrypoint.sh"]
 
 # ★ 不要在这里切回 USER jenkins。上游 ssh-agent 镜像就是以 root 跑 setup-sshd 的
 #   （sshd 绑 22 这个特权端口需要 root），切走会直接起不来。
-#   `docker ps` 由 root 执行也意味着容器内 docker 建的产物属主是 root，
-#   这正是把 docker 从 controller 挪出来的原因之一。
+#
+# ★ 但「sshd 以 root 跑」**不等于**「job 里的命令以 root 跑」。镜像里
+#   `PermitRootLogin no`，Jenkins 用 jenkins(1000) 登录，所以 job 里的 docker
+#   命令是 uid 1000 在跑。因此 /var/run/docker.sock（root:<docker 组> 0660）
+#   必须通过 compose 的 group_add 把 socket 的 gid 补给这个用户，否则
+#   `docker network inspect` 之类的调用会 permission denied。
+#   2026-11-01 真机验收就踩了这个，报错伪装成「找不到网络 orgflow」。
