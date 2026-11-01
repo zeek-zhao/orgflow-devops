@@ -108,6 +108,26 @@ if [ -r "$ROOT/secrets/agent_ssh_key" ]; then
   export JENKINS_AGENT_SSH_PRIVATE_KEY
 fi
 
+# agent 的 **host key 公钥**（不是上面那把登录用的私钥）。
+# JCasC 的 manuallyProvidedKeyVerificationStrategy 要求「算法 + base64」两列，
+# 而 .pub 的第三列是注释（`jenkins-agent-host@orgflow-devops`），带上就对不上，
+# 所以这里切成前两列再 export。
+# 为什么必须固定：容器重建后 /etc/ssh 不持久化，`ssh-keygen -A` 会重生成 host key，
+# 节点就会因为 host key 变了而离线，等人手点「Trust SSH Host Key」才恢复。
+if [ -r "$ROOT/secrets/agent_host_key.pub" ]; then
+  JENKINS_AGENT_HOST_KEY="$(awk 'NR==1{print $1" "$2}' "$ROOT/secrets/agent_host_key.pub")"
+  export JENKINS_AGENT_HOST_KEY
+fi
+
+# 空值不能放过去：ManuallyProvidedKeyVerificationStrategy 在构造时就 parseKey，
+# 拿到空串会抛 IllegalArgumentException，JCasC 整份配置应用失败 —— 表现成
+# Jenkins 起不来，而日志里只有一行 parse 错误，很难联想到这里。
+if [ -z "${JENKINS_AGENT_HOST_KEY:-}" ]; then
+  echo "✗ secrets/agent_host_key.pub 缺失或为空，JCasC 的 host key 校验会启动失败" >&2
+  echo "  修：rm -f secrets/agent_host_key* && bash scripts/gen-agent-key.sh" >&2
+  exit 1
+fi
+
 # docker.sock 的 gid 必须补给 agent 容器（理由见 docker-compose.yml 的 group_add 注释）。
 # 和私钥同理：**export 到宿主环境**，不写 .env —— 既有「已有 .env 绝不修改」的约定，
 # 而且这个值随宿主变化，写进 .env 会让 .env 在不同机器间不能复用。
