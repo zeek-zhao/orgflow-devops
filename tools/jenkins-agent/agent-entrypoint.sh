@@ -26,4 +26,36 @@ if [ -z "${JENKINS_AGENT_SSH_PUBKEY:-}" ]; then
     exit 1
 fi
 
+# 把宿主 docker.sock 的 gid 变成 jenkins 的**附加组**（2026-11-01 真机验收）。
+#
+# ★ 为什么 compose 的 group_add 不够：它只给容器的 PID 1 加附加组，而 sshd 给
+#   登录会话调 initgroups()，会按 /etc/group **重置**附加组。结果同一个容器里：
+#       docker exec -u jenkins ... docker info   → 通（exec 继承 OCI 的 AdditionalGids）
+#       ssh jenkins@jenkins-agent 'docker info'  → permission denied（只有 1000）
+#   也就是说「用 docker exec 做的端到端检查」是**假阳性**，真机上 job 照样挂，
+#   而且报错还是那句「找不到网络 orgflow」。只有改 /etc/group 本身，
+#   initgroups() 才会把这个 gid 带上。
+DOCKER_GID="${DOCKER_GID:-}"
+if [ -n "$DOCKER_GID" ] && [ "$DOCKER_GID" != "0" ]; then
+    current_gid="$(getent group docker | cut -d: -f3 || true)"
+    if [ -z "$current_gid" ]; then
+        # -o：允许与镜像里已有的组共用 gid（Debian 镜像里 998 常常已经叫别的名字）
+        groupadd -o -g "$DOCKER_GID" docker 2>/dev/null || true
+    elif [ "$current_gid" != "$DOCKER_GID" ]; then
+        groupmod -o -g "$DOCKER_GID" docker 2>/dev/null || true
+    fi
+    if getent group docker >/dev/null 2>&1; then
+        usermod -aG docker jenkins
+    else
+        # 兜底：镜像里 shadow 工具不可用时，按 gid 找现有组名
+        existing="$(getent group "$DOCKER_GID" | head -1 | cut -d: -f1 || true)"
+        if [ -n "$existing" ]; then
+            usermod -aG "$existing" jenkins
+        else
+            echo "警告：无法把 gid $DOCKER_GID 加进 jenkins 的组，job 里的 docker 会 permission denied" >&2
+        fi
+    fi
+    echo "jenkins 的附加组：$(id -Gn jenkins)"
+fi
+
 exec setup-sshd "$@"
