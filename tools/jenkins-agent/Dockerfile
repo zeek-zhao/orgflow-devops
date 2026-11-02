@@ -30,7 +30,7 @@ ARG COMPOSE_PLUGIN_SHA256_ARM64=4f21245314ea6355398580c875f063dbebce37cf83912dcd
 
 USER root
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl \
+ && apt-get install -y --no-install-recommends ca-certificates curl python3 \
  && rm -rf /var/lib/apt/lists/* \
  && arch="$(dpkg --print-architecture)" \
  && case "$arch" in \
