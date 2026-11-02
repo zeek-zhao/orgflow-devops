@@ -41,6 +41,72 @@ def relative_targets(path):
         yield target
 
 
+def compose_service_names():
+    """从 docker-compose.yml 解析顶层 services: 下的服务名。
+
+    只认两空格缩进的键（services 的直接子级）；不引第三方 yaml 库，
+    缩进约定由仓库自己的 compose 文件保证（00_stack.bats 也依赖它）。
+    """
+    names = []
+    in_services = False
+    for raw in (ROOT / "docker-compose.yml").read_text(encoding="utf-8").splitlines():
+        if raw.rstrip() == "services:":
+            in_services = True
+            continue
+        if not in_services:
+            continue
+        if raw and not raw.startswith(" "):
+            break  # services: 块结束
+        if raw.startswith("  ") and not raw.startswith("   "):
+            name = raw.strip().split(":", 1)[0].strip()
+            if name and not name.startswith("#"):
+                names.append(name)
+    return names
+
+
+class ServiceDocCoverageTests(unittest.TestCase):
+    """M0 的每个服务必须有对应的 docs/services/<名字>.md。
+
+    防的是「服务加了/改名了，文档没跟上」——服务文档是排障的第一入口
+    （docs/services/ 统一六段），服务与文档一一对应这件事靠人记必烂。
+    """
+
+    # nexus 不在 compose 里（#46，由 job nexus-deploy 拉起），但它是 M0 服务。
+    EXTRA_SERVICES = ("nexus",)
+    # jjb 是 compose 里的工具容器（tools profile），不是对外服务，无文档。
+    NON_SERVICES = ("jjb",)
+
+    def test_every_service_has_a_doc(self):
+        missing = []
+        for name in compose_service_names() + list(self.EXTRA_SERVICES):
+            if name in self.NON_SERVICES:
+                continue
+            if not (ROOT / "docs" / "services" / f"{name}.md").exists():
+                missing.append(name)
+        self.assertEqual(
+            missing,
+            [],
+            "这些 M0 服务没有 docs/services/<名字>.md：\n  " + "\n  ".join(missing),
+        )
+
+    def test_every_service_doc_matches_a_service(self):
+        """反向校验：docs/services/ 里的文档必须对应一个真实服务。
+
+        服务改名/删除后留下的孤儿文档，读者会以为它还在跑。
+        """
+        known = set(compose_service_names()) | set(self.EXTRA_SERVICES)
+        orphans = []
+        for doc in sorted((ROOT / "docs" / "services").glob("*.md")):
+            if doc.stem not in known:
+                orphans.append(doc.name)
+        self.assertEqual(
+            orphans,
+            [],
+            "这些 docs/services/ 文档不对应任何服务（服务改名/删掉了？）：\n  "
+            + "\n  ".join(orphans),
+        )
+
+
 class DocLinkTests(unittest.TestCase):
     def test_every_relative_link_resolves(self):
         broken = []

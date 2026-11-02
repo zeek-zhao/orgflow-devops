@@ -135,10 +135,66 @@ assert restore.bindings == null
     assert state.bindings == null
 }
 
+// verifyService：部署 → healthy → 备份 → 断言。下游 step 用桩替换，只看调用序列。
+def loadVerifyStep(Map state) {
+    def step = loadStep('verifyService', state)
+    step.metaClass.deployService = { Map cfg -> state.calls << ['deployService', cfg.service, cfg.dryRun] }
+    step.metaClass.deployNexus = { Map cfg -> state.calls << ['deployNexus', cfg.dryRun] }
+    step.metaClass.backupService = { Map cfg -> state.calls << ['backupService', cfg.service] }
+    return step
+}
+
+// dryRun：只部署 echo，不备份、不跑断言
+def verifyDry = newState(); verifyDry.calls = []
+loadVerifyStep(verifyDry).call(service: 'ldap', dryRun: true)
+assert verifyDry.messages.any { it.contains('== verify service=ldap') }
+assert verifyDry.messages.any { it.contains('DRY_RUN') }
+assert verifyDry.calls == [['deployService', 'ldap', true]]
+assert verifyDry.commands.empty
+
+// 有真卷的服务（ldap）：部署 + 备份 + 断言三件套
+def verifyLdap = newState(); verifyLdap.calls = []
+loadVerifyStep(verifyLdap).call(service: 'ldap')
+assert verifyLdap.calls[0] == ['deployService', 'ldap', false]
+assert verifyLdap.calls[1] == ['backupService', 'ldap']
+assert verifyLdap.commands.size() == 1
+assert verifyLdap.commands[0].contains('cd out/backups')
+assert verifyLdap.commands[0].contains('for suffix in tgz sha256 meta')
+assert verifyLdap.commands[0].contains('sha256sum -c')
+
+// 无真卷的服务（caddy）：部署后显式跳过备份，没有断言命令
+def verifyCaddy = newState(); verifyCaddy.calls = []
+loadVerifyStep(verifyCaddy).call(service: 'caddy')
+assert verifyCaddy.calls == [['deployService', 'caddy', false]]
+assert verifyCaddy.messages.any { it.contains('SKIP backup') }
+assert verifyCaddy.commands.empty
+
+// nexus：部署走 deployNexus（#46），备份/断言照常
+def verifyNexus = newState(); verifyNexus.calls = []
+loadVerifyStep(verifyNexus).call(service: 'nexus')
+assert verifyNexus.calls[0] == ['deployNexus', false]
+assert verifyNexus.calls[1] == ['backupService', 'nexus']
+assert verifyNexus.commands.size() == 1
+
+[
+    [service: 'other'],
+    [service: 'ldap; echo test-secret'],
+    [service: 'ldap', environment: 'other'],
+    [service: 'ldap', dryRun: 'true']
+].each { cfg ->
+    def state = newState(); state.calls = []
+    expectFailure { loadVerifyStep(state).call(cfg) }
+    assert state.calls == null || state.calls.empty
+    assert state.commands.empty
+}
+
 // Compile the actual JJB output, including its resolved braces and checkout syntax.
 def loader = new GroovyClassLoader()
 loader.parseClass('@interface Library { String value(); }')
-['deploy-service', 'backup-service', 'restore-service', 'nexus-deploy'].each { name ->
+['deploy-service', 'backup-service', 'restore-service', 'nexus-deploy',
+ 'verify-dnsmasq', 'verify-jenkins', 'verify-jenkins-agent', 'verify-caddy',
+ 'verify-router', 'verify-ldap', 'verify-ldapadmin', 'verify-dex',
+ 'verify-oauth2-proxy', 'verify-homepage', 'verify-nexus'].each { name ->
     def xmlFile = new File(".jjb/rendered/${name}/config.xml")
     assert xmlFile.exists(): 'Run make jobs-test first'
     def factory = javax.xml.parsers.DocumentBuilderFactory.newInstance()
