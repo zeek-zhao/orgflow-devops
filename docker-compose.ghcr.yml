@@ -14,7 +14,7 @@ services:
   jenkins:
     image: ghcr.io/zeek-zhao/orgflow-devops/jenkins:24.04-v1@sha256:2e211bf40725bcfb91657d7110c14ecbb15966bcc99795fb4639f5689d21bf68
   jenkins-agent:
-    image: ghcr.io/zeek-zhao/orgflow-devops/jenkins-agent:24.04-v1@sha256:177f7eec7d4910be0892af7b1bc801505dd4e554ef1e2a5d2daa59857db57d6b
+    image: ghcr.io/zeek-zhao/orgflow-devops/jenkins-agent:24.04-v1@sha256:dd8067a1b1cf5ef7524f024faa37c4e546666ed4143dda877573655b92ebf17d
   ldap:
     image: ghcr.io/zeek-zhao/orgflow-devops/mirror-openldap:1.5.0@sha256:18742e9c449c9c1afe129d3f2f3ee15fb34cc43e5f940a20f3399728f41d7c28
   ldapadmin:
