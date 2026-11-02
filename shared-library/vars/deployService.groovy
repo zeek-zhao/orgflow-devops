@@ -10,7 +10,10 @@ def call(Map cfg = [:]) {
     }
     def dryRun = cfg.dryRun == true
     // nexus 不在这个列表里（#46）：它已移出 compose，走 deployNexus / nexus-deploy.sh。
-    if (!(service in ['jenkins', 'caddy', 'router', 'ldap', 'ldapadmin', 'dex', 'oauth2-proxy'])) {
+    // 白名单与 scripts/deploy.sh 的 case 保持一致（原为 7 个，verify-<svc> job
+    // 需要能部署全部 compose 服务，故对齐为 10 个）。
+    if (!(service in ['dnsmasq', 'jenkins', 'jenkins-agent', 'caddy', 'router',
+                      'ldap', 'ldapadmin', 'dex', 'oauth2-proxy', 'homepage'])) {
         error('deployService: 不支持的 service')
     }
     if (!(environment in ['dev', 'staging', 'prod'])) {
