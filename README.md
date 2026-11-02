@@ -54,8 +54,9 @@ tests/          镜像锁定 / bats 服务测试 / DinD harness
 ## 测试
 
 `make test` 跑逻辑检查（124 个用例，含**文档相对链接**与**IP 表一致性**），
-`make test-bats` 在独立 DinD 栈内跑 13 个用例文件 / 23 条断言
-（含 `18_public` 的 GHCR 匿名可达、`19_dns` 容器内解析与 `20_tls` 证书链）。bats 断言一律用
+`make test-bats` 在独立 DinD 栈内跑 15 个用例文件 / 34 条用例
+（含 `18_public` 的 GHCR 匿名可达、`19_dns` 容器内解析、`20_tls` 证书链与
+`30_backup_restore` 真卷备份/恢复全链路）。bats 断言一律用
 `curl --resolve <sub>.<domain>:<port>:127.0.0.1`，测的是 Caddy 的站点匹配而不是某个
 `IP:端口`。运行要求、`KEEP=1` 调试和镜像升级步骤见
 [M0 测试体系](docs/M0-测试体系.md)。
