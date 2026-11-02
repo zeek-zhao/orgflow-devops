@@ -19,6 +19,15 @@ LABEL org.opencontainers.image.title="orgflow-devops jenkins-agent"
 # 永远不启动的 dockerd，镜像大 100MB 而且会让人误以为容器里能独立跑 docker。
 ARG DOCKER_CLI_VERSION=27.5.1
 
+# compose 插件：deploy.sh / backup.sh 都是 `docker compose ...`，
+# agent 里没有它，deploy-service / verify-<svc> 这类真跑 deploy.sh 的 job
+# 会死在「docker: 'compose' is not a docker command」（真机 verify-ldap #2）。
+# 版本与两个架构的 sha256 从 download.docker.com 的 Packages 索引取值后钉死，
+# 防的是「构建日不同、插件版本漂移」——和上面 DOCKER_CLI_VERSION 同一套路。
+ARG COMPOSE_PLUGIN_VERSION=5.7.0-1~debian.12~bookworm
+ARG COMPOSE_PLUGIN_SHA256_AMD64=b3a1f72bcf71635c367849ac367b28088934727a8e4668ffeb2388bb2b5dd938
+ARG COMPOSE_PLUGIN_SHA256_ARM64=814f476abb8ec2f76d1cbbd5ea563acebe911bb48a5d19b0f1385808f86a2ed6
+
 USER root
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl \
@@ -32,6 +41,22 @@ RUN apt-get update \
  && curl -fsSL "https://download.docker.com/linux/static/stable/${dockerarch}/docker-${DOCKER_CLI_VERSION}.tgz" \
     | tar -xz --strip-components=1 -C /usr/local/bin docker/docker \
  && docker --version
+
+# compose 插件按 debian 源的 deb 安装（cli-plugins 目录归 deb 管，升级省心）。
+# codename 从 os-release 取：底座换发行版时这里不用跟着改。
+RUN . /etc/os-release \
+ && arch="$(dpkg --print-architecture)" \
+ && case "$arch" in \
+        amd64) want_sha="$COMPOSE_PLUGIN_SHA256_AMD64" ;; \
+        arm64) want_sha="$COMPOSE_PLUGIN_SHA256_ARM64" ;; \
+        *) echo "不支持的架构: $arch" >&2; exit 1 ;; \
+    esac \
+ && curl -fsSL -o /tmp/compose.deb \
+      "https://download.docker.com/linux/debian/dists/${VERSION_CODENAME}/pool/stable/${arch}/docker-compose-plugin_${COMPOSE_PLUGIN_VERSION}_${arch}.deb" \
+ && echo "${want_sha}  /tmp/compose.deb" | sha256sum -c - \
+ && dpkg -i /tmp/compose.deb \
+ && rm -f /tmp/compose.deb \
+ && docker compose version
 
 # 公钥从挂进来的文件读，不从 .env 读（理由见 agent-entrypoint.sh 文件头）
 COPY agent-entrypoint.sh /usr/local/bin/agent-entrypoint.sh

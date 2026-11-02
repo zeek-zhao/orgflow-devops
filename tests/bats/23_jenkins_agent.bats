@@ -25,6 +25,13 @@ setup() {
     # 但会报 "Cannot connect to the Docker daemon"。这一条才是真正的连通性断言。
     run compose_exec jenkins-agent docker ps -q
     [ "$status" -eq 0 ]
+
+    # compose 插件：deploy.sh / backup.sh 都是 `docker compose ...`，
+    # 插件缺失时 job 死在 "'compose' is not a docker command"
+    # （真机 verify-ldap #2 踩到：CLI 在、sock 通、compose 没装）。
+    run compose_exec jenkins-agent docker compose version
+    [ "$status" -eq 0 ]
+    assert_contains "$output" "Docker Compose version"
 }
 
 @test "jenkins-agent: JCasC 建出的节点在线，且带 orgflow-docker 标签" {
