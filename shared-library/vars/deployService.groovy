@@ -40,7 +40,13 @@ def call(Map cfg = [:]) {
         return
     }
 
-    withEnv(["DEPLOY_SERVICE=${service}", "ENV_NAME=${environment}"]) {
+    // envFile 可选：agent 工作区没有 .env（verify-<svc> 从 secret file 凭据
+    // 注入后传进来）；不传保持原行为（仓库根 .env / .env.<env>）。
+    def envValues = ["DEPLOY_SERVICE=${service}", "ENV_NAME=${environment}"]
+    if (cfg.envFile) {
+        envValues << "ENV_FILE=${cfg.envFile}"
+    }
+    withEnv(envValues) {
         withCredentials([
             string(credentialsId: 'ldap-admin-password', variable: 'LDAP_ADMIN_PASSWORD'),
             string(credentialsId: 'oauth2-client-secret', variable: 'OAUTH2_CLIENT_SECRET'),

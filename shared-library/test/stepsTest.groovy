@@ -3,6 +3,7 @@ def loadStep(String name, Map state) {
     step.metaClass.error = { String message -> throw new IllegalArgumentException(message) }
     step.metaClass.echo = { Object message -> state.messages << message.toString() }
     step.metaClass.string = { Map binding -> binding }
+    step.metaClass.file = { Map binding -> binding }
     step.metaClass.withEnv = { List values, Closure body ->
         state.environment = values.collect { it.toString() }
         body()
@@ -10,6 +11,11 @@ def loadStep(String name, Map state) {
     step.metaClass.withCredentials = { List bindings, Closure body ->
         state.bindings = bindings
         state.inCredentials = true
+        // withCredentials 在 Jenkins 里会把 variable 绑成闭包内可读的局部
+        // 变量（verifyService 读 M0_ENV_FILE 传给下游 step）；mock 同样的语义。
+        bindings.findAll { it.variable }.each { b ->
+            step.metaClass."${b.variable}" = 'FAKE-' + b.credentialsId
+        }
         try {
             body()
         } finally {
@@ -78,6 +84,15 @@ assert nexus.environment.contains('ENV_NAME=prod')
 assert nexus.bindings*.credentialsId == ['nexus-admin-password']
 assert nexus.bindings*.variable == ['NEXUS_ADMIN_PASSWORD']
 
+// envFile 可选透传（verify-<svc> 场景）：agent 工作区无 .env，路径进 withEnv
+def deployEnvFile = newState()
+loadStep('deployService', deployEnvFile).call(service: 'ldap', envFile: '/fake/env')
+assert deployEnvFile.environment.contains('ENV_FILE=/fake/env')
+
+def backupEnvFile = newState()
+loadStep('backupService', backupEnvFile).call(service: 'ldap', envFile: '/fake/env')
+assert backupEnvFile.environment.contains('ENV_FILE=/fake/env')
+
 def backup = newState()
 loadStep('backupService', backup).call(service: 'all', target: 'local', retentionDays: '0')
 assert backup.commands.size() == 1
@@ -138,25 +153,26 @@ assert restore.bindings == null
 // verifyService：部署 → healthy → 备份 → 断言。下游 step 用桩替换，只看调用序列。
 def loadVerifyStep(Map state) {
     def step = loadStep('verifyService', state)
-    step.metaClass.deployService = { Map cfg -> state.calls << ['deployService', cfg.service, cfg.dryRun] }
+    step.metaClass.deployService = { Map cfg -> state.calls << ['deployService', cfg.service, cfg.dryRun, cfg.envFile] }
     step.metaClass.deployNexus = { Map cfg -> state.calls << ['deployNexus', cfg.dryRun] }
-    step.metaClass.backupService = { Map cfg -> state.calls << ['backupService', cfg.service] }
+    step.metaClass.backupService = { Map cfg -> state.calls << ['backupService', cfg.service, cfg.envFile] }
     return step
 }
 
-// dryRun：只部署 echo，不备份、不跑断言
+// dryRun：只部署 echo，不备份、不跑断言（但 .env 凭据照样绑定）
 def verifyDry = newState(); verifyDry.calls = []
 loadVerifyStep(verifyDry).call(service: 'ldap', dryRun: true)
 assert verifyDry.messages.any { it.contains('== verify service=ldap') }
 assert verifyDry.messages.any { it.contains('DRY_RUN') }
-assert verifyDry.calls == [['deployService', 'ldap', true]]
+assert verifyDry.calls == [['deployService', 'ldap', true, 'FAKE-orgflow-env-file']]
 assert verifyDry.commands.empty
+assert verifyDry.bindings*.credentialsId == ['orgflow-env-file']
 
-// 有真卷的服务（ldap）：部署 + 备份 + 断言三件套
+// 有真卷的服务（ldap）：部署 + 备份 + 断言三件套，.env 路径一路透传
 def verifyLdap = newState(); verifyLdap.calls = []
 loadVerifyStep(verifyLdap).call(service: 'ldap')
-assert verifyLdap.calls[0] == ['deployService', 'ldap', false]
-assert verifyLdap.calls[1] == ['backupService', 'ldap']
+assert verifyLdap.calls[0] == ['deployService', 'ldap', false, 'FAKE-orgflow-env-file']
+assert verifyLdap.calls[1] == ['backupService', 'ldap', 'FAKE-orgflow-env-file']
 assert verifyLdap.commands.size() == 1
 assert verifyLdap.commands[0].contains('cd out/backups')
 assert verifyLdap.commands[0].contains('for suffix in tgz sha256 meta')
@@ -165,15 +181,15 @@ assert verifyLdap.commands[0].contains('sha256sum -c')
 // 无真卷的服务（caddy）：部署后显式跳过备份，没有断言命令
 def verifyCaddy = newState(); verifyCaddy.calls = []
 loadVerifyStep(verifyCaddy).call(service: 'caddy')
-assert verifyCaddy.calls == [['deployService', 'caddy', false]]
+assert verifyCaddy.calls == [['deployService', 'caddy', false, 'FAKE-orgflow-env-file']]
 assert verifyCaddy.messages.any { it.contains('SKIP backup') }
 assert verifyCaddy.commands.empty
 
-// nexus：部署走 deployNexus（#46），备份/断言照常
+// nexus：部署走 deployNexus（#46，密码走自己的凭据，不读 .env），备份/断言照常
 def verifyNexus = newState(); verifyNexus.calls = []
 loadVerifyStep(verifyNexus).call(service: 'nexus')
 assert verifyNexus.calls[0] == ['deployNexus', false]
-assert verifyNexus.calls[1] == ['backupService', 'nexus']
+assert verifyNexus.calls[1] == ['backupService', 'nexus', 'FAKE-orgflow-env-file']
 assert verifyNexus.commands.size() == 1
 
 [

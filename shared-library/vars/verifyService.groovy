@@ -14,6 +14,12 @@
 // 备份降级：backup.sh 只支持 jenkins / nexus / ldap 三个有真数据卷的服务，
 // 其余服务没有可备份的持久卷，备份阶段显式跳过并 echo 原因——静默跳过
 // 会让人误以为备份跑了。
+//
+// .env 注入：agent 工作区是干净 checkout，没有 .env（gitignore，真机
+// verify-ldap #1 次构建撞到）。.env 整体作为 secret file 凭据
+// `orgflow-env-file` 注入（不落日志、不进仓库），以 ENV_FILE 传给
+// deploy.sh / backup.sh —— 两个脚本都原生支持 ENV_FILE 覆盖。
+// nexus 不需要：deployNexus 的密码走自己的凭据，nexus-deploy.sh 不读 .env。
 def call(Map cfg = [:]) {
     def service = cfg.service ?: error('verifyService: service 必填')
     def environment = cfg.environment ?: 'dev'
@@ -37,31 +43,32 @@ def call(Map cfg = [:]) {
 
     echo "== verify service=${service} env=${environment} dryRun=${dryRun} =="
 
-    // 阶段 1：部署（nexus 单独走 deployNexus，见 #46 的说明）
-    if (service == 'nexus') {
-        deployNexus(environment: environment, dryRun: dryRun)
-    } else {
-        deployService(service: service, environment: environment, dryRun: dryRun)
-    }
+    withCredentials([file(credentialsId: 'orgflow-env-file', variable: 'M0_ENV_FILE')]) {
+        // 阶段 1：部署（nexus 单独走 deployNexus，见 #46 的说明）
+        if (service == 'nexus') {
+            deployNexus(environment: environment, dryRun: dryRun)
+        } else {
+            deployService(service: service, environment: environment,
+                          dryRun: dryRun, envFile: M0_ENV_FILE)
+        }
 
-    if (dryRun) {
-        echo "DRY_RUN: 跳过备份与断言（service=${service}）"
-        return
-    }
+        if (dryRun) {
+            echo "DRY_RUN: 跳过备份与断言（service=${service}）"
+            return
+        }
 
-    // 阶段 2：备份（仅限有真卷的服务；无卷服务显式说明并跳过）
-    if (!(service in backupable)) {
-        echo "SKIP backup: service=${service} 无持久数据卷，backup.sh 不支持"
-        return
-    }
-    backupService(service: service, target: 'local')
+        // 阶段 2：备份（仅限有真卷的服务；无卷服务显式说明并跳过）
+        if (!(service in backupable)) {
+            echo "SKIP backup: service=${service} 无持久数据卷，backup.sh 不支持"
+            return
+        }
+        backupService(service: service, target: 'local', envFile: M0_ENV_FILE)
 
-    // 阶段 3：断言本次备份产出三件套（归档 / 校验和 / 元数据）。
-    // backup.sh 逐份产出 <svc>-<ts>.{tgz,sha256,meta}，三件缺一即坏。
-    // 注意：.sha256 清单里是相对 out/backups 的纯文件名（backup-common.sh），
-    // 校验必须在该目录内执行。
-    withEnv(["VERIFY_SERVICE=${service}"]) {
-        withCredentials([]) {
+        // 阶段 3：断言本次备份产出三件套（归档 / 校验和 / 元数据）。
+        // backup.sh 逐份产出 <svc>-<ts>.{tgz,sha256,meta}，三件缺一即坏。
+        // 注意：.sha256 清单里是相对 out/backups 的纯文件名（backup-common.sh），
+        // 校验必须在该目录内执行。
+        withEnv(["VERIFY_SERVICE=${service}"]) {
             sh '''
             set +x
             set -eu
