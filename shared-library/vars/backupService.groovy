@@ -18,8 +18,14 @@ def call(Map cfg = [:]) {
 
     echo "== backup service=${service} target=${target} retention=${retention}d =="
 
-    withEnv(["BACKUP_SERVICE=${service}", "BACKUP_TARGET=${target}",
-             "BACKUP_RETENTION_DAYS=${retention}"]) {
+    // envFile 可选：verify-<svc> 在 agent 工作区没有 .env，从 secret file
+    // 凭据注入后传进来（backup-common.sh 原生支持 ENV_FILE 覆盖）。
+    def envValues = ["BACKUP_SERVICE=${service}", "BACKUP_TARGET=${target}",
+                     "BACKUP_RETENTION_DAYS=${retention}"]
+    if (cfg.envFile) {
+        envValues << "ENV_FILE=${cfg.envFile}"
+    }
+    withEnv(envValues) {
         withCredentials([]) {
             sh '''
                 set +x
