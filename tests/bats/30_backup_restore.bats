@@ -10,9 +10,9 @@
 #     已知确定基线（33 条，10_ldap 已断言），恢复结果可精确对照。
 #   - BACKUP_DIR 一律指到 /tmp：out/ 是宿主共享 bind mount，往 out/backups
 #     写测试归档会污染真机的备份目录。
-#   - 两个脚本内部硬编码 `docker run … alpine`，但内层 daemon 只预灌了
-#     compose 锁定镜像（不允许拉 Hub）。这里把已预灌的 router 镜像
-#     retag 成 alpine：脚本只用到 sh/tar/find，不关心镜像真身。
+#   - 两个脚本内部硬编码 `docker run … alpine`，但内层 daemon 只预灌 compose
+#     锁定镜像。这里显式确保有真 alpine（restore 依赖 busybox sh 的
+#     `set -o pipefail`，ubuntu 基座顶替会炸）——与被测代码同口径。
 #   - 文件编号 30：restore 会 stop/start ldap，必须排在所有依赖
 #     ldap 的用例（10_ldap）之后跑。
 
@@ -32,14 +32,16 @@ backup_compose() {
     printf '%s' "$args"
 }
 
-# 若内层 daemon 没有 alpine（预灌表里没有它），用 router 镜像顶替：
-# ubuntu 基座自带 sh/tar/find，够脚本用；镜像真身无所谓，标签才是脚本引用。
+# 脚本硬编码 `docker run … alpine`（backup 的 tar、restore 的 find/pipefail——
+# busybox sh 才支持 `set -o pipefail`，用 ubuntu 基座顶替会在 restore 里炸）。
+# 与被测代码保持同口径：直接确保内层 daemon 有真 alpine。CI 可拉取；
+# 离线机器按 harness 的规矩事先导入（Hub 来源默认离线导入）。
 ensure_alpine() {
     docker image inspect alpine >/dev/null 2>&1 && return 0
-    local base
-    base="$(docker inspect -f '{{.Image}}' "$(compose_cmd ps -q router)")"
-    [ -n "$base" ] || { echo "router 容器不存在，无法派生 alpine 替身" >&2; return 1; }
-    docker tag "$base" alpine
+    docker pull alpine >/dev/null 2>&1 || {
+        echo "内层 daemon 缺 alpine（backup/restore 脚本硬编码引用）；CI 可拉取，离线机器需先导入" >&2
+        return 1
+    }
 }
 
 run_backup() {
