@@ -1,0 +1,54 @@
+# 每服务一个专属 verify job（JJB 循环生成 11 个）。
+# 职责统一串在 verifyService step 里：部署 → healthy（deploy.sh 健康闸门内建）
+# → 备份（仅 jenkins/nexus/ldap 有真卷，其余显式跳过）→ 断言备份三件套。
+# 所以这里只有一个模板 + 一个服务的名字列表；新增服务时在这里加一行即可。
+- job-template:
+    name: verify-{svc}
+    description: "verify-{svc}：部署该服务 → 等 healthy → 备份（如支持）→ 断言备份产物。单服务运维闭环自检。"
+    project-type: pipeline
+    sandbox: true
+    scm:
+      - git:
+          url: https://github.com/zeek-zhao/orgflow-devops.git
+          branches: [main]
+          credentials-id: github-token
+          skip-tag: true
+          wipe-workspace: false
+    dsl: |
+      @Library('orgflow-shared') _
+      node('orgflow-docker') {{
+        def scm = [$class: 'GitSCM',
+          branches: [[name: 'main']],
+          userRemoteConfigs: [[
+            url: 'https://github.com/zeek-zhao/orgflow-devops.git',
+            credentialsId: 'github-token'
+          ]]]
+        checkout(scm)
+        verifyService(
+          service: '{svc}',
+          environment: 'dev',
+          dryRun: params.DRY_RUN
+        )
+      }}
+    parameters:
+      - bool:
+          name: DRY_RUN
+          default: false
+          description: "只打印将执行的部署/备份动作，不实际执行"
+
+- project:
+    name: verify-services
+    svc:
+      - dnsmasq
+      - jenkins
+      - jenkins-agent
+      - caddy
+      - router
+      - ldap
+      - ldapadmin
+      - dex
+      - oauth2-proxy
+      - homepage
+      - nexus
+    jobs:
+      - verify-{svc}
