@@ -48,7 +48,7 @@ setup() {
 
     local from_step
     from_step="$(grep -A2 'def deployable' "$M0_REPO/shared-library/vars/verifyService.groovy" \
-        | grep -oE "'[a-z0-9-']+'" | tr -d "'" | grep -vx nexus | sort | tr '\n' ' ')"
+        | grep -oE "'[a-z0-9-]+'" | tr -d "'" | grep -vx nexus | sort | tr '\n' ' ')"
     [ "$from_step" = "$from_script" ]
 
     # nexus 必须在 deployable 里（走 deployNexus 的那条分支）
