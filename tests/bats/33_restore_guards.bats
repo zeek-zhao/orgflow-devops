@@ -69,7 +69,10 @@ craft_valid_ldap_archive() {
     echo baseline > "$src/data/base.conf"
     tar czf "$out" -C "$src" data
     rm -rf "$src"
-    sha256sum "$out" > "${out%.tgz}.sha256"
+    # 清单格式必须与 backup.sh 一致：hash + 两空格 + 裸文件名。
+    # 写成全路径会被更前面的「清单格式」闸门拦下，测不到目标守卫。
+    printf '%s  %s\n' "$(sha256sum "$out" | cut -d' ' -f1)" "$(basename "$out")" \
+        > "${out%.tgz}.sha256"
     printf 'service=ldap\nvolume=orgflow-devops_ldap_data\n' > "${out%.tgz}.meta"
 }
 
