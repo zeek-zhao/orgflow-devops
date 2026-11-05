@@ -1,0 +1,4 @@
+W-01	jenkins.casc.obsolete.git	warning	Configuration as Code obsolete file format: 'git' is obsolete, please use 'gitSource'
+W-02	jenkins.diagnostics.ControllerExecutorsAgents	warning	Building on the built-in node can be a security issue. You should set the number of executors on the built-in node to 0. See the documentation .
+W-03	jenkins.monitor.JavaVersionRecommendationAdminMonitor-21-2027-09-30-WARNING	warning	Java 21 end of life in Jenkins You are running Jenkins on Java 21, support for which will end on or after Sep 30, 2027. Refer to the documentation for more details.
+W-04	jenkins.security.csp.impl.CspRecommendation	info	Jenkins can enforce Content Security Policy (CSP). CSP tells web browsers what they are allowed to do while rendering a web page. This limits or even eliminates the impact of vulnerabilities like cross-site scripting (XSS). CSP is disabled by default for backward compatibility, but it is recommended

@@ -1,6 +1,7 @@
 jenkins:
   systemMessage: "orgflow-devops M0 —— Jenkins 自举最小核心"
-  numExecutors: 2
+  # 内置节点不跑构建（5 类 Job 都在 orgflow-docker agent），设 0 消除安全警告 (#92)
+  numExecutors: 0
   securityRealm:
     local:
       allowsSignup: false
@@ -53,7 +54,8 @@ unclassified:
           modernSCM:
             libraryPath: "shared-library"
             scm:
-              git:
+              # git 是 JCasC 已废弃的旧符号，运行时导出为 gitSource (#92)
+              gitSource:
                 remote: "https://github.com/zeek-zhao/orgflow-devops.git"
                 credentialsId: "github-token"
   location:
