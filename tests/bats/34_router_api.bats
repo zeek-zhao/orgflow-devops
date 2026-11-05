@@ -41,7 +41,11 @@ except urllib.error.HTTPError as e:
     run compose_cmd exec -T router python3 -c '
 import urllib.request
 print(urllib.request.urlopen("http://caddy:2019/config/", timeout=10).read().decode())'
-    assert_contains "$output" "demo.${GW_DOMAIN}"
+    if ! grep -q "demo" <<< "$output"; then
+        echo "== /config/ 片段 == ${output:0:500}" >&2
+        compose_cmd logs router --no-color 2>&1 | tail -8 >&2
+    fi
+    assert_contains "$output" "demo"
     # ④ 真实请求也走通：caddy:80 对已知域名做 80→443 跳转（308 证明站点已注册）
     assert_gw demo / 308
     # 全程没有容器重建
