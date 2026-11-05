@@ -24,3 +24,19 @@ ldap_query() {
         assert_contains "$output" "dn: ou=$ou,dc=devops,dc=com"
     done
 }
+
+@test "ldap: uidNumber 全局唯一（#84 反 regression，曾出现 1009 重复）" {
+    run ldap_query -s sub "(objectClass=posixAccount)" uidNumber
+    [ "$status" -eq 0 ]
+    local nums dup
+    nums=$(grep -i "^uidNumber:" <<< "$output" | awk '{print $2}' | sort)
+    [ -n "$nums" ]
+    dup=$(uniq -d <<< "$nums")
+    [ -z "$dup" ]
+}
+
+@test "ldap: users OU 下恰好 12 个条目（11 用户 + OU 本身，#84）" {
+    run ldap_query -s one -b "ou=users,dc=devops,dc=com" "(objectClass=*)" dn
+    [ "$status" -eq 0 ]
+    [ "$(grep -c "^dn:" <<< "$output")" -eq 12 ]
+}
