@@ -202,6 +202,40 @@ docker compose logs jenkins | grep -iE 'casc|ConfigurationAsCode|SEVERE'
 make backup
 ```
 
+## Jenkins CLI 四件套（list / get / run / log）
+
+`scripts/jenkins-cli.sh` 把 Remote Access API 收成四个子命令，每步打印请求与结果，失败一律非 0 退出并给明确信息，绝不静默成功。
+
+```bash
+bash scripts/jenkins-cli.sh list
+bash scripts/jenkins-cli.sh get deploy-service
+bash scripts/jenkins-cli.sh run deploy-service SERVICE=caddy ENV=dev
+bash scripts/jenkins-cli.sh log nexus-deploy last
+```
+
+`run` 的参数是 `KEY=VAL`（可多个）；`log` 的 `last` 等价于 `lastBuild`。
+
+**连接地址**：默认直连容器固定 IP `http://172.31.0.20:8080`，可用 `JENKINS_CLI_URL` 覆盖。不要设成 `.env` 里的 `JENKINS_URL`（那是 `https://jenkins.<domain>/` 对外地址）：站点被网关 `forward_auth` 包住，带 Basic auth 打域名只会拿到 302，请求到不了 Jenkins，见 [会话交接 §4.5](../会话交接.md)。
+
+**凭据**：`JENKINS_ADMIN_ID` / `JENKINS_ADMIN_PASSWORD`，优先环境变量，其次 `~/workbuddy/orgflow-devops/.env`（可用 `JENKINS_CLI_ENV_FILE` 改路径）。脚本用 python 解析 dotenv、不 `source`；凭据只经 stdin 注入 curl 的 `Authorization: Basic`，不进脚本、日志、argv 回显或文档；显式 `set +x` 防调试回显。用 HTTP Basic + API token，**不用 crumb**。
+
+### 资料依据与「运行时确认」
+
+| endpoint | 依据 |
+|---|---|
+| `POST JENKINS_URL/job/JOB_NAME/buildWithParameters` | Jenkins [Remote Access API](https://www.jenkins.io/doc/book/using/remote-access-api/) 官方逐字示例 `curl JENKINS_URL/job/JOB_NAME/buildWithParameters --user USER:TOKEN --data id=123 --data verbosity=high`，官方原话 "API tokens are preferred instead of crumbs for CSRF protection." |
+| `GET /api/json`、`GET /job/<job>/api/json`、`GET /job/<job>/<build>/consoleText` | **运行时确认**（213 实测，见下）。该官方页**没有逐字给出**这些 endpoint，只写了 `.../api/` 模式与 wrapper 的 progressiveText，故必须实测，不可冒充官方文档结论。 |
+
+`run` 实现用 `--data-urlencode KEY=VAL`（对 VAL 做 URL 编码），语义等价于官方 `--data id=123`。
+
+**运行时确认（213 实测，2026-11-06）**：`list` → `GET /api/json` 返回 200 并列出 5 类 Job；`get deploy-service` → `GET /job/deploy-service/api/json` 返回 200 且 JSON 含 `"name":"deploy-service"`；`log nexus-deploy last` → `GET /job/nexus-deploy/lastBuild/consoleText` 返回 200 且日志非空。三条路径都由实测确认，不是引自官方文档。
+
+### 已知边界 / 未验证项
+
+- **成功触发一次真实构建未验证**：本轮为避免污染线上，只验证了 `run` 的参数校验与错误路径（非法 `KEY=VAL` 直接报错且不发请求；不存在的 Job 名返回 403）。没有伪造 201 或 queue id。
+- 用 `.env` 里的**管理员密码**做 Basic auth 时，GET 正常，但 POST 被 Jenkins CSRF 拦截，返回 `403 No valid crumb was included in the request`。这与官方 "API tokens are preferred instead of crumbs" 一致：Jenkins 只对 **API token** 认证豁免 crumb，账号密码不豁免。本脚本按需求**不用 crumb 作为首选**；要让 `run` 成功触发，应把 `JENKINS_ADMIN_PASSWORD` 换成该管理员真正的 **API token**（或对 POST 显式补 crumb，不属本卡首选方案）。
+- 反证：故意用错 API token，`list` / `get` / `run` / `log` 均返回 401、非 0 退出并打印明确错误。
+
 ## 已知边界
 
 - `storage: memory` 的 Dex 重启后 refresh token 失效，已登录会话要重新登录一次
