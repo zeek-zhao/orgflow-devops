@@ -118,3 +118,38 @@ make hosts IP=192.168.1.50
 # 看它到底绑在哪个地址上
 docker compose exec -T dnsmasq ss -lunp | grep :53
 ```
+
+## 使用指南
+
+```bash
+docker compose up -d dnsmasq                        # 改完 .env 后重启
+docker compose exec -T dnsmasq dig +short jenkins.org-devops.com @172.31.0.2
+docker compose exec -T router dig +short jenkins.org-devops.com    # 从别的容器验证
+make hosts                                          # 生成宿主/局域网 hosts 片段
+```
+
+两条 `dig` 都应返回 `172.31.0.10`（Caddy）。新增服务不用改 dnsmasq，整段后缀自动匹配。
+
+## 注意事项
+
+- **只绑 `172.31.0.2`，不能绑 `0.0.0.0`**：容器内 `127.0.0.11:53` 是 Docker 内嵌 DNS，绑全地址会冲突，表现为起不来或间歇不响应。
+- 挂掉的表现不是「DNS 报错」，而是**所有容器一起变慢或起不来**（启动时要解析域名），排查容易被带到业务服务上。
+- `make deploy SERVICE=xxx` **不重建容器**：compose 认为无变化就跳过，改了 bind mount 配置要 `docker compose --env-file .env restart <svc>`（`会话交接.md` §4.4）。
+- 服务名解析走上游转发到 `127.0.0.11`；日志里只剩 `forwarded` 没有 `config <域名> is <IP>`，说明域名段没匹配上（排查段第 6 步）。
+
+## 设置
+
+| 真源 | 路径 / 变量 |
+|---|---|
+| 容器定义 | `docker-compose.yml` 的 `dnsmasq` 段、`services/dnsmasq/` Dockerfile |
+| 域名后缀 | `.env` 的 `GATEWAY_DOMAIN` |
+| 整段解析目标 | `.env` 的 `GATEWAY_IP`（默认 `172.31.0.10`） |
+| 监听地址 | `.env` 的 `DNSMASQ_LISTEN_IP`（默认 `172.31.0.2`） |
+
+没有需要手改的配置文件；三个变量都有默认值。
+
+## 备份
+
+dnsmasq **无状态、无数据卷**：配置在 `.env` 与 `docker-compose.yml`（Git），容器可随时重建，
+不在 `make backup` 范围内。域名解析规则与固定 IP 表的约定见
+[备份与恢复](../备份与恢复.md)「范围与前提」；本服务无单独恢复演练项。

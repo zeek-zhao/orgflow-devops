@@ -140,3 +140,38 @@ cat out/Caddyfile
 # 校验一份改坏的 routes.yaml 会不会被拒
 python3 services/router/render.py --routes /tmp/bad.yaml --out /tmp/x
 ```
+
+## 使用指南
+
+```bash
+make render                                   # 本地渲染，无需容器
+python3 services/router/test_render.py        # 19 项纯逻辑单测
+cat out/Caddyfile                              # 看渲染产物
+docker compose exec -T router sh /app/reload.sh    # 手动触发一次 reload
+```
+
+改 `config/routes.yaml` 后由 `router` 容器 `--watch` 自动热加载，日常不需要手动 reload。
+
+## 注意事项
+
+- **宿主跑 `make render` 不会热加载**：真机制是 `router` 容器轮询 mtime + `POST /load` 到 Caddy admin；Caddy admin 只在容器网络 `caddy:2019`，宿主够不到（`会话交接.md` §4.4）。
+- `config/routes.yaml` 是**路由唯一真源**，没有第二处配路由；`out/Caddyfile` 是渲染产物，别手改（`会话交接.md` §1.2）。
+- 渲染是原子的：校验失败**不落盘**，上一版继续生效，日志里会有 `previous Caddyfile preserved`；`/healthz` 的 `ok:false` 是「从没成功渲染过一版」，不是「渲染出错」。
+- `USE_GHCR=1` 时对有 `build:` 的服务加 `--build` 会报 `refusing to create a tag with a digest reference`（`会话交接.md` §4.4）。
+- 删除 `name: auth` 路由会让受保护站点的登录跳转没地方去，渲染会直接报 `缺少 name: auth 的路由`。
+
+## 设置
+
+| 真源 / 产物 | 路径 |
+|---|---|
+| 路由唯一真源 | `config/routes.yaml` |
+| 渲染器与模板 | `services/router/render.py` + `services/router/` 模板 |
+| 容器挂载 | `docker-compose.yml` 的 `router` 段：`./config:/app/config:ro`、`./out:/app/out` |
+| 渲染产物 | `out/Caddyfile`、`out/dex/config.yaml` |
+| 变量 | `.env` 的 `ROUTES_FILE` / `GATEWAY_DOMAIN` / `CADDY_ADMIN_URL` |
+
+## 备份
+
+router **无状态、无数据卷**：`config/routes.yaml` 在 Git，`out/` 是可重建的渲染产物（不备），
+容器随时可起，不在 `make backup` 范围内。见
+[备份与恢复](../备份与恢复.md)「范围与前提」。

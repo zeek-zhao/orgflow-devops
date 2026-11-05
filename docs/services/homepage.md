@@ -351,3 +351,39 @@ Ran 12 tests in 0.001s
 OK
 RC_B=0
 ```
+
+## 使用指南
+
+```bash
+make render && docker compose restart caddy        # 改了 routes.yaml 后
+ls config/homepage/                               # 四个配置文件都要在
+curl -sS -k --resolve home.org-devops.com:443:127.0.0.1 \
+  https://home.org-devops.com:443/ | grep -oE 'Jenkins|Nexus|LDAP Admin' | sort -u
+```
+
+改四个 yaml **不用重启**，homepage 会自己重载；页面出来但一张卡都没有，先查 `services.yaml` 缩进。
+
+## 注意事项
+
+- `config/homepage` **不能挂 `:ro`**：homepage 把运行日志写到 `config/logs/`，只读会起不来（`会话交接.md` §4.5）。
+- `HOMEPAGE_ALLOWED_HOSTS` 必须同时列**带端口与不带端口**两种 Host；漏了非 443 端口（CI 用 8443）会 400，而这个 400 和「服务没起来」在浏览器里长得一样。
+- 首页**公开、不做鉴权**，因此不注入任何需要 token / 凭据的 widget；天气用免 key 的 Open-Meteo、活性检测用不需凭据的 HTTP 探测（`M0-增量需求总表.md` §1 第 8/9/10 条、§2「首页公开」约定）。
+- 标「二手」的 widget 结论（`siteMonitor` / `openmeteo`）必须在当前镜像版本容器内实测，不支持就降级为 `customapi`，不要硬写（`M0-增量需求总表.md` §1 判据、§5 风险）。
+- `resources` widget 读的是 homepage 容器自身 cgroup 不是宿主；卡片里的 IP 手写，新服务要同步 `docs/network/arch.md`。
+
+## 设置
+
+| 真源 | 路径 / 变量 |
+|---|---|
+| 标题 / 主题 / 布局 | `config/homepage/settings.yaml` |
+| 服务卡片 | `config/homepage/services.yaml` |
+| 文档书签 | `config/homepage/bookmarks.yaml` |
+| 资源 / 时间 / 搜索 / 天气 | `config/homepage/widgets.yaml` |
+| Host 白名单 | `.env` 的 `HOMEPAGE_ALLOWED_HOSTS` |
+| 卡片域名变量 | `.env` 的 `HOMEPAGE_VAR_GATEWAY_DOMAIN`、`PUID` / `PGID` |
+
+## 备份
+
+homepage **无业务数据卷**：四个 yaml 都在 Git，`config/logs` 是运行期日志不备；容器重建即可。
+域名 / 卡片链接随 `.env` 的 `GATEWAY_DOMAIN` 驱动，见
+[备份与恢复](../备份与恢复.md)「范围与前提」；本服务无单独恢复演练项。

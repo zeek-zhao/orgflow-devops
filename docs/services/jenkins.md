@@ -365,3 +365,42 @@ bash scripts/check-jenkins-warnings.sh
    （`USE_GHCR=1 make deploy`）后在管理页人工复核消警情况（卡片「需要人工动作」项）。
 4. JCasC 导出端点 GET 405 / POST 需 crumb（无 crumb 403），已带 crumb 成功导出，
    仅用于验证 `gitSource` 写法，未改动 Jenkins 任何状态。
+
+## 使用指南
+
+```bash
+USE_GHCR=1 make deploy                   # 全栈（213 拉不到 Docker Hub，USE_GHCR=1 必带）
+make jobs-test                           # 离线校验 Job 定义能否渲染（无需 .env）
+make jobs                                # 推送 deploy/backup/restore 三个 Job
+make backup                              # 备份 jenkins_home（会先停服）
+```
+
+日常部署 / 备份走 `jenkins.org-devops.com` 的 `deploy-service` / `backup-service` 参数化 Job；
+命令行等价与「healthy ≠ 可用」判据见 [使用说明](../使用说明.md) §2、§3。
+
+## 注意事项
+
+- 改了 `tools/jenkins/plugins.txt` 或 Dockerfile，要等 main 的 Images 工作流跑完 → `make images-pin` 回写 digest → 再 deploy；**跳过这步 213 跑的还是旧镜像**，`make deploy` 不报错。
+- `302` **不是就绪信号**：`deploy.sh` 曾用 `curl -f` 轮询登录端点误判 ready（`-f` 对 3xx 不失败），现在判 `docker inspect` 的 `Health.Status`。
+- Job 跑在 `jenkins-agent` 容器，不在 Jenkins 容器里；Jenkins 容器内 `docker` 不可用（见 [jenkins-agent](jenkins-agent.md)）。
+- `JENKINS_AGENT_HOST_KEY` 必须切成「算法 base64」两列（`.pub` 第三列是注释），**空值会让 JCasC 整份失败、Jenkins 起不来**（`会话交接.md` §4.1）。
+- `GITHUB_TOKEN` 留空表现为 `Invalid username or token` + `Maximum checkout retry attempts reached`，像网络问题其实是配置漏填（`会话交接.md` §2.2）。
+- `.env` 真值不要写进 Job 定义 / 文档 / 日志；Job 侧一律走 Credentials（最小披露，`M0-增量需求总表.md` §5）。
+
+## 设置
+
+| 真源 | 路径 |
+|---|---|
+| JCasC（管理员 / 全局库 / Credentials） | `config/jenkins.yaml` |
+| Job 定义（JJB） | `config/job_definitions/` |
+| 共享库 | `shared-library/` |
+| 插件清单 / 镜像 | `tools/jenkins/plugins.txt`、`tools/jenkins/Dockerfile` |
+| 全部状态 | `jenkins_home` 卷 |
+| 凭据 / 密钥 | `.env`（`JENKINS_ADMIN_ID` / `JENKINS_ADMIN_PASSWORD` / `GITHUB_TOKEN` …）与 `secrets/agent_*`（不进 Git） |
+
+## 备份
+
+**只保 `jenkins_home` 卷**（`make backup` / `backup-service` Job，备份前停服保证一致性）。
+`config/`、Job 定义、共享库都在 Git；`.env` 与 `secrets/` 不入库，走受控密钥保管流程另存。
+恢复演练的验证点是「容器 healthy + 能登录 + 关键 Job / 构建记录存在」，完整步骤与三件套
+（`.tgz` / `.sha256` / `.meta`）见 [备份与恢复](../备份与恢复.md)。

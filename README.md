@@ -46,14 +46,14 @@ services/auth   权限管理服务编排（含 dex 配置模板）
 services/dnsmasq 容器内 DNS（*.<domain> → Caddy）
 services/router 路由注册服务（渲染 + reload）
 shared-library  deployService / backupService 步骤
-scripts/        deploy / hosts / ca / backup / lint
+scripts/        deploy / hosts / ca / backup / lint / gen-docs-site / test-*
 docs/           方案、ADR 与运维
 tests/          镜像锁定 / bats 服务测试 / DinD harness
 ```
 
 ## 测试
 
-`make test` 跑逻辑检查（含**文档相对链接**、**服务文档覆盖**与**IP 表一致性**），
+`make test` 跑逻辑检查（含**文档相对链接**、**服务文档覆盖**、**服务文档四段覆盖**与**IP 表一致性**），
 `make test-bats` 在独立 DinD 栈内跑 `tests/bats/` 全部用例
 （每服务冒烟 + stack/dns/tls/public + 备份恢复链路 + verify job 一致性 + 自举脚本幂等）。
 bats 断言一律用
@@ -75,17 +75,32 @@ bats 断言一律用
 | **M0 是怎么验的、验出了什么** | [M0 验收记录](docs/M0-验收记录.md)（三个真机缺陷复盘在 §12） |
 | M0 设计：是什么、怎么跑、Job 怎么定义 | [M0 最小核心](docs/M0-最小核心.md) |
 | 测试怎么跑、三层验证怎么分、怎么升 digest | [M0 测试体系](docs/M0-测试体系.md) |
-| 某个服务怎么用、怎么部署、坏了怎么查 | [`docs/services/`](docs/services/)（11 份，统一六段） |
+| 某个服务怎么用、怎么部署、坏了怎么查 | [`docs/services/`](docs/services/)（11 份，统一六段 + [使用指南](docs/services/jenkins.md#使用指南) / [注意事项](docs/services/jenkins.md#注意事项) / [设置](docs/services/jenkins.md#设置) / [备份](docs/services/jenkins.md#备份) 四段，各份锚点同构） |
 | 网络拓扑、固定 IP 表、分层排查决策树、局域网访问 | [网络架构](docs/network/arch.md) |
 | 域名路由为什么这么做 | [ADR-13](docs/ADR-13-域名路由.md) |
 | 镜像与 CI 流水线 | [M0 镜像与 CI](docs/M0-镜像与CI.md) |
-| 备份怎么做、怎么演练恢复 | [备份与恢复](docs/备份与恢复.md) |
+| 备份怎么做、怎么演练恢复 | [备份与恢复](docs/备份与恢复.md)（11 份服务文档的「备份」段统一指向本文，卷口径与恢复步骤以本文为准） |
 | 任务怎么派、验收怎么写 | [派单流程](docs/派单流程.md) |
 | 提交身份与分支规则 | [提交规范](docs/提交规范.md) |
 | Windows 侧验收脚本怎么用 | [win-acceptance](tools/win-acceptance/README.md) |
 
 固定 IP 表会被脚本核对：`bash scripts/check-arch-ips.sh` 逐行比对真实容器地址，
 改完 compose 记得跑一次。
+
+## 文档站（静态 HTML，离线生成）
+
+`python3 scripts/gen_docs_site.py` 把 `docs/**/*.md` 编成同构 `.html`：
+`docs/services/jenkins.md` → `out/docs-site/services/jenkins.html`，并生成 `index.html`。
+纯标准库、不联网、可重复跑（重跑先清旧 `.html` 再生成）；Markdown 里的 `.md` 链接会改写成
+`.html`，`##` 标题生成锚点，索引页按目录分组。
+
+按最小披露，**含明文口令 / 内部派工 / 验收结论的文档不编入公开站点**（清单见脚本的
+`EXCLUDE_FILES` / `EXCLUDE_DIRS` 与 `index.html` 的「未编入」段），编入内容另做一次口令兜底脱敏；
+指向未编入文档的链接降级为纯文本，避免死链。
+
+> `https://docs.org-devops.com/services/jenkins.html` 返回 200 依赖 `config/routes.yaml` 的
+> docs 受保护路由（批次 2，依赖 #86）落地。本改动只补文档内容、静态站点脚本与索引，
+> **不改任何路由**；该验收项在 #86 前无法执行，列为未验证项，不伪造通过。
 
 ## 约定
 
