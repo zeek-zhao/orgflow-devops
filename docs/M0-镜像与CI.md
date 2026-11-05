@@ -13,6 +13,13 @@ CI 仅用 `secrets.GITHUB_TOKEN` 登录 GHCR，镜像工作流需要 `packages: 
 不是已发布镜像，不能用于部署。测试中 `pipefail` 保留 bats 的失败状态，
 `/tmp/bats-run.log` 包含构建、健康闸门及 TAP 输出。
 
+> **#90 现状（本轮静态交付，未构建、未推送）**：Jenkins 的 compose 构建上下文已从
+> `tools/jenkins` 迁到 `services/jenkins`（`docker-compose.yml` 的 `build.context`），
+> 但 `images.yml` 的 `on.paths`、`.github/scripts/select-images.sh` 的映射表、
+> `scripts/test_ci.py` 与 `tests/bats/00_stack.bats` 的路径断言仍指向 `tools/jenkins/**`。
+> 这四处不在本卡改动范围内，**派单方合并时须同步**：否则 `services/jenkins/**` 的改动
+> 不会触发 Images 工作流，213 会静默继续吃旧的 GHCR 镜像。详见文末「#90」节。
+
 ## 按改动裁剪（#53）
 
 `on.paths` 只决定「跑不跑」，不决定「建几个」。`images.yml` 先跑一个 `select` job，
@@ -23,7 +30,7 @@ CI 仅用 `secrets.GITHUB_TOKEN` 登录 GHCR，镜像工作流需要 `packages: 
 |---|---|---|
 | `router` | `services/router` | `services/router/**` |
 | `jjb` | `tools/jjb` | `tools/jjb/**` |
-| `jenkins` | `tools/jenkins` | `tools/jenkins/**` |
+| `jenkins` | `tools/jenkins`（#90 起 compose 用 `services/jenkins`，映射待同步） | `tools/jenkins/**`（#90 起应为 `services/jenkins/**`，待同步） |
 | `jenkins-agent` | `tools/jenkins-agent` | `tools/jenkins-agent/**` |
 | `m0-test` | `tests/harness` | `tests/harness/**` |
 | `dnsmasq` | `services/dnsmasq` | `services/dnsmasq/**` |
@@ -47,9 +54,12 @@ CI 仅用 `secrets.GITHUB_TOKEN` 登录 GHCR，镜像工作流需要 `packages: 
 部署始终以 `@sha256:...` 锁定，标签只是可读提示。
 
 `jenkins` / `jenkins-agent` 是**自建而非搬运**：上游镜像一个不带插件、一个不带 docker CLI，
-而 213 拉不到 Docker Hub，**只能在 runner 上构建后推 GHCR**，
-`tests/images.lock` 里没有它们，`docker-compose.yml` 里也是 `build:` 而不是 `image:`。
-`jenkins-agent` 只装 docker CLI 不装 daemon —— daemon 用宿主机的（挂 `/var/run/docker.sock`）。
+而 213 拉不到 Docker Hub，**只能在 runner 上构建后推 GHCR**，`docker-compose.yml` 里是
+`build:` 而不是 `image:`。`jenkins-agent` 只装 docker CLI 不装 daemon —— daemon 用宿主机的
+（挂 `/var/run/docker.sock`）。
+
+#90 起 `jenkins` 的新 tag 也登记进 `tests/images.lock`（digest 单一真源），但本轮未构建，
+那一行的 digest 是「待构建后回填」占位而不是 sha256；`jenkins-agent` 仍不在 lock 里。
 
 搬运包名扁平化为 `mirror-caddy`、`mirror-openldap`、
 `mirror-phpldapadmin`、`mirror-dex`、`mirror-oauth2-proxy`、`mirror-nexus`、
@@ -166,3 +176,67 @@ CI 的 harness 是 `compose up --no-build --pull never` 直连、不经过 `depl
 `sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e`。
 基础 Compose 和 `tests/images.lock` 未修改。两种 Compose 配置、Bash 语法、
 四个 YAML 解析检查及默认本地构建模式的 9/9 bats 同样通过。
+
+---
+
+## #90 · 自定义 Jenkins 插件镜像（本轮静态交付）
+
+REQ-M0-B1 让 Jenkins 镜像自带常用插件，装机即可用，不靠人工在 UI 点装。
+
+**新增 / 改动**：`services/jenkins/Dockerfile`、`services/jenkins/plugins.txt`；
+`docker-compose.yml` 的 jenkins `build.context` 切到 `./services/jenkins`；
+`docker-compose.ghcr.yml` 补新 tag / 回填说明；`tests/images.lock` 新增 jenkins 行；
+`Makefile` 加两条自检；本文与 `docs/services/jenkins.md` 同步。
+
+**默认插件清单**（`services/jenkins/plugins.txt`，纯列表、不钉版本）：
+`workflow-aggregator`、`git`、`credentials`、`credentials-binding`、`plain-credentials`、
+`ssh-slaves`、`ldap`（#90 新增）、`configuration-as-code`。Dockerfile 用
+`jenkins-plugin-cli --plugin-file` 把它们装进 `/usr/share/jenkins/ref/plugins`。
+
+**本轮不构建、不推送镜像**（不碰线上栈），因此验收里「容器内插件清单」无法实测，
+改用静态检查替代，并真做反证：
+
+| 项 | 手段 | 判据 |
+|---|---|---|
+| 插件清单必含项 | `make check-jenkins-image`（挂进 `make test`） | 5 项各出现 1 次 + Dockerfile 用 `jenkins-plugin-cli --plugin-file` |
+| 反证 | 从 plugins.txt 删掉 `workflow-aggregator` 再跑 `make test` | 必须红；恢复后复绿 |
+| `grep -c "workflow-aggregator" services/jenkins/plugins.txt` | 直接 grep | `1` |
+| `docker compose config` | `-f docker-compose.yml -f docker-compose.ghcr.yml config -q` | 退出码 0 |
+
+**digest 诚实占位**：24.04-v2 尚未构建，拿不到真实 digest，**不编造 sha256**。
+`tests/images.lock` 的 jenkins 行写成明确的「待构建后回填」文字占位。已发布的
+`24.04-v1@sha256:2e211...` 在 `docker-compose.ghcr.yml` 里原样保留、未改动。
+
+两道闸门防止带占位上线：
+
+1. `tests/images.sh ensure` 要求 GHCR image 为 `@sha256:[a-f0-9]{64}`，占位行会让
+   `USE_GHCR=1` 的 `make test-bats` / 准备阶段直接失败；
+2. `make check-pins`（检查 lock 非注释行是否含占位）挂在 `USE_GHCR=1` 的 `up` / `deploy`
+   前置，命中即 `exit 1`。
+
+`USE_GHCR=1` 时 `make up` / `deploy` 仍必须 `--no-build`：override 里的 `image` 是 digest
+引用，带 `--build` 会报 `refusing to create a tag with a digest reference`。本轮新增的
+`build.context` 不影响这条约束。
+
+**回填流程（留给构建轮）**：`images.yml` 构建并推 24.04-v2 → 把真实 digest 写入
+`tests/images.lock` 与 `docker-compose.ghcr.yml` 的 `jenkins.image` → 去掉占位 →
+`make images-pin` 复核 → 才允许 `USE_GHCR=1 make deploy`。
+
+**本轮未验证项**（诚实声明）：
+- 容器内插件清单（`jenkins-plugin-cli --list` / `ls /usr/share/jenkins/ref/plugins`）——未构建镜像；
+- 新镜像 digest、GHCR 可复现性与 24.04-v2 是否真的发布——未构建、未推送；
+- `images.yml` 是否真的构建 `services/jenkins`——见下「待同步」；
+- DinD bats（`make test-bats`）——本地跑不了，且占位期间 `ensure` 会红，属预期闸门。
+
+**待同步（派单方合并时处理，不在本卡范围）**：当前 CI 裁剪链路仍指向旧上下文，
+与 `docker-compose.yml` 的 `services/jenkins` 分叉。需同步这四处，否则
+`services/jenkins/**` 的改动不触发 Images 工作流，213 会静默吃旧 GHCR 镜像：
+
+| 文件 | 现状 | 应改为 |
+|---|---|---|
+| `.github/workflows/images.yml` | `on.paths`: `tools/jenkins/**`（push + pull_request 两处） | `services/jenkins/**` |
+| `.github/scripts/select-images.sh` | `jenkins` → `tools/jenkins` | `jenkins` → `services/jenkins` |
+| `scripts/test_ci.py` | `EXPECTED` 与 3 处用例路径写 `tools/jenkins` | `services/jenkins` |
+| `tests/bats/00_stack.bats` | FROM 断言读 `tools/jenkins/Dockerfile` | `services/jenkins/Dockerfile` |
+
+`tools/jenkins/` 目录本轮保留原样（上述四处仍引用它），待同步完成后由派单方决定是否清理。
