@@ -33,39 +33,47 @@ DEFAULT_DOMAIN = "org-devops.com"
 # oauth2-proxy 的 redirect_url 形成四处独立声明，改一处不改另一处就静默错位。
 AUTH_ROUTE_NAME = "auth"
 SUBDOMAIN_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
+NAME_RE = SUBDOMAIN_RE
+# 注册 API 写 routes.yaml；routes.yaml 仍是唯一真源，API 只是它的写入口。
+CA_CERT_NAME = "root.crt"
+CA_SCRIPT_NAME = "ca-install.sh"
 
 
 def _value(s, key):
     return s.split(":", 1)[1].strip().strip('"').strip("'")
 
 
-def parse_routes(path):
+def parse_routes_text(text):
     """解析极简 YAML：顶层键 + routes 列表。返回 (settings, routes)。"""
     settings = {"gateway_domain": DEFAULT_DOMAIN}
     routes = []
     cur = None
-    with open(path, "r", encoding="utf-8") as f:
-        for raw in f:
-            s = raw.strip()
-            if not s or s.startswith("#"):
-                continue
-            if s.startswith("- "):
-                cur = {}
-                routes.append(cur)
-                s = s[2:].strip()
-            if cur is None:
-                if s.startswith("gateway_domain:"):
-                    settings["gateway_domain"] = _value(s, "gateway_domain")
-                continue
-            if s.startswith("name:"):
-                cur["name"] = _value(s, "name")
-            elif s.startswith("subdomain:"):
-                cur["subdomain"] = _value(s, "subdomain")
-            elif s.startswith("upstream:"):
-                cur["upstream"] = _value(s, "upstream")
-            elif s.startswith("auth:"):
-                cur["auth"] = _value(s, "auth").lower() in ("true", "1", "yes")
+    for raw in text.splitlines():
+        s = raw.strip()
+        if not s or s.startswith("#"):
+            continue
+        if s.startswith("- "):
+            cur = {}
+            routes.append(cur)
+            s = s[2:].strip()
+        if cur is None:
+            if s.startswith("gateway_domain:"):
+                settings["gateway_domain"] = _value(s, "gateway_domain")
+            continue
+        if s.startswith("name:"):
+            cur["name"] = _value(s, "name")
+        elif s.startswith("subdomain:"):
+            cur["subdomain"] = _value(s, "subdomain")
+        elif s.startswith("upstream:"):
+            cur["upstream"] = _value(s, "upstream")
+        elif s.startswith("auth:"):
+            cur["auth"] = _value(s, "auth").lower() in ("true", "1", "yes")
     return settings, routes
+
+
+def parse_routes(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return parse_routes_text(f.read())
 
 
 def apply_env(settings):
@@ -173,6 +181,86 @@ def write_if_changed(path, content):
     return True
 
 
+def validate_route(payload, existing, gateway_domain):
+    """校验并规范化一条新路由（#61）。非法抛 ValueError；返回规范化 dict。
+
+    subdomain 可直接给，也可以给 host（FQDN，带 .<gateway_domain> 后缀时剥掉）。
+    """
+    if not isinstance(payload, dict):
+        raise ValueError("route must be a JSON object")
+    name = str(payload.get("name", "")).strip()
+    if not NAME_RE.match(name):
+        raise ValueError("name 必须为非空小写字母/数字/连字符")
+    sub = str(payload.get("subdomain", "")).strip().strip(".")
+    if not sub:
+        host = str(payload.get("host", "")).strip().strip(".")
+        if not host:
+            raise ValueError("subdomain is required (或提供 host)")
+        suffix = f".{gateway_domain}"
+        sub = host[: -len(suffix)] if host.endswith(suffix) else host
+    if not SUBDOMAIN_RE.match(sub):
+        raise ValueError(f"subdomain {sub!r}: 只允许小写字母/数字/连字符")
+    if sub == gateway_domain:
+        raise ValueError(f"subdomain {sub!r} 不能是网关域名本身")
+    for r in existing:
+        if (r.get("subdomain") or "").strip() == sub:
+            raise ValueError(f"route {sub}: duplicate subdomain")
+        if (r.get("name") or "").strip() == name:
+            raise ValueError(f"route {name}: duplicate name")
+    upstream = str(payload.get("upstream", "")).strip()
+    if not upstream:
+        raise ValueError("upstream is required")
+    return {
+        "name": name,
+        "subdomain": sub,
+        "upstream": upstream,
+        "auth": bool(payload.get("auth", False)),
+    }
+
+
+def _serialize_route_block(route):
+    lines = [f"  - name: {route['name']}", f"    subdomain: {route['subdomain']}",
+             f"    upstream: {route['upstream']}"]
+    if route.get("auth"):
+        lines.append("    auth: true")
+    return "\n".join(lines) + "\n"
+
+
+def _write_routes_validated(path, new_text):
+    """先按「改完的文本」完整走一遍 parse+render，全绿才落盘。
+
+    这是 400 反证（文件 sha256 不变）的保证：非法输入在写之前就被拒绝。
+    """
+    settings, routes = parse_routes_text(new_text)
+    render(apply_env(settings), routes)
+    write_if_changed(path, new_text)
+
+
+def append_route(path, route):
+    """把一条已校验的路由追加到 routes.yaml 末尾（routes 列表是文件最后一段）。"""
+    with open(path, "r", encoding="utf-8") as f:
+        text = f.read()
+    _write_routes_validated(path, text.rstrip("\n") + "\n" + _serialize_route_block(route))
+
+
+def delete_route(path, name):
+    """按 name 从 routes.yaml 删除一个条目块；注释与其他条目原样保留。"""
+    if name == AUTH_ROUTE_NAME:
+        raise ValueError(f"route {name}: 认证网关路由不能删除")
+    with open(path, "r", encoding="utf-8") as f:
+        text = f.read()
+    settings, routes = parse_routes_text(text)
+    if not any((r.get("name") or "").strip() == name for r in routes):
+        raise KeyError(name)
+    pattern = re.compile(
+        rf"\n  - name: {re.escape(name)}\n(?:    [^\n]*\n)+"
+    )
+    new_text, n = pattern.subn("\n", text, count=1)
+    if n != 1:
+        raise ValueError(f"route {name}: 无法在 routes.yaml 中定位条目块")
+    _write_routes_validated(path, new_text)
+
+
 def reload_caddy(content, admin_url):
     url = admin_url.rstrip("/") + "/load"
     req = urllib.request.Request(
@@ -198,18 +286,101 @@ def reload_caddy(content, admin_url):
         ) from e
 
 
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path != "/healthz":
-            self.send_error(404)
-            return
-        ready = self.server.routes_count is not None
-        body = json.dumps({"ok": ready, "routes": self.server.routes_count or 0}).encode("utf-8")
-        self.send_response(200 if ready else 503)
+class RouterHandler(BaseHTTPRequestHandler):
+    """健康检查（/healthz）+ 路由注册 API（#61）+ CA 分发静态文件（#62）。
+
+    鉴权口径（#61 前置项的结论）：**不加鉴权** —— router 只在容器网络内，
+    不对外发布端口，与 Caddy admin（caddy:2019）同口径；威胁模型写在
+    docs/services/router.md。
+    """
+
+    def _json(self, code, obj):
+        body = json.dumps(obj).encode("utf-8")
+        self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _file(self, filename, content_type):
+        path = os.path.join(self.server.ca_dir or "", filename)
+        try:
+            with open(path, "rb") as f:
+                body = f.read()
+        except OSError:
+            self._json(404, {"error": f"{filename} 不存在；先在网关机跑 make ca / ca-install.sh --export"})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path == "/healthz":
+            ready = self.server.health_state["routes_count"] is not None
+            self._json(200 if ready else 503,
+                       {"ok": ready, "routes": self.server.health_state["routes_count"] or 0})
+        elif self.path == "/routes":
+            settings, routes = parse_routes(self.server.routes_path)
+            self._json(200, {"gateway_domain": settings["gateway_domain"], "routes": routes})
+        elif self.path == f"/{CA_CERT_NAME}":
+            self._file(CA_CERT_NAME, "application/x-x509-ca-cert")
+        elif self.path == f"/{CA_SCRIPT_NAME}":
+            self._file(CA_SCRIPT_NAME, "text/x-shellscript")
+        else:
+            self._json(404, {"error": "not found"})
+
+    def do_POST(self):
+        if self.path != "/routes":
+            self._json(404, {"error": "not found"})
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            self._json(400, {"error": "bad Content-Length"})
+            return
+        if not 0 < length <= 65536:
+            self._json(400, {"error": "body 必须是非空 JSON（≤64KB）"})
+            return
+        try:
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        except (ValueError, UnicodeDecodeError) as e:
+            self._json(400, {"error": f"invalid JSON: {e}"})
+            return
+        with self.server.route_lock:
+            try:
+                settings, routes = parse_routes(self.server.routes_path)
+                route = validate_route(payload, routes, settings["gateway_domain"])
+                append_route(self.server.routes_path, route)
+                self.server.once(force_reload=True)
+            except ValueError as e:
+                self._json(400, {"error": str(e)})
+                return
+            except (OSError, RuntimeError) as e:
+                self._json(502, {"error": str(e)})
+                return
+        self._json(201, {"route": route})
+
+    def do_DELETE(self):
+        if not self.path.startswith("/routes/"):
+            self._json(404, {"error": "not found"})
+            return
+        name = self.path[len("/routes/"):].strip("/")
+        with self.server.route_lock:
+            try:
+                delete_route(self.server.routes_path, name)
+                self.server.once(force_reload=True)
+            except KeyError:
+                self._json(404, {"error": f"route {name} 不存在"})
+                return
+            except ValueError as e:
+                self._json(400, {"error": str(e)})
+                return
+            except (OSError, RuntimeError) as e:
+                self._json(502, {"error": str(e)})
+                return
+        self._json(200, {"deleted": name})
 
     def log_message(self, *args):
         pass
@@ -224,21 +395,16 @@ def main():
     ap.add_argument("--admin", default=os.environ.get("CADDY_ADMIN_URL", ""))
     ap.add_argument("--health-port", type=int, default=8090,
                     help="watch-mode health HTTP port (default: 8090)")
+    ap.add_argument("--ca-dir", default=os.environ.get("CA_DIR", ""),
+                    help="CA 分发目录（含 root.crt / ca-install.sh），为空则不提供下载（#62）")
     args = ap.parse_args()
     if not math.isfinite(args.interval) or args.interval <= 0:
         ap.error("--interval must be a finite positive number")
     if not 0 <= args.health_port <= 65535:
         ap.error("--health-port must be between 0 and 65535")
 
-    health = None
-    if args.watch:
-        try:
-            health = ThreadingHTTPServer(("0.0.0.0", args.health_port), HealthHandler)
-        except (OSError, ValueError) as e:
-            print(f"[router] health startup failed: {e}", file=sys.stderr)
-            return 1
-        health.routes_count = None
-        threading.Thread(target=health.serve_forever, daemon=True).start()
+    # 健康状态单独持有：非 watch 模式没有 HTTP server，once() 也要能跑。
+    health_state = {"routes_count": None}
 
     def once(force_reload=False):
         settings, routes = parse_routes(args.routes)
@@ -250,15 +416,31 @@ def main():
             write_if_changed(args.out, content)
             print(f"[router] bootstrapped {args.out}; waiting for Caddy", flush=True)
         # Health must not depend on Caddy: deploy waits for router before starting Caddy.
-        if health is not None and health.routes_count is None:
-            health.routes_count = len(routes)
+        if health_state["routes_count"] is None:
+            health_state["routes_count"] = len(routes)
         if args.admin and (changed or force_reload):
             st = reload_caddy(content, args.admin)
             print(f"[router] caddy reload -> {st}", flush=True)
         if write_if_changed(args.out, content):
             print(f"[router] rendered {args.out} ({len(routes)} routes)")
-        if health is not None:
-            health.routes_count = len(routes)
+        health_state["routes_count"] = len(routes)
+
+    server = None
+    if args.watch:
+        try:
+            server = ThreadingHTTPServer(("0.0.0.0", args.health_port), RouterHandler)
+        except (OSError, ValueError) as e:
+            print(f"[router] health startup failed: {e}", file=sys.stderr)
+            return 1
+        server.routes_count = None
+        server.health_state = health_state
+        server.routes_path = args.routes
+        server.out_path = args.out
+        server.admin_url = args.admin
+        server.ca_dir = args.ca_dir
+        server.route_lock = threading.Lock()
+        server.once = once
+        threading.Thread(target=server.serve_forever, daemon=True).start()
 
     if not args.watch:
         try:
