@@ -1,11 +1,11 @@
-# 书签：外部参考文档。只放官方文档，不放需要登录的内部系统。
+# 书签：外部参考文档 + 本地服务文档直链。只放官方文档与仓库文档，不放需要登录的内部系统。
 #
 # ⚠ 书签的值**必须是列表**（`- 名字: [{href: ...}]`），不能直接写映射。
 # 写成映射时 homepage 会静默丢掉 href/icon，`/api/bookmarks` 只剩 name，
 # 前端 `new URL(e.href)` 拿到 undefined → 整页报
 #   TypeError: Failed to construct 'URL': Invalid URL
 # 服务端渲染是正常的，只有真浏览器才炸，所以 tests/bats/21_homepage.bats
-# 在接口层加了断言盯着这件事。
+# 在接口层加了断言盯着这件事，scripts/test_homepage_config.py 在配置层再加一道。
 - 官方文档:
     - Caddy:
         - abbr: CD
@@ -27,3 +27,56 @@
         - abbr: JB
           href: https://docs.openstack.org/infra/jenkins-job-builder/
           icon: mdi-web
+
+# 本地文档：每份 docs/services/*.md 一条直链（指向仓库 main 上的文档真源）。
+# 名字里 `·` 后面就是「怎么用」，点开前先知道该看哪份。
+# C2 的文档站上线后可把 href 换成 https://docs.<domain>/services/<name>.html。
+- 本地文档:
+    - Jenkins · 建流水线与排障:
+        - abbr: JK
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/services/jenkins.md
+          icon: mdi-file-document
+    - Nexus · 传包与制品仓库:
+        - abbr: NX
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/services/nexus.md
+          icon: mdi-file-document
+    - LDAP Admin · 改用户与部门:
+        - abbr: LA
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/services/ldapadmin.md
+          icon: mdi-file-document
+    - LDAP · 目录服务排查:
+        - abbr: LD
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/services/ldap.md
+          icon: mdi-file-document
+    - Dex · OIDC 登录排障:
+        - abbr: DX
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/services/dex.md
+          icon: mdi-file-document
+    - OAuth2 Proxy · 网关与登录:
+        - abbr: OA
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/services/oauth2-proxy.md
+          icon: mdi-file-document
+    - Caddy · 路由与证书:
+        - abbr: CD
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/services/caddy.md
+          icon: mdi-file-document
+    - Router · 渲染与热加载:
+        - abbr: RT
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/services/router.md
+          icon: mdi-file-document
+    - dnsmasq · 容器内 DNS:
+        - abbr: DNS
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/services/dnsmasq.md
+          icon: mdi-file-document
+    - Jenkins Agent · 构建节点:
+        - abbr: JA
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/services/jenkins-agent.md
+          icon: mdi-file-document
+    - Homepage · 就是这一页:
+        - abbr: HP
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/services/homepage.md
+          icon: mdi-file-document
+    - 网络架构 · 分层排查:
+        - abbr: NET
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/network/arch.md
+          icon: mdi-file-document

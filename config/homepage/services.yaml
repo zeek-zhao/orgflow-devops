@@ -1,4 +1,4 @@
-# 服务卡片。每张写清三件事：入口域名、固定 IP、这个服务是干什么的。
+# 服务卡片。每张写清三件事：入口域名、固定 IP、这个服务怎么用。
 # 排查时先看这张板子确认「服务在哪」，再按 docs/network/arch.md 的决策树往下走。
 #
 # 图标统一用 mdi-*：homepage 自带 Material Design Icons，不依赖外网 CDN。
@@ -6,31 +6,61 @@
 #
 # 这里不放任何需要 token 的 widget：首页是公开可访问的（Caddy 侧不加 auth），
 # 往里塞凭据等于把凭据摆在门口。
+#
+# ── 活性检测字段（容器 v2.7.0 实测，见 docs/services/homepage.md）───────────
+#   siteMonitor: 服务卡字段，/api/siteMonitor 做 HTTP HEAD 探测（>403 回退 GET），
+#                返回状态码 + 延迟。不需凭据，是「HTTP 探测」的正确落点。
+#   ping:        服务卡字段，/api/ping 走 ICMP probe（ping npm 包），不是 HTTP。
+#                两个字段是不同实现，别混；自检要求每张卡都带这两个字段。
+#   探测地址用 compose 内网服务名 + 端口直连（同一 orgflow 网络、容器内 DNS 可解析），
+#   不经网关、不需要 Host 白名单、不需要任何 token。
+#   ⚠ widgets.yaml 里没有 siteMonitor 这个 widget 类型（组件目录实测），不要在
+#     widgets.yaml 写 "- siteMonitor:"，那是不存在的类型。
+# ───────────────────────────────────────────────────────────────────────────
 
 - 服务入口:
     - Jenkins:
         href: https://jenkins.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}
-        description: CI 流水线 · 172.31.0.20 · 需登录
+        description: CI 流水线 · 172.31.0.20 · 需登录 · 怎么用：见 docs/services/jenkins.md
         icon: mdi-cog
+        siteMonitor: http://jenkins:8080/login
+        ping: http://jenkins:8080/login
 
     - Nexus:
         href: https://nexus.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}
-        description: 制品仓库 · 172.31.0.21
+        description: 制品仓库 · 172.31.0.21 · 怎么用：见 docs/services/nexus.md
         icon: mdi-package-variant
+        siteMonitor: http://nexus:8081/
+        ping: http://nexus:8081/
 
     - LDAP Admin:
         href: https://ldapadmin.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}
-        description: 用户与部门管理 · 172.31.0.23 · 需登录
+        description: 用户与部门管理 · 172.31.0.23 · 需登录 · 怎么用：见 docs/services/ldapadmin.md
         icon: mdi-account-group
+        siteMonitor: http://ldapadmin:80/
+        ping: http://ldapadmin:80/
 
     - Dex:
         # Dex 是 OIDC provider，没有 Web 首页：/ 、/dex 、/dex/ 都是 404。
         # 指到 /dex/auth 才是可用的落点（会 302 到 /dex/auth/ldap 登录页）。
         href: https://dex.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}/dex/auth
-        description: OIDC 身份提供方 · 172.31.0.24
+        description: OIDC 身份提供方 · 172.31.0.24 · 怎么用：见 docs/services/dex.md
         icon: mdi-shield-key
+        siteMonitor: http://dex:5556/dex/auth
+        ping: http://dex:5556/dex/auth
 
     - Homepage:
         href: https://home.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}
-        description: 就是这一页 · 172.31.0.26
+        description: 就是这一页 · 172.31.0.26 · 怎么用：见 docs/services/homepage.md
         icon: mdi-home
+        # 探测自身用内置白名单里的 localhost Host；写成 home.<domain> 会撞 Host 校验。
+        siteMonitor: http://localhost:3000/
+        ping: http://localhost:3000/
+
+    - 认证网关:
+        # OAuth2 Proxy 的 /ping 是公开健康端点，不需要登录。
+        href: https://auth.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}/ping
+        description: 统一登录网关 · 172.31.0.25 · 怎么用：见 docs/services/oauth2-proxy.md
+        icon: mdi-shield-check
+        siteMonitor: http://oauth2-proxy:4180/ping
+        ping: http://oauth2-proxy:4180/ping
