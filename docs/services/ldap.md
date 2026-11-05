@@ -76,7 +76,7 @@ docker compose exec -T ldap ldapwhoami -x -H ldap://localhost -D "cn=admin,dc=de
 docker compose exec -T ldap ldapsearch -x -b dc=devops,dc=com -s sub "(objectClass=*)" dn | grep -c '^dn:'
 ```
 
-期望 **33**。少于 33 说明 LDIF 没导全；多于 33 说明重复导入过（脚本本该拦住，值得查）。
+期望 **34**（2026-11-05 起含 `rdsw`；此前是 33。加 1 个账号就 +1；少于说明 LDIF 没导全，多于说明重复导入过）（脚本本该拦住，值得查）。
 
 **4. 某个用户在吗**
 

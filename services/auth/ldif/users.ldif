@@ -174,3 +174,19 @@ sn: Jira
 uid: dev.jira
 uidnumber: 1009
 userpassword: {MD5}4QrcOUm6Wau+VuBX8g+IPg==
+
+# Entry 12: cn=Admin Rdsw,ou=users,dc=devops,dc=com
+dn: cn=Admin Rdsw,ou=users,dc=devops,dc=com
+cn: Admin Rdsw
+gidnumber: 501
+givenname: Admin
+homedirectory: /home/users/rdsw
+loginshell: /bin/bash
+mail: rdsw@devops.com
+objectclass: inetOrgPerson
+objectclass: posixAccount
+objectclass: top
+sn: Rdsw
+uid: rdsw
+uidnumber: 1010
+userpassword: {MD5}wsH1nSJWhnx63kdjkbFKvA==
