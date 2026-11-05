@@ -116,6 +116,7 @@ test: check-jenkins-image
 	@python3 scripts/test_backup.py
 	@python3 scripts/test_ci.py
 	@python3 scripts/test_docs.py
+	@python3 scripts/test_homepage_config.py
 	@echo "python syntax ok"
 
 # #90 / REQ-M0-B1：Jenkins 镜像静态自检。本轮不构建镜像，容器内插件清单无法实测，
