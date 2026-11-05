@@ -213,7 +213,8 @@ services:
       - ROUTES_FILE=/app/config/routes.yaml
       - GATEWAY_DOMAIN=${GATEWAY_DOMAIN:-org-devops.com}
     volumes:
-      - ./config:/app/config:ro
+      # 注册 API(#61)要写 routes.yaml,config 不再只读——routes.yaml 仍是唯一真源
+      - ./config:/app/config
       - ./out:/app/out
     expose:
       - "8090"

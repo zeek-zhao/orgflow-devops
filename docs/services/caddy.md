@@ -122,3 +122,28 @@ grep -c '^https://' out/Caddyfile
 # 校验当前配置语法
 docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile
 ```
+
+## 给别的机器装根证书（#62）
+
+根证书不入库（会过期），运行时从网关拉：`ca` 站点（上游 router:8090）服务
+`out/ca/` 下的 `root.crt` 与 `ca-install.sh`。
+
+网关机上先导出（幂等，会同时把安装脚本放进 out/ca）：
+
+```bash
+bash scripts/ca-install.sh --export
+```
+
+局域网 Linux 机器一条命令（脚本 = 拉证书 + 装信任库 + 校验三步）：
+
+```bash
+curl -kfsSL https://ca.org-devops.com/ca-install.sh -o /tmp/ca-install.sh
+sudo bash /tmp/ca-install.sh https://ca.org-devops.com
+```
+
+> 首次下载用 `-k` 是自举（此刻机器还不信任内部 CA），不是掩盖证书问题：
+> 脚本装完会用**不带 -k** 的请求复验，失败即非零退出。网关地址错/不可达/
+> 拉到的不是本环境 CA 也都非零退出（bats 反证覆盖）。
+
+Windows 用 [`tools/win-acceptance/Import-OrgflowRootCa.ps1`](../../tools/win-acceptance/Import-OrgflowRootCa.ps1)。
+证书变更（`down -v` 会让 Caddy 重新生成 CA）后所有客户端重装。

@@ -9,7 +9,7 @@ setup() {
     compose_cmd exec -T caddy cat /data/caddy/pki/authorities/local/root.crt > "$ROOT_CA"
     [ -s "$ROOT_CA" ]
     local sub info
-    for sub in jenkins nexus ldapadmin dex auth; do
+    for sub in jenkins nexus ldapadmin dex auth ca; do
         info=$(echo | openssl s_client -connect "${GW_HOST}:${GW_HTTPS_PORT}" \
             -servername "${sub}.${GW_DOMAIN}" 2>/dev/null \
             | openssl x509 -noout -ext subjectAltName -issuer)

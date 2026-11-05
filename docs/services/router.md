@@ -44,6 +44,29 @@ docker compose up -d router          # 起容器后进入 watch 模式
 
 见上表。三个都有默认值，通常不需要在 `.env` 里配。
 
+## 注册 API（#61）
+
+routes.yaml 仍是唯一真源，API 只是它的写入口：`POST` 写文件 → 渲染 → Caddy 热加载，
+全程不重启容器。文件 watch 依旧可用（手改文件是合法用法）。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/routes` | 当前路由列表（合法 JSON，含 `gateway_domain`） |
+| POST | `/routes` | 注册一条：`{"name":"demo","host":"demo.<domain>","upstream":"caddy:80"}`（`host` 给 FQDN 自动剥后缀，也可直接给 `subdomain`；`auth` 可选布尔） |
+| DELETE | `/routes/<name>` | 删除一条；`auth` 路由拒绝删除 |
+| GET | `/healthz` | 健康检查（原有） |
+| GET | `/root.crt`、`/ca-install.sh` | CA 分发（#62，见 [caddy.md](caddy.md)） |
+
+**校验**（非法一律 400 且 routes.yaml 一个字节不动——bats 有 sha256 反证）：
+name/subdomain 只允许小写字母数字连字符；subdomain 不得重复、不得是网关域名本身；
+upstream 必填。校验在**写之前**做，写前还会对改完的文本完整走一遍 parse+render。
+
+**鉴权口径（#61 前置项的结论）：不加鉴权。** router 只在容器网络内、不对外发布端口，
+与 Caddy admin（`caddy:2019`）同口径；能打到 8090 的只有同一 docker 网络里的容器。
+威胁模型变了的话（比如 router 端口对外发布），必须先补鉴权再用。
+
+**注意**：config 挂载因此从 `:ro` 改为读写（compose 里有注释）。
+
 ## 排查步骤
 
 **1. 渲染结果对不对（不用起容器）**
