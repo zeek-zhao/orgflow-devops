@@ -1,0 +1,8 @@
+workflow-aggregator
+git
+credentials
+credentials-binding
+plain-credentials
+ssh-slaves
+ldap
+configuration-as-code

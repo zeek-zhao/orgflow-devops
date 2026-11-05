@@ -11,6 +11,15 @@ services:
     image: ghcr.io/zeek-zhao/orgflow-devops/mirror-caddy:2@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
   # 自建镜像（#44 / #45）：digest 由 `make images-pin` 从 GHCR 回写，不是上游 digest。
   # 上游 jenkins/jenkins 不带插件、也不带 docker CLI，所以这两个都不能再用 mirror-*。
+  #
+  # #90 / REQ-M0-B1：新插件镜像（services/jenkins/，比上一版多 ldap 等）按「新增 tag」
+  # 登记为 24.04-v2，digest 记在 tests/images.lock。本轮只提交源码、不构建不推送，
+  # 24.04-v2 还没有真实 digest，lock 里是明确的「待构建后回填」文字占位，不是伪造的 sha256。
+  # 因此这里保持指向已发布、未改动的 24.04-v1@sha256:2e211...（不含 #90 新增插件）。
+  # 回填流程：images.yml 构建 24.04-v2 → 把真实 digest 写入 tests/images.lock 和本文件
+  # 的 jenkins.image（届时替换 24.04-v1）→ 去掉占位 → 才允许 USE_GHCR=1 make deploy。
+  # 占位期间的闸门：tests/images.sh ensure 要求 image 为 @sha256:[a-f0-9]{64}；
+  # make check-pins 拦 USE_GHCR=1 的 up/deploy（见 Makefile）。
   jenkins:
     image: ghcr.io/zeek-zhao/orgflow-devops/jenkins:24.04-v1@sha256:2e211bf40725bcfb91657d7110c14ecbb15966bcc99795fb4639f5689d21bf68
   jenkins-agent:
