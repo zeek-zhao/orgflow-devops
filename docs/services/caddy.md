@@ -147,3 +147,46 @@ sudo bash /tmp/ca-install.sh https://ca.org-devops.com
 
 Windows 用 [`tools/win-acceptance/Import-OrgflowRootCa.ps1`](../../tools/win-acceptance/Import-OrgflowRootCa.ps1)。
 证书变更（`down -v` 会让 Caddy 重新生成 CA）后所有客户端重装。
+
+## 使用指南
+
+按「渲染 → 起容器 → 信任 CA → 自测」四步，命令可直接照抄（仓库根目录、213 上）：
+
+```bash
+make render                                    # routes.yaml -> out/Caddyfile
+docker compose up -d router caddy              # 路由与网关
+make ca                                        # 导出/安装内部 CA 根证书
+curl -sS -k -o /dev/null -w '%{http_code}\n' \
+  --resolve jenkins.org-devops.com:443:127.0.0.1 https://jenkins.org-devops.com:443/
+```
+
+期望 `302`（受保护站点未登录跳转）。加一条路由的完整流程见 [使用说明](../使用说明.md) §4。
+
+## 注意事项
+
+- `out/Caddyfile` 是渲染产物，**不要手改**；下一次 `make render` 会覆盖它，真源只有 `config/routes.yaml`。
+- 在宿主跑 `make render` **不会**热加载：真机制是 `router` 容器的 `--watch`（轮询 + `POST /load`），Caddy admin 只在容器网络 `caddy:2019`，宿主够不到（`会话交接.md` §4.4）。
+- `curl --resolve` 按 `host:port` 精确匹配，URL 不带端口时隐式 443，映射必须写 `:443`；端口不一致会得到误导性的 `Could not resolve host`（`会话交接.md` §4.4）。
+- Caddy 叶子证书**无 CN**，域名只在 SAN 里，别拿 CN 断言域名（`会话交接.md` §4.4）。
+- 从 213 直接 curl 域名得到 `000` 多半是宿主 `/etc/hosts` 缺记录，用 `--resolve` 绕过或先 `make hosts`（`会话交接.md` §4.4）。
+- 一次 `down -v` 会删 `caddy_data` 卷、重建内部 CA，之前导出的根证书立即作废，**所有客户端要重装**（`会话交接.md` §4.4）。
+
+## 设置
+
+| 真源 / 产物 | 路径 |
+|---|---|
+| 路由唯一真源 | `config/routes.yaml` |
+| 渲染产物（只读挂载） | `out/Caddyfile` |
+| 内部 CA 根证书 | `out/ca/root.crt` |
+| Caddy 内部 CA / 已签证书 | `caddy_data` 卷 |
+| 域名与端口 | `.env` 的 `GATEWAY_DOMAIN` / `GATEWAY_HTTP_PORT` / `GATEWAY_HTTPS_PORT` |
+| 管理 API 地址 | `.env` 的 `CADDY_ADMIN_URL`（默认 `http://caddy:2019`） |
+
+Caddy 容器本身没有业务环境变量；改路由后由 `router` 热加载，不必重启 Caddy。
+
+## 备份
+
+Caddy **没有业务数据卷**：`caddy_data` 只存可重建的证书，不在 `make backup` 范围内；
+`config/routes.yaml` 在 Git、`.env` 走受控密钥保管（不入库），容器可随时重建。
+证书分发与重建后客户端重装根证书的流程见 [备份与恢复](../备份与恢复.md)「范围与前提」
+与 [使用说明](../使用说明.md) §1；本服务无单独恢复演练项。

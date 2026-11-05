@@ -170,3 +170,40 @@ USE_GHCR=1 docker compose --env-file .env up -d --no-build --no-deps --force-rec
 - **host key 不会自动轮换**。要换就删 `secrets/agent_host_key*` 重跑 `gen-agent-key.sh`，
   但 JCasC 的 `manuallyProvidedKeyVerificationStrategy` 也要跟着更新（重启 jenkins）
 - **私钥在 `secrets/` 明文**（不进 git）。轮换时两对一起换：`agent_ssh_key` + `agent_host_key`
+
+## 使用指南
+
+```bash
+make deploy                                           # 全栈，含 agent
+docker exec of-jenkins-agent su -s /bin/sh -c 'id; docker info --format "{{.ServerVersion}}"' jenkins
+docker logs --tail=50 of-jenkins-agent
+docker exec of-jenkins-agent getent group docker      # 期望 docker:x:<gid>:jenkins
+```
+
+**验证权限一律用 `su`**（和 sshd 登录会话一致），不要用 `docker exec -u jenkins`；重建命令见原「常用命令」段。
+
+## 注意事项
+
+- 执行用户是 `jenkins`(uid 1000) **不是 root**；上游镜像 `PermitRootLogin no`（`会话交接.md` §4.1）。
+- `group_add` 到不了 SSH 会话：sshd 登录会 `initgroups()` 按 `/etc/group` 重置附加组，必须由 `tools/jenkins-agent/agent-entrypoint.sh` 改 `/etc/group` 本身；`docker exec -u` 会继承 `AdditionalGids` 造成**假阳性**（`会话交接.md` §4.1）。
+- docker 组**只能用数字 gid**（`DOCKER_GID`），容器内 `/etc/group` 与宿主对不上，按组名 `usermod -aG docker` 会找不到组（`会话交接.md` §4.1）。
+- agent 的 sshd host key 每次重建都变会让节点 offline：host key 必须是 `secrets/` 里的受管产物，并配 `manuallyProvidedKeyVerificationStrategy`；该类构造时就 `parseKey`，**空串会让 JCasC 整份失败**（`会话交接.md` §4.1）。
+- 容器 `healthy ≠ 服务可用`：10 容器全 healthy 但 job 全 pending 的坑就在这里，必须有一条打穿全链路的真实 job（`会话交接.md` §4.1）。
+- 打 `jenkins.<domain>` 带 basic auth 只得到 302（整站被 oauth2 包住），API 走容器内 `127.0.0.1:8080`；URL 里有 `[...]` 要 `curl -g`（`会话交接.md` §4.3/§4.5）。
+
+## 设置
+
+| 真源 | 路径 |
+|---|---|
+| 挂 socket / host key / `group_add` | `docker-compose.yml` 的 `jenkins-agent` 段 |
+| 启动时改 `/etc/group` | `tools/jenkins-agent/agent-entrypoint.sh` |
+| SSH agent cloud / host key 校验策略 | `config/jenkins.yaml` 的 `clouds` 段 |
+| 密钥对（不进 Git） | `secrets/agent_ssh_key*` / `secrets/agent_host_key*`，由 `scripts/gen-agent-key.sh` 幂等生成 |
+| `DOCKER_GID` | 由 `deploy.sh` / harness / `Makefile` 用 `stat -c %g` 探测后 `export`，**不在 `.env`** |
+
+## 备份
+
+agent **无状态、无数据卷**，不在 `make backup` 范围内；它的身份材料在 `secrets/`（不进 Git），
+必须走受控密钥保管另存。丢失时用 `scripts/gen-agent-key.sh` 重建两对密钥，并同步
+`config/jenkins.yaml` 的 `manuallyProvidedKeyVerificationStrategy`（重启 jenkins）。
+Jenkins 侧的状态备份只保 `jenkins_home`，见 [备份与恢复](../备份与恢复.md)。

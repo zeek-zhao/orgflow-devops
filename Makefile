@@ -31,7 +31,7 @@ help:
 	@echo "make restore  SERVICE=ldap BACKUP_FILE=包路径（交互确认覆盖）"
 	@echo "make backup-verify BACKUP_FILE=包路径（只校验）"
 	@echo "make lint     静态检查（shellcheck/yamllint）"
-	@echo "make test     跑 Python 侧测试（路由/导入/Job 定义）+ Jenkins 镜像静态自检"
+	@echo "make test     跑 Python 侧测试（路由/导入/Job 定义/文档四段覆盖）"
 	@echo "make check-jenkins-image 静态校验 plugins.txt 必装项 + Dockerfile 用 jenkins-plugin-cli（#90）"
 	@echo "make check-pins 校验 tests/images.lock 无「待构建后回填」占位（USE_GHCR=1 上线闸门）"
 	@echo "make test-groovy 跑共享库行为测试（需要 groovy，缺失则跳过）"
@@ -117,6 +117,7 @@ test: check-jenkins-image
 	@python3 scripts/test_ci.py
 	@python3 scripts/test_docs.py
 	@python3 scripts/test_homepage_config.py
+	@python3 scripts/test_service_doc_sections.py
 	@echo "python syntax ok"
 
 # #90 / REQ-M0-B1：Jenkins 镜像静态自检。本轮不构建镜像，容器内插件清单无法实测，

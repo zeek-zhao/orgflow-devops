@@ -150,3 +150,41 @@ docker inspect -f '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end
 - **`storage: memory`**：重启后 refresh token 全丢，已登录用户要重新登录。M1 换持久化存储
 - 配置里 `--insecure-oidc-skip-issuer-verification=true`（在 oauth2-proxy 侧）：因为 issuer 走公网域名、
   实际请求走容器网络，两边 host 对不上。这是刻意的，不是安全疏漏——链路在内网
+
+## 使用指南
+
+```bash
+make render && docker compose restart dex        # 模板 -> out/dex/config.yaml 后重启
+docker compose exec -T dex wget -qO- http://localhost:5556/dex/healthz
+curl -sS -k --resolve dex.org-devops.com:443:127.0.0.1 \
+  https://dex.org-devops.com:443/dex/.well-known/openid-configuration | head -c 200
+```
+
+判活一律打 `/dex/healthz`；发现文档、登录页、token、JWKS 全部挂在 `/dex` 下。
+
+## 注意事项
+
+- **整目录挂载会 `chdir EACCES`**，报出来却是 `gomplate: permission denied`：dex 以 uid `1001` 运行，只能单文件挂载 `out/dex/config.yaml`，渲染后要 `chmod 0644`（`会话交接.md` §4.5）。
+- **`/`、`/dex`、`/dex/` 都是 404**：Dex 没有 Web 首页，端点不剥 `/dex` 前缀；拿 `/` 判活会误判「dex 挂了」（`会话交接.md` §1.3）。
+- 模板用 Dex 原生 `secretEnv`，**不展开** `secret` 里的 `${...}`；写成 `${OAUTH2_CLIENT_SECRET}` 会得到字面量、登录时报 secret 不匹配。
+- `storage: memory`：重启后 refresh token 全丢，已登录用户要重新登录。
+- 链路不能省掉 Dex：`oauth2-proxy` 7.x 已删 LDAP provider，只能 `oauth2-proxy → Dex → LDAP`；A3 收口后 Dex 仍保留为 IdP（`M0-增量需求总表.md` §0 B-架构、§1 第 2 条）。
+
+## 设置
+
+| 真源 / 产物 | 路径 |
+|---|---|
+| 配置模板 | `services/auth/dex/config.yaml.tmpl` |
+| 渲染脚本 | `scripts/render-dex.sh` |
+| 渲染产物（单文件挂载、0644） | `out/dex/config.yaml` |
+| LDAP connector / static client | `out/dex/config.yaml`（由模板生成，不手改） |
+| 凭据 | `.env` 的 `LDAP_ADMIN_PASSWORD` / `OAUTH2_CLIENT_SECRET`（值不入库、不写文档） |
+
+issuer 为 `https://dex.<domain>/dex`，client id `jenkins` 必须与 oauth2-proxy 侧一致。
+
+## 备份
+
+Dex 是**无状态**服务：`storage: memory`、无数据卷，无需备份；配置全部由
+`services/auth/dex/config.yaml.tmpl` + `.env` 重建（`make render`）。
+只需保证模板与 `.env`（受控密钥保管）可恢复，见 [备份与恢复](../备份与恢复.md)「范围与前提」；
+LDAP 里的用户数据另由 `ldap` 服务备份，不要在这里找。
