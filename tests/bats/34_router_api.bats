@@ -28,7 +28,7 @@ except urllib.error.HTTPError as e:
     local jenkins_id
     jenkins_id=$(docker inspect -f '{{.Id}}' of-jenkins)
 
-    run api POST /routes '{"name":"demo","host":"demo.'"${GW_DOMAIN}"'","upstream":"homepage:3000"}'
+    run api POST /routes '{"name":"demo","host":"demo.'"${GW_DOMAIN}"'","upstream":"caddy:80"}'
     [ "$status" -eq 0 ]
     assert_contains "$output" "201"
     assert_contains "$output" '"subdomain": "demo"'
@@ -37,8 +37,13 @@ except urllib.error.HTTPError as e:
     grep -q "subdomain: demo" "$ROUTES"
     # ② Caddyfile 已重渲染
     grep -q "https://demo.${GW_DOMAIN} {" "$CADDYFILE"
-    # ③ Caddy 真的加载了（不是只写了文件）：新域名直接 200
-    assert_gw demo / 200
+    # ③ Caddy 真的加载了（issue 验收口径：admin /config/ 里有它，不是只写了文件）
+    run compose_cmd exec -T router python3 -c '
+import urllib.request
+print(urllib.request.urlopen("http://caddy:2019/config/", timeout=10).read().decode())'
+    assert_contains "$output" "demo.${GW_DOMAIN}"
+    # ④ 真实请求也走通：caddy:80 对已知域名做 80→443 跳转（308 证明站点已注册）
+    assert_gw demo / 308
     # 全程没有容器重建
     [ "$(docker inspect -f '{{.Id}}' of-jenkins)" = "$jenkins_id" ]
 
