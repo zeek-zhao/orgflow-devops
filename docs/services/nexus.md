@@ -160,3 +160,43 @@ make backup
 - 没有配 `auth: true`：Nexus 自己的账号体系没接 LDAP，谁都能打开界面。M1 再接
 - 备份只含 `orgflow-devops_nexus_data`，不含镜像本身的配置（那是镜像的一部分，可重建）
 - **job 只做「建容器 + 改密 + 删初始密码」**，不建仓库、不建角色。要加仓库得手工或用 REST
+
+## 使用指南
+
+```bash
+USE_GHCR=1 make deploy                  # 先建 orgflow 网络
+make jobs                               # 首次或 job 定义变了才需要
+# 触发 Jenkins job nexus-deploy（UI 或 job/nexus-deploy/buildWithParameters）
+docker exec of-nexus curl -sS -o /dev/null -w '%{http_code}\n' \
+  http://localhost:8081/service/rest/v1/status
+make backup                             # 备份 nexus_data
+```
+
+状态 API 返回 `200` 才算就绪（**body 为空，只断言状态码**）；`make deploy` 之后网关 `502`
+是 job 还没跑的预期状态。
+
+## 注意事项
+
+- **不在 `docker-compose.yml` 里**：`docker compose ps` / `logs` 看不到它不是故障；用 `docker ps` / `docker logs` / `docker restart`（#46 起由 job 创建）。
+- 卷名必须写全 `orgflow-devops_nexus_data`；写成 `nexus_data` 会落到匿名卷，表现为「数据看起来没了」。动手前 `docker volume ls | grep nexus_data` 记全名。
+- 改密 API 要 `Content-Type: text/plain`、body 就是新密码本身，**写 JSON 会 415**；job 改密后删 `/nexus-data/admin.password`。
+- `docker run` 没有 healthcheck，`Up N minutes` 属正常；状态 API 空 body 会被 `curl -f` 误判为失败。
+- Nexus **CE 支持 LDAP，Pro-only 的是 SAML SSO**（`M0-增量需求总表.md` §1 第 1 条、§3 A5）；别把 SAML 写进需求或文档。
+- 备份要求**数据库与 blob store 尽量同一时刻**；H2 部署有内置 `Admin - Backup H2 Database` 任务（`M0-增量需求总表.md` §1 第 7 条），不要只备其一。
+
+## 设置
+
+| 真源 | 路径 |
+|---|---|
+| 创建 / 改密 job 定义 | `config/job_definitions/nexus/nexus-deploy.yaml` |
+| 等价脚本 | `scripts/nexus-deploy.sh` |
+| 管理员账号 / 口令 | `.env` 的 `NEXUS_ADMIN_ID` / `NEXUS_ADMIN_PASSWORD`（值不入库、不写文档） |
+| 全部状态 | `orgflow-devops_nexus_data` 卷 → `/nexus-data` |
+| 其余配置 | 卷内配置文件或 UI `Admin → System` |
+
+## 备份
+
+**只保 `orgflow-devops_nexus_data`**（`make backup` / `backup-service` Job，备份前停服）。
+注意数据库与 blob store 的同刻一致性（H2 内置备份任务，见上）；镜像本身与仓库定义可重建，
+不含在卷备份里。恢复演练的验证点是「仓库列表与基线一致 + 抽查制品可下载」，
+完整步骤见 [备份与恢复](../备份与恢复.md)。

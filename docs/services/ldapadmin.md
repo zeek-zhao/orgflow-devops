@@ -108,3 +108,40 @@ docker compose logs --tail=50 ldapadmin
 
 - **管理面没有鉴权**，见上文。这是 M0 的已知遗留项，不是 bug
 - 界面是 phpLDAPadmin 0.9.0，比较老，复杂 schema 编辑容易报错——批量操作建议直接用 `ldapadd` / `ldapmodify`
+
+## 使用指南
+
+```bash
+docker compose up -d ldapadmin
+curl -sS -k -o /dev/null -w '%{http_code} %{redirect_url}\n' \
+  --resolve ldapadmin.org-devops.com:443:127.0.0.1 https://ldapadmin.org-devops.com:443/
+docker compose logs --tail=50 ldapadmin
+```
+
+未登录期望 `302` 到 `auth.<domain>/oauth2/start`；登录后 Login DN 要写全
+`cn=admin,dc=devops,dc=com`。
+
+## 注意事项
+
+- **两层登录**：先过网关 oauth2 / Dex，再是 phpLDAPadmin 自己的 LDAP bind；只写 `admin` 会 `Invalid credentials`（DN 必须写全）。
+- `PHPLDAPADMIN_LDAP_HOSTS=ldap` 让它连容器网络里的 `ldap` 名字，**dnsmasq 挂了它也打不开登录页**，症状是「页面出来了但登录转圈」。
+- #36 起改为网关鉴权，未登录一律 302；直连得到 200 说明站点块没带 `forward_auth`（查 `out/Caddyfile` 与 `config/routes.yaml` 的 `auth: true`）。
+- 界面是 phpLDAPadmin 0.9.0，复杂 schema 编辑容易报错，批量操作建议直接用 `ldapadd` / `ldapmodify`。
+- 认证域名只由 `config/routes.yaml` 里 `name: auth` 那条路由的 `subdomain` 决定，**没有 `AUTH_SUBDOMAIN` 变量**（`会话交接.md` §1.3）。
+
+## 设置
+
+| 真源 | 路径 / 变量 |
+|---|---|
+| 上游 LDAP 主机名 | `.env` 的 `PHPLDAPADMIN_LDAP_HOSTS`（默认 `ldap`） |
+| 自身 TLS | `.env` 的 `PHPLDAPADMIN_HTTPS=false`（TLS 由网关终结） |
+| 是否要登录 | `config/routes.yaml` 对应路由的 `auth: true` |
+| 目录管理员 DN | `cn=admin,dc=devops,dc=com`（口令在 `.env` 的 `LDAP_ADMIN_PASSWORD`） |
+
+没有独立配置文件；界面操作直接落到 `ldap` 容器的数据卷。
+
+## 备份
+
+ldapadmin **无数据卷**，所有目录数据在 `ldap` 容器，随 `ldap_data` / `ldap_config` 一起保管，
+无需单独备份；凭据在 `.env`（不入库）。完整卷映射与恢复步骤见
+[备份与恢复](../备份与恢复.md)。
