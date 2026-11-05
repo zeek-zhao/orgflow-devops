@@ -17,7 +17,7 @@ ifeq ($(USE_GHCR),1)
 COMPOSE += -f docker-compose.yml -f docker-compose.ghcr.yml
 endif
 
-.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock images-pin hooks identity-check hosts ca clean
+.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock images-pin hooks identity-check hosts ca clean check-jenkins-image check-pins
 
 help:
 	@echo "make render   渲染 routes.yaml -> out/Caddyfile"
@@ -31,7 +31,9 @@ help:
 	@echo "make restore  SERVICE=ldap BACKUP_FILE=包路径（交互确认覆盖）"
 	@echo "make backup-verify BACKUP_FILE=包路径（只校验）"
 	@echo "make lint     静态检查（shellcheck/yamllint）"
-	@echo "make test     跑 Python 侧测试（路由/导入/Job 定义）"
+	@echo "make test     跑 Python 侧测试（路由/导入/Job 定义）+ Jenkins 镜像静态自检"
+	@echo "make check-jenkins-image 静态校验 plugins.txt 必装项 + Dockerfile 用 jenkins-plugin-cli（#90）"
+	@echo "make check-pins 校验 tests/images.lock 无「待构建后回填」占位（USE_GHCR=1 上线闸门）"
 	@echo "make test-groovy 跑共享库行为测试（需要 groovy，缺失则跳过）"
 	@echo "make test-bats DinD 容器内跑 10 个 compose 服务 + job 部署的 nexus（KEEP=1 保现场）"
 	@echo "make images-lock 从本地镜像 digest 更新 tests/images.lock"
@@ -58,12 +60,14 @@ ca:
 	@bash scripts/ca-install.sh
 
 deploy: render
+	$(if $(filter 1,$(USE_GHCR)),@$(MAKE) --no-print-directory check-pins)
 	@ENV_FILE="$(ENV_FILE)" COMPOSE="$(COMPOSE)" USE_GHCR="$(USE_GHCR)" bash scripts/deploy.sh $(if $(SERVICE),--service $(SERVICE),)
 
 doctor:
 	@ENV_FILE="$(ENV_FILE)" COMPOSE="$(COMPOSE)" python3 scripts/doctor.py
 
 up:
+	$(if $(filter 1,$(USE_GHCR)),@$(MAKE) --no-print-directory check-pins)
 	$(COMPOSE) --env-file $(ENV_FILE) up -d $(if $(filter 1,$(USE_GHCR)),--no-build)
 
 down:
@@ -103,7 +107,7 @@ lint:
 	@command -v shellcheck >/dev/null && shellcheck scripts/*.sh .github/scripts/*.sh || echo "shellcheck 未安装，跳过"
 	@command -v yamllint >/dev/null && yamllint config services docker-compose.yml || echo "yamllint 未安装，跳过"
 
-test:
+test: check-jenkins-image
 	@python3 -m py_compile services/router/render.py
 	@python3 services/router/test_render.py
 	@python3 services/auth/test_bootstrap.py
@@ -113,6 +117,34 @@ test:
 	@python3 scripts/test_ci.py
 	@python3 scripts/test_docs.py
 	@echo "python syntax ok"
+
+# #90 / REQ-M0-B1：Jenkins 镜像静态自检。本轮不构建镜像，容器内插件清单无法实测，
+# 用「清单必含项 + Dockerfile 用 jenkins-plugin-cli 安装」替代（见 docs/M0-镜像与CI.md）。
+# 反证：从 plugins.txt 删掉 workflow-aggregator，这条必须红，恢复后复绿。
+check-jenkins-image:
+	@set -e; \
+	for plugin in workflow-aggregator git credentials ldap configuration-as-code; do \
+		count=$$(grep -cx "$$plugin" services/jenkins/plugins.txt 2>/dev/null || true); \
+		count=$${count:-0}; \
+		if [ "$$count" -ne 1 ]; then \
+			echo "✗ 镜像自检失败: plugins.txt 的 $$plugin 出现 $$count 次（应为 1）"; \
+			exit 1; \
+		fi; \
+	done; \
+	if ! grep -q 'jenkins-plugin-cli --plugin-file' services/jenkins/Dockerfile; then \
+		echo "✗ 镜像自检失败: Dockerfile 未用 jenkins-plugin-cli --plugin-file 安装 plugins.txt"; \
+		exit 1; \
+	fi; \
+	echo "✓ 镜像自检通过: 5 项必装插件齐备，Dockerfile 用 jenkins-plugin-cli 安装"
+
+# #90：tests/images.lock 里还有「待构建后回填」占位时禁止带占位上线。
+# 本轮不构建不推送，digest 尚未产生；USE_GHCR=1 的 up / deploy 会先撞这条闸门。
+check-pins:
+	@if grep -v '^#' tests/images.lock | grep -q '待构建后回填'; then \
+		echo "✗ tests/images.lock 仍有未回填的 digest 占位（待构建后回填）；先构建镜像并回填真实 digest，禁止上线"; \
+		exit 1; \
+	fi; \
+	echo "✓ images.lock 无待回填占位"
 
 test-bats:
 	@USE_GHCR="$(USE_GHCR)" bash tests/images.sh ensure

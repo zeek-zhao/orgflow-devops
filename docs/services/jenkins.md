@@ -9,13 +9,15 @@ CI 流水线。跑 `deploy-service` / `backup-service` / `restore-service` 三�
 | 容器名 | `of-jenkins` |
 | 固定 IP | `172.31.0.20` |
 | 端口 | `8080`（容器内，**不发布到宿主**） |
-| 镜像 | **自建** `ghcr.io/zeek-zhao/orgflow-devops/jenkins:24.04-v1`（`FROM jenkins/jenkins:lts-jdk21` + `plugins.txt`） |
-| 构建上下文 | `tools/jenkins/` —— compose 里是 `build:` 而不是 `image:` |
+| 镜像 | **自建** `ghcr.io/zeek-zhao/orgflow-devops/jenkins:24.04-v1`（`FROM jenkins/jenkins:lts-jdk21` + `services/jenkins/plugins.txt`）。#90 新插件镜像 tag 为 `24.04-v2`，digest 待构建后回填，见「digest 锁定状态」 |
+| 构建上下文 | `services/jenkins/`（#90 起）—— compose 里是 `build:` 而不是 `image:` |
 | 卷 | `jenkins_home` → `/var/jenkins_home` |
 
 > 为什么自建：官方镜像**一个插件都不带**，而 `deploy-service` 这些是 pipeline job，
 > 没有 `workflow-aggregator` 根本跑不起来；另外 213 拉不到 Docker Hub，只能在 CI 构建后推 GHCR。
 > 底座 `jenkins/jenkins:lts-jdk21` 由 GitHub runner 拉（runner 有外网），不需要进 mirror。
+> 默认插件清单见 `services/jenkins/plugins.txt`（#90 新增 `ldap` 等），由 Dockerfile 里的
+> `jenkins-plugin-cli --plugin-file` 装进 `/usr/share/jenkins/ref/plugins`。
 
 **不发布宿主端口**是有意的：所有访问都必须经过网关，否则 `forward_auth` 可以被绕过。
 要直连只能在容器网络里：
@@ -42,9 +44,14 @@ make deploy            # 全套起，分批等 healthy
 docker compose up -d jenkins
 ```
 
-**改了 `tools/jenkins/plugins.txt` 或 `Dockerfile` 之后**：等 main 的 Images 工作流跑完
+**改了 `services/jenkins/plugins.txt` 或 `Dockerfile` 之后**：等 main 的 Images 工作流跑完
 （只构建 `jenkins` 一个），再 `make images-pin` 回写 `docker-compose.ghcr.yml` 的 digest，
 然后重新 deploy。**跳过这一步，213 上跑的还是旧镜像**，而 `make deploy` 不会报任何错。
+
+> ⚠️ #90 本轮把 compose 的构建上下文切到了 `services/jenkins/`，但 CI 裁剪映射
+> （`images.yml` / `.github/scripts/select-images.sh` / `scripts/test_ci.py` /
+> `tests/bats/00_stack.bats`）仍指向旧的 `tools/jenkins/`，**派单方合并时须同步**，
+> 否则改 `services/jenkins/` 不会触发 Images 工作流。详见 [M0 镜像与 CI](../M0-镜像与CI.md) 的「#90」节。
 
 **Job 跑在哪**：不在 Jenkins 容器里，在独立的 **`jenkins-agent`** 容器（SSH 接入，
 挂宿主 `/var/run/docker.sock`）。所以 job 里 `docker` 能用，Jenkins 容器里不能。
@@ -63,6 +70,41 @@ Job 定义不在这里手改再点界面——用 JJB 推：
 make jobs        # 需要真实 .env 和可达的 Jenkins
 make jobs-test   # 离线渲染，只验证定义能不能生成
 ```
+
+## 默认插件清单（#90）
+
+`services/jenkins/plugins.txt` 是纯列表（不写注释、不钉版本），Dockerfile 用
+`jenkins-plugin-cli --plugin-file` 安装：
+
+| 插件 | 作用 |
+|---|---|
+| `workflow-aggregator` | 三个 job 都是 pipeline，缺了 job 定义都解析不了 |
+| `git` | 拉共享库 `orgflow-shared` 与业务仓库 |
+| `credentials` | JCasC 声明的凭据 |
+| `credentials-binding` | pipeline 里 `withCredentials` |
+| `plain-credentials` | `ldap-admin-password` 等 Secret text 凭据 |
+| `ssh-slaves` | SSH 接入 agent 容器 |
+| `ldap` | #90 新增：LDAP 登录 / 组解析 |
+| `configuration-as-code` | 让 `config/jenkins.yaml` 生效 |
+
+静态自检 `make check-jenkins-image`（挂进 `make test`）保证 5 项必装插件
+（`workflow-aggregator` / `git` / `credentials` / `ldap` / `configuration-as-code`）
+各出现一次、且 Dockerfile 仍用 `jenkins-plugin-cli`。反证：删掉
+`workflow-aggregator` 后 `make test` 必须红，恢复后复绿。
+
+## digest 锁定状态（#90，本轮未构建）
+
+本轮只提交源码，**不构建、不推送镜像**。新插件镜像按「新增 tag」登记为 `24.04-v2`，
+但真实 digest 尚未产生，`tests/images.lock` 的 jenkins 行写成明确的「待构建后回填」
+文字占位，**不是编造的 sha256**；`docker-compose.ghcr.yml` 仍指向已发布、未改动的
+`24.04-v1@sha256:2e211...`（不含 #90 新增插件）。
+
+两道闸门防止带占位上线：`tests/images.sh ensure` 要求 `@sha256:[a-f0-9]{64}`；
+`make check-pins` 挂在 `USE_GHCR=1` 的 `up` / `deploy` 前置，命中占位即失败。
+`USE_GHCR=1` 时 compose 必须 `--no-build`（override 的 `image` 是 digest 引用）。
+
+**未验证**：容器内插件清单（`jenkins-plugin-cli --list`）、24.04-v2 的 digest 与
+GHCR 可复现性——都要等构建轮补齐。回填后去掉占位，才允许 `USE_GHCR=1 make deploy`。
 
 ## 关键环境变量
 

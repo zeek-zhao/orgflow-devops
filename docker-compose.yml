@@ -44,11 +44,16 @@ services:
       start_period: 10s
 
   jenkins:
-    # 自建镜像（#44）：上游 jenkins/jenkins 不带插件，pipeline job 与 JCasC 都用不了。
+    # 自建镜像（#44 / #90）：上游 jenkins/jenkins 不带插件，pipeline job 与 JCasC 都用不了。
+    # #90 起插件清单迁到 services/jenkins/plugins.txt（8 项，新增 ldap 等），
+    # 构建上下文随之切到 ./services/jenkins。改完要等 main 的 Images 工作流构建、
+    # make images-pin 回写 digest 之后，213 才吃得到新镜像。
     # 底座在 Docker Hub 上，213 拉不到，所以本地构建只适用于能出网的机器；
     # 213 一律 USE_GHCR=1，拉 GHCR 上由 images.yml 构建的同一份。
+    # .ghcr.yml 里的 image 是 digest 引用，USE_GHCR=1 时 up/deploy 必须 --no-build，
+    # 否则会报 refusing to create a tag with a digest reference（见 Makefile）。
     build:
-      context: ./tools/jenkins
+      context: ./services/jenkins
       tags: ["orgflow/jenkins:24.04-v1"]
     container_name: of-jenkins
     restart: unless-stopped
