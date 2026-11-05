@@ -14,6 +14,8 @@ import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from render import RouterHandler, parse_routes, apply_env, render, write_if_changed  # noqa: E402
 ROUTES = ROOT / "config/routes.yaml"
 SCRIPT = ROOT / "services/router/render.py"
 RELOAD = ROOT / "services/router/reload.sh"
@@ -84,13 +86,13 @@ class RouterTests(unittest.TestCase):
             process.terminate()
             process.communicate(timeout=5)
 
-    def test_six_domain_sites_and_unchanged_output(self):
+    def test_seven_domain_sites_and_unchanged_output(self):
         self.assertEqual(self.run_render().returncode, 0)
         content = self.out.read_text()
         self.assertIn("\tlocal_certs", content)
-        for sub in ("jenkins", "nexus", "ldapadmin", "dex", "auth", "home"):
+        for sub in ("jenkins", "nexus", "ldapadmin", "dex", "auth", "home", "ca"):
             self.assertIn(f"https://{sub}.org-devops.com {{", content)
-        self.assertEqual(content.count("reverse_proxy "), 6)
+        self.assertEqual(content.count("reverse_proxy "), 7)
         # jenkins 与 ldapadmin 两站开网关鉴权（#36）
         self.assertEqual(content.count("forward_auth "), 2)
         # 域名路由后不应再有路径匹配块
@@ -321,7 +323,7 @@ class RouterTests(unittest.TestCase):
             with urllib.request.urlopen(url, timeout=2) as response:
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.headers.get_content_type(), "application/json")
-                self.assertEqual(json.load(response), {"ok": True, "routes": 6})
+                self.assertEqual(json.load(response), {"ok": True, "routes": 7})
             # 换成一份只有两个站点的配置：auth 路由必须留着，否则渲染会直接报错
             self.routes.write_text(
                 'routes:\n'
@@ -351,7 +353,7 @@ class RouterTests(unittest.TestCase):
                 self.wait_for(lambda: len(server.requests) >= 2)
                 with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz",
                                             timeout=2) as response:
-                    self.assertEqual(json.load(response), {"ok": True, "routes": 6})
+                    self.assertEqual(json.load(response), {"ok": True, "routes": 7})
 
     def test_healthz_missing_routes_recovers_in_watch_mode(self):
         with socket.socket() as sock:
@@ -376,8 +378,148 @@ class RouterTests(unittest.TestCase):
             self.routes.write_bytes(ROUTES.read_bytes())
             self.wait_for(self.out.exists)
             with urllib.request.urlopen(url, timeout=2) as response:
-                self.assertEqual(json.load(response), {"ok": True, "routes": 6})
+                self.assertEqual(json.load(response), {"ok": True, "routes": 7})
+
+
+class RouteApiTests(unittest.TestCase):
+    """#61 注册 API：校验、写回 routes.yaml、HTTP 全流程。
+
+    routes.yaml 仍是唯一真源：API 只是它的写入口，写前校验、写后渲染。
+    """
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.routes = Path(self.directory.name) / "routes.yaml"
+        self.routes.write_bytes(ROUTES.read_bytes())
+        self.out = Path(self.directory.name) / "Caddyfile"
+
+    def sha(self):
+        import hashlib
+        return hashlib.sha256(self.routes.read_bytes()).hexdigest()
+
+    def test_post_valid_appends_and_returns_entry(self):
+        with RouterAPIServer(self.routes, self.out) as api:
+            status, body = api.request("POST", "/routes", {
+                "name": "demo", "host": f"demo.{GATEWAY_DOMAIN}",
+                "upstream": "caddy:80",
+            })
+            self.assertEqual(status, 201)
+            self.assertEqual(body["route"]["subdomain"], "demo")
+            # host 是 FQDN 时剥掉网关域名后缀，文件里仍写 subdomain 口径
+            self.assertIn("subdomain: demo", self.routes.read_text())
+
+    def test_post_invalid_is_400_and_file_unchanged(self):
+        # 反证核心（#61 验收）：非法输入必须在写之前被拒——文件一个字节都不能动。
+        bad_payloads = (
+            {"name": "demo", "host": "", "upstream": "caddy:80"},        # host 空
+            {"name": "demo", "subdomain": "demo"},                        # 缺 upstream
+            {"name": "Bad_Name", "subdomain": "x", "upstream": "u"},      # name 非法
+            {"name": "demo", "subdomain": "jenkins", "upstream": "u"},    # 重复 subdomain
+            {"name": "homepage", "subdomain": "demo2", "upstream": "u"},  # 重复 name
+            {"name": "demo", "subdomain": GATEWAY_DOMAIN,
+             "upstream": "u"},                                            # subdomain=网关域名
+        )
+        with RouterAPIServer(self.routes, self.out) as api:
+            before = self.sha()
+            for payload in bad_payloads:
+                status, body = api.request("POST", "/routes", payload)
+                self.assertEqual(status, 400, payload)
+                self.assertTrue(body.get("error"), payload)
+                self.assertEqual(self.sha(), before, f"文件被改动了: {payload}")
+
+    def test_post_json_garbage_is_400(self):
+        with RouterAPIServer(self.routes, self.out) as api:
+            self.assertEqual(api.request_raw("POST", "/routes", b"{not json")[0], 400)
+            self.assertEqual(api.request("POST", "/routes", None)[0], 400)
+
+    def test_get_routes_returns_valid_json(self):
+        with RouterAPIServer(self.routes, self.out) as api:
+            status, body = api.request("GET", "/routes")
+            self.assertEqual(status, 200)
+            self.assertEqual(body["gateway_domain"], GATEWAY_DOMAIN)
+            self.assertEqual([r["name"] for r in body["routes"]],
+                             ["jenkins", "nexus", "ldapadmin", "dex", "auth", "homepage", "ca"])
+
+    def test_delete_removes_entry_and_keeps_rest(self):
+        with RouterAPIServer(self.routes, self.out) as api:
+            api.request("POST", "/routes", {"name": "demo", "subdomain": "demo",
+                                            "upstream": "caddy:80"})
+            text = self.routes.read_text()
+            status, body = api.request("DELETE", "/routes/demo")
+            self.assertEqual(status, 200)
+            self.assertNotIn("subdomain: demo", self.routes.read_text())
+            # 其余条目与注释原样保留
+            for keep in ("name: jenkins", "name: homepage", "# 统一入口"):
+                self.assertIn(keep, self.routes.read_text())
+            status, _ = api.request("DELETE", "/routes/demo")
+            self.assertEqual(status, 404)
+
+    def test_delete_protects_auth_route(self):
+        with RouterAPIServer(self.routes, self.out) as api:
+            status, body = api.request("DELETE", "/routes/auth")
+            self.assertEqual(status, 400)
+            self.assertIn("不能删除", body["error"])
+
+    def test_api_write_feeds_the_renderer(self):
+        settings, routes = parse_routes(str(self.routes))
+        write_if_changed(str(self.out), render(apply_env(settings), routes))
+        with RouterAPIServer(self.routes, self.out) as api:
+            before = self.out.read_text()
+            api.request("POST", "/routes", {"name": "demo", "subdomain": "demo",
+                                            "upstream": "caddy:80"})
+            self.assertIn(f"https://demo.{GATEWAY_DOMAIN} {{", self.out.read_text())
+            api.request("DELETE", "/routes/demo")
+            self.assertEqual(self.out.read_text(), before)
+
+
+GATEWAY_DOMAIN = "org-devops.com"
+
+
+class RouterAPIServer:
+    """起一个真实 RouterHandler（临时端口），单元测试直接发 HTTP。"""
+
+    def __init__(self, routes_path, out_path):
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), RouterHandler)
+        self.server.routes_path = str(routes_path)
+        self.server.out_path = str(out_path)
+        self.server.admin_url = ""
+        self.server.ca_dir = ""
+        self.server.route_lock = threading.Lock()
+        self.server.health_state = {"routes_count": None}
+        # 单测不连 Caddy，但渲染和落盘要走真实逻辑
+        def _once(force_reload=False):
+            settings, routes = parse_routes(str(routes_path))
+            write_if_changed(str(out_path), render(apply_env(settings), routes))
+        self.server.once = _once
+        self.thread = threading.Thread(target=self.server.serve_forever,
+                                       kwargs={"poll_interval": 0.02})
+        self.thread.start()
+        self.base = f"http://127.0.0.1:{self.server.server_address[1]}"
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=5)
+
+    def request_raw(self, method, path, body=None, headers=None):
+        req = urllib.request.Request(self.base + path, data=body, method=method,
+                                     headers=headers or {})
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return resp.status, json.loads(resp.read().decode() or "{}")
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read().decode() or "{}")
+
+    def request(self, method, path, payload=None):
+        body = json.dumps(payload).encode() if payload is not None else None
+        headers = {"Content-Type": "application/json"} if payload is not None else {}
+        return self.request_raw(method, path, body, headers)
 
 
 if __name__ == "__main__":
     unittest.main()
+

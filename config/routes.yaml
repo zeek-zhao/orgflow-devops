@@ -42,3 +42,9 @@ routes:
   - name: homepage
     subdomain: home
     upstream: homepage:3000
+
+  # CA 分发：router 容器直接服务 out/ca/ 下的 root.crt 与 ca-install.sh（#62）。
+  # 局域网机器从 https://ca.<domain>/ 取证书与安装脚本，见 docs/services/caddy.md。
+  - name: ca
+    subdomain: ca
+    upstream: router:8090

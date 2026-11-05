@@ -5,4 +5,4 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY render.py /app/render.py
-CMD ["python3", "/app/render.py", "--routes", "/app/config/routes.yaml", "--out", "/app/out/Caddyfile", "--watch"]
+CMD ["python3", "/app/render.py", "--routes", "/app/config/routes.yaml", "--out", "/app/out/Caddyfile", "--watch", "--ca-dir", "/app/out/ca"]
