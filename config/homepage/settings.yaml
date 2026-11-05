@@ -7,7 +7,12 @@ theme: dark
 color: slate
 headerStyle: boxed
 
+# 两个分组各自布局：服务入口一行 3 张卡，本地文档书签一行 4 条，
+# 免得 11 份文档挤成一小坨。分组名与 services.yaml / bookmarks.yaml 保持一致。
 layout:
   服务入口:
     style: row
     columns: 3
+  本地文档:
+    style: row
+    columns: 4
