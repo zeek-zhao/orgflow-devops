@@ -35,8 +35,8 @@ ldap_query() {
     [ -z "$dup" ]
 }
 
-@test "ldap: users OU 下恰好 12 个条目（11 用户 + OU 本身，#84）" {
-    run ldap_query -s one -b "ou=users,dc=devops,dc=com" "(objectClass=*)" dn
+@test "ldap: 恰好 11 个用户条目（posixAccount，#84）" {
+    run ldap_query -s sub "(objectClass=posixAccount)" dn
     [ "$status" -eq 0 ]
-    [ "$(grep -c "^dn:" <<< "$output")" -eq 12 ]
+    [ "$(grep -c "^dn:" <<< "$output")" -eq 11 ]
 }
