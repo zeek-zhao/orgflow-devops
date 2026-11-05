@@ -65,7 +65,11 @@ assert any(r["name"] == "demo" for r in body["routes"])'
     assert_contains "$output" "200"
     after_sha=$(sha256sum "$ROUTES" | cut -d' ' -f1)
     [ "$before_sha" = "$after_sha" ]
-    assert_gw demo / 000
+    # 站点已删：握手必须失败（与 14_caddy 未知域名同口径，TLS alert / 非零退出）
+    run curl -sS --max-time 20 -o /dev/null -w '%{http_code}' \
+        --resolve "demo.${GW_DOMAIN}:${GW_HTTPS_PORT}:${GW_HOST}" \
+        "https://demo.${GW_DOMAIN}:${GW_HTTPS_PORT}/"
+    [ "$status" -ne 0 ]
 }
 
 @test "router api: 非法输入 400，routes.yaml 与 Caddyfile 原封不动（#61 关键反证）" {
