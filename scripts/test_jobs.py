@@ -23,6 +23,9 @@ class JobScriptTests(unittest.TestCase):
         for name in (
             "scripts/gen-jjb-conf.sh", "scripts/deploy.sh", "scripts/backup.sh",
             "scripts/backup-common.sh", "scripts/render-dex.sh",
+            # backup.sh 对 nexus 包做内容级门禁（#93），临时根里必须也有这个脚本，
+            # 否则 --all 备份会在「找不到 check_nexus_archive.py」处失败。
+            "scripts/check_nexus_archive.py",
             # deploy.sh 在任何 compose 调用前都会先备好 agent 密钥（#45）
             "scripts/gen-agent-key.sh",
             "config/jenkins_jobs.ini.tpl", "config/routes.yaml",
@@ -97,11 +100,24 @@ if config is not None:
 if args[:2] == ["volume", "inspect"]:
     sys.exit(int(os.environ.get("JOB_TEST_INSPECT_STATUS", "0")))
 if os.environ.get("JOB_TEST_STATUS", "0") == "0" and args[:1] == ["run"]:
+    members = [("data", b"test data")]
+    # Nexus 的数据分 db/ 与 blobs/ 两处（#93），备份脚本会做内容级门禁，
+    # 所以假 docker 要按真实卷的形状产出；JOB_TEST_NEXUS_DB_ONLY=1 用来造
+    # 「只备 db 不备 blobs」的残缺包，验证门禁确实会红。
+    if any(a.endswith("orgflow-devops_nexus_data:/data:ro") for a in args):
+        if os.environ.get("JOB_TEST_NEXUS_DB_ONLY") == "1":
+            members = [("db/nexus.mv.db", b"H2" * 64)]
+        else:
+            members = [
+                ("db/nexus.mv.db", b"H2" * 64),
+                ("blobs/default/metadata.properties", b"blobStoreName=default\\n"),
+                ("blobs/default/content/x.bin", b"\\x00\\x01" * 32),
+            ]
     with tarfile.open(fileobj=sys.stdout.buffer, mode="w|gz") as archive:
-        data = b"test data"
-        info = tarfile.TarInfo("data")
-        info.size = len(data)
-        archive.addfile(info, io.BytesIO(data))
+        for name, data in members:
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
 sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
 """
         for name in ("docker", "make"):
@@ -280,6 +296,15 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
         result = self.run_script("backup", "--all")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(self.commands()), 9)
+
+    def test_backup_nexus_rejects_database_only_archive(self):
+        """#93 反证：只备 db 不备 blob store 的包必须被判红且不发布。"""
+        result = self.run_script("backup", "--service", "nexus",
+                                 JOB_TEST_NEXUS_DB_ONLY="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("内容不完整", result.stderr)
+        directory = self.root / "out/backups"
+        self.assertEqual(sorted(p.name for p in directory.glob("nexus-*.tgz")), [])
 
     def test_backup_missing_volume_or_archive_failure_does_not_clean(self):
         for env in (
