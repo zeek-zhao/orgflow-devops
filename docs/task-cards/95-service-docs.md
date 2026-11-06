@@ -77,8 +77,8 @@
 
 ## 交付后的记录
 
-（派单方填，执行方不用填）
+（派单方 2026-11-06 回填；执行方不用填）
 
-- PR：#
-- 结果：
-- 与本卡的偏离：
+- PR：PR #101（`merge/batch1`，Rebase 合并）
+- 结果：main = `fa447db8`；本卡 commit `fa447db8c`。#95 与 #90/#92/#94 在 5 个文件冲突，按「双方内容都保留」解后复跑 `make test` RC=0、`scripts/test_service_doc_sections.py` RC=0（11 份文档四段齐全）。
+- 与本卡的偏离：**本卡只完成文档内容部分**；`config/routes.yaml` 的 docs 静态路由仍留批次 2（依赖 #86），`curl -I https://docs.org-devops.com/services/jenkins.html → 200` 仍无法执行。

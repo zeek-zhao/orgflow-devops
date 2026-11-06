@@ -75,8 +75,8 @@ Manage Jenkins 的警告逐条处置：能修的修掉，不能修的写进「�
 
 ## 交付后的记录
 
-（派单方填，执行方不用填）
+（派单方 2026-11-06 回填；执行方不用填）
 
-- PR：#
-- 结果：
-- 与本卡的偏离：
+- PR：PR #101（`merge/batch1`，Rebase 合并）
+- 结果：main = `fa447db8`；本卡 commit `3be127366`。集成分支 `make test` RC=0、`identity-check` RC=0。
+- 与本卡的偏离：`config/jenkins.yaml` 的 `gitSource` / `numExecutors: 0` 已入库，但本轮禁止重启容器，Manage Jenkins 页面 4 条警告的运行时消警**未验证**，需重新部署后人工复核。
