@@ -12,19 +12,34 @@
           wipe-workspace: false
     dsl: |
       @Library('orgflow-shared') _
-      node('orgflow-docker') {{
-        def scm = [$class: 'GitSCM',
-          branches: [[name: 'main']],
-          userRemoteConfigs: [[
-            url: 'https://github.com/zeek-zhao/orgflow-devops.git',
-            credentialsId: 'github-token'
-          ]]]
-        checkout(scm)
-        backupService(
-          service: params.SERVICE,
-          target: params.BACKUP_TARGET,
-          retentionDays: params.RETENTION_DAYS
-        )
+      pipeline {{
+        agent {{ label 'orgflow-docker' }}
+        options {{ timestamps() }}
+        stages {{
+          stage('准备：检出代码') {{
+            steps {{
+              checkout([$class: 'GitSCM',
+                branches: [[name: 'main']],
+                userRemoteConfigs: [[
+                  url: 'https://github.com/zeek-zhao/orgflow-devops.git',
+                  credentialsId: 'github-token'
+                ]]])
+            }}
+          }}
+          stage('执行：参数化备份') {{
+            steps {{
+              backupService(
+                service: params.SERVICE,
+                target: params.BACKUP_TARGET,
+                retentionDays: params.RETENTION_DAYS
+              )
+            }}
+          }}
+        }}
+        post {{
+          success {{ echo '备份成功：SERVICE=' + params.SERVICE + ' TARGET=' + params.BACKUP_TARGET + ' RETENTION=' + params.RETENTION_DAYS }}
+          failure {{ echo '备份失败：SERVICE=' + params.SERVICE + '，见上方 stage 日志' }}
+        }}
       }}
     parameters:
       - choice:

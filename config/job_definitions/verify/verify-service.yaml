@@ -2,6 +2,9 @@
 # 职责统一串在 verifyService step 里：部署 → healthy（deploy.sh 健康闸门内建）
 # → 备份（仅 jenkins/nexus/ldap 有真卷，其余显式跳过）→ 断言备份三件套。
 # 所以这里只有一个模板 + 一个服务的名字列表；新增服务时在这里加一行即可。
+#
+# 流水线化（#91 / REQ-M0-B2）：stage 只做「准备 / 执行」两段真实分段，
+# 不把 verifyService 内部步骤拆成空 stage —— 那属于共享库重构，不在本卡范围。
 - job-template:
     name: verify-{svc}
     description: "verify-{svc}：部署该服务 → 等 healthy → 备份（如支持）→ 断言备份产物。单服务运维闭环自检。"
@@ -16,19 +19,34 @@
           wipe-workspace: false
     dsl: |
       @Library('orgflow-shared') _
-      node('orgflow-docker') {{
-        def scm = [$class: 'GitSCM',
-          branches: [[name: 'main']],
-          userRemoteConfigs: [[
-            url: 'https://github.com/zeek-zhao/orgflow-devops.git',
-            credentialsId: 'github-token'
-          ]]]
-        checkout(scm)
-        verifyService(
-          service: '{svc}',
-          environment: 'dev',
-          dryRun: params.DRY_RUN
-        )
+      pipeline {{
+        agent {{ label 'orgflow-docker' }}
+        options {{ timestamps() }}
+        stages {{
+          stage('准备：检出代码') {{
+            steps {{
+              checkout([$class: 'GitSCM',
+                branches: [[name: 'main']],
+                userRemoteConfigs: [[
+                  url: 'https://github.com/zeek-zhao/orgflow-devops.git',
+                  credentialsId: 'github-token'
+                ]]])
+            }}
+          }}
+          stage('执行：验证闭环') {{
+            steps {{
+              verifyService(
+                service: '{svc}',
+                environment: 'dev',
+                dryRun: params.DRY_RUN
+              )
+            }}
+          }}
+        }}
+        post {{
+          success {{ echo 'verify 通过：服务={svc}' }}
+          failure {{ echo 'verify 失败：服务={svc}，见上方 stage 日志（注意 verify 会真的执行恢复）' }}
+        }}
       }}
     parameters:
       - bool:

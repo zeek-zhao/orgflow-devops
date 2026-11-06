@@ -12,19 +12,34 @@
           wipe-workspace: false
     dsl: |
       @Library('orgflow-shared') _
-      node('orgflow-docker') {{
-        def scm = [$class: 'GitSCM',
-          branches: [[name: 'main']],
-          userRemoteConfigs: [[
-            url: 'https://github.com/zeek-zhao/orgflow-devops.git',
-            credentialsId: 'github-token'
-          ]]]
-        checkout(scm)
-        deployService(
-          service: params.SERVICE,
-          environment: params.ENV,
-          dryRun: params.DRY_RUN
-        )
+      pipeline {{
+        agent {{ label 'orgflow-docker' }}
+        options {{ timestamps() }}
+        stages {{
+          stage('准备：检出代码') {{
+            steps {{
+              checkout([$class: 'GitSCM',
+                branches: [[name: 'main']],
+                userRemoteConfigs: [[
+                  url: 'https://github.com/zeek-zhao/orgflow-devops.git',
+                  credentialsId: 'github-token'
+                ]]])
+            }}
+          }}
+          stage('执行：参数化部署') {{
+            steps {{
+              deployService(
+                service: params.SERVICE,
+                environment: params.ENV,
+                dryRun: params.DRY_RUN
+              )
+            }}
+          }}
+        }}
+        post {{
+          success {{ echo '部署成功：SERVICE=' + params.SERVICE + ' ENV=' + params.ENV }}
+          failure {{ echo '部署失败：SERVICE=' + params.SERVICE + ' ENV=' + params.ENV + '，见上方 stage 日志' }}
+        }}
       }}
     parameters:
       - choice:
