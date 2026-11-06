@@ -101,11 +101,26 @@ issuer、redirectURIs、oauth2-proxy 端点和 whitelist。
   503–511；Dex 用 `uid → memberUid` 匹配，在 `ou=groups` 子树搜索，
   不使用 departments 的悬空引用。
 
+## LDIF 转义与口令真值
+
+`users.ldif` 的 `userPassword` 是 `{SSHA}<base64>`。base64 里出现 `+` 是正常字符，
+**不能写成 `\+`**：`ldapadd` 导入时不会把 `\+` 还原成 `+`，反斜杠会留在目录里的
+`userPassword` 值中，该账号随后 simple bind 永久返回 `Invalid credentials (49)`。
+
+这个坑极具迷惑性 —— 只有哈希恰好不含 `+` 的账号能登录。2026-11-06 删库重建前的
+预演里，10 个账号只有 2 个能绑定；把 10 处 `\+` 还原成 `+` 后 10/10 全部成功。
+线上旧库的口令值本来就没有反斜杠，所以「查线上取值」无法发现仓库 LDIF 的问题，
+**必须用一份真 LDIF 走一遍 `ldapadd` + 逐账号 `ldapwhoami`** 才能验证。
+
+`make test` 里的 `scripts/test_ldif_passwords.py` 是防回归闸门：禁止 `\+`、要求每个
+`posixAccount` 都有 `{SSHA}`、严格 base64 可解码、且 `SHA1(123456 + salt)` 与存下的
+摘要一致。改文档不能让它通过。
+
 ## 首次登录与改密
 
 访问 `https://jenkins.<domain>/`，依次跳转 oauth2-proxy（`auth.<domain>`）、Dex 的
 OpenLDAP 登录页。默认导入账号为 `svc-platform-admin`（DN：
-`cn=Admin Zeek,ou=users,dc=devops,dc=com`），初始密码为 `123456`，
+`uid=svc-platform-admin,ou=users,dc=devops,dc=com`），初始密码为 `123456`，
 仅限首次本地验证，**立即改密**。若出现授权确认页，按提示同意。OIDC 回调
 `https://auth.<domain>/oauth2/callback` 写入会话 cookie 后返回 Jenkins。
 Jenkins 未启动时，认证成功后的最终上游请求会返回 502，而不是登录失败。
@@ -118,7 +133,7 @@ LDAP 管理员用 DN `cn=admin,dc=devops,dc=com` 和
 ```bash
 docker compose exec ldap ldappasswd -x -H ldap://localhost:389 \
   -D cn=admin,dc=devops,dc=com -W -S \
-  'cn=Admin Zeek,ou=users,dc=devops,dc=com'
+  'uid=svc-platform-admin,ou=users,dc=devops,dc=com'
 ```
 
 修改 `.env` 中的 LDAP 管理员密码不会自动更新已有 LDAP 卷里的密码；

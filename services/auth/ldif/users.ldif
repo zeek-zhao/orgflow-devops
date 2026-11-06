@@ -30,7 +30,7 @@ sn: svc-platform-admin
 displayname: svc-platform-admin
 uid: svc-platform-admin
 uidnumber: 1000
-userpassword: {SSHA}7JYBbA1ijSWV6AGYL8Ze3h9BVm7hGzn/a\+tkGw==
+userpassword: {SSHA}7JYBbA1ijSWV6AGYL8Ze3h9BVm7hGzn/a+tkGw==
 
 # Entry 3: uid=svc-platform-dev,ou=users,dc=devops,dc=com
 dn: uid=svc-platform-dev,ou=users,dc=devops,dc=com
@@ -64,7 +64,7 @@ sn: svc-platform-qa
 displayname: svc-platform-qa
 uid: svc-platform-qa
 uidnumber: 1003
-userpassword: {SSHA}ImQ5a5GQwHFMbay\+7PB1IwQKbo4oupO5L6NYmQ==
+userpassword: {SSHA}ImQ5a5GQwHFMbay+7PB1IwQKbo4oupO5L6NYmQ==
 
 # Entry 5: uid=svc-gerrit-anonymous,ou=users,dc=devops,dc=com
 dn: uid=svc-gerrit-anonymous,ou=users,dc=devops,dc=com
@@ -81,7 +81,7 @@ sn: svc-gerrit-anonymous
 displayname: svc-gerrit-anonymous
 uid: svc-gerrit-anonymous
 uidnumber: 1004
-userpassword: {SSHA}AZy5NGz/2ytwZdLhV9nD2WoSS2aOp7Q2TKx\+Hg==
+userpassword: {SSHA}AZy5NGz/2ytwZdLhV9nD2WoSS2aOp7Q2TKx+Hg==
 
 # Entry 6: uid=svc-gerrit-dev,ou=users,dc=devops,dc=com
 dn: uid=svc-gerrit-dev,ou=users,dc=devops,dc=com
@@ -98,7 +98,7 @@ sn: svc-gerrit-dev
 displayname: svc-gerrit-dev
 uid: svc-gerrit-dev
 uidnumber: 1005
-userpassword: {SSHA}nlvGeY1A66BOsZcZIocEu8fk5AoScwfepodQ\+w==
+userpassword: {SSHA}nlvGeY1A66BOsZcZIocEu8fk5AoScwfepodQ+w==
 
 # Entry 7: uid=svc-nexus-anonymous,ou=users,dc=devops,dc=com
 dn: uid=svc-nexus-anonymous,ou=users,dc=devops,dc=com
@@ -132,7 +132,7 @@ sn: svc-nexus-dev
 displayname: svc-nexus-dev
 uid: svc-nexus-dev
 uidnumber: 1007
-userpassword: {SSHA}lllNm\+yuOryQYEjvIHg9Uq1drthc3yMVVOxbug==
+userpassword: {SSHA}lllNm+yuOryQYEjvIHg9Uq1drthc3yMVVOxbug==
 
 # Entry 9: uid=zeek.zhao,ou=users,dc=devops,dc=com
 dn: uid=zeek.zhao,ou=users,dc=devops,dc=com
@@ -149,7 +149,7 @@ sn: Zhao
 displayname: Zeek Zhao
 uid: zeek.zhao
 uidnumber: 1008
-userpassword: {SSHA}i/dGSFYL\+g8US4/9WD0aR5S65hlxWhbYxeYFQA==
+userpassword: {SSHA}i/dGSFYL+g8US4/9WD0aR5S65hlxWhbYxeYFQA==
 
 # Entry 10: uid=svc-jira-admin,ou=users,dc=devops,dc=com
 dn: uid=svc-jira-admin,ou=users,dc=devops,dc=com
@@ -166,7 +166,7 @@ sn: svc-jira-admin
 displayname: svc-jira-admin
 uid: svc-jira-admin
 uidnumber: 1009
-userpassword: {SSHA}1AbCfCbfrT6GohLU\+In8P\+6S4yqfei/X5BRxig==
+userpassword: {SSHA}1AbCfCbfrT6GohLU+In8P+6S4yqfei/X5BRxig==
 
 # Entry 11: uid=svc-jira-dev,ou=users,dc=devops,dc=com
 dn: uid=svc-jira-dev,ou=users,dc=devops,dc=com
@@ -183,4 +183,4 @@ sn: svc-jira-dev
 displayname: svc-jira-dev
 uid: svc-jira-dev
 uidnumber: 1001
-userpassword: {SSHA}vDTR7BWFG3NS/YO\+FaRpHTIdcrJRIaRLiaMA\+w==
+userpassword: {SSHA}vDTR7BWFG3NS/YO+FaRpHTIdcrJRIaRLiaMA+w==
