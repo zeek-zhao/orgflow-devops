@@ -1,0 +1,25 @@
+fix(jobs): 去掉非法 options{timestamps()} + drill 归档改 stdin 投递 (#93)
+
+两个问题都是 #93 真跑 Jenkins Job 才暴露的，#91 的静态判据看不出来。
+
+1) `options { timestamps() }` 让 6 个 Job 全部编译失败
+
+   WorkflowScript: 4: Invalid option type "timestamps".
+   Valid option types: [buildDiscarder, catchError, ...]
+
+   Timestamper 插件既不在 services/jenkins/plugins.txt，也不在镜像里，
+   所以它既不是合法 option、也不是可用的 wrapper step。6 个定义统一删掉这一行。
+
+   防复发：scripts/test_job_pipelines.py 增加第 6 条判据 —— `options { }` 里的
+   调用名必须在运行时白名单内，白名单直接抄 Jenkins 报错原文（不自己猜）。
+   反证：把 timestamps() 塞回去 → 红；删掉 → 绿。
+
+2) drill 解包报 tar: can't open '/backup/xxx.tgz': No such file or directory
+
+   Jenkins agent 与宿主是两个文件系统（agent 用宿主的 docker.sock），
+   把归档所在目录 `-v <agent 里的目录>:/backup:ro` 挂进容器，在宿主上找不到该路径。
+   改为 stdin 流式投递：`docker run --rm -i -v vol:/data alpine tar xzf - -C /data <"$ARCHIVE"`，
+   与 restore.sh 的做法一致。
+
+文档补记这两个坑，并写明 agent 侧的 BACKUP_DIR 是临时的（构建结束即丢），
+Job 能证明链路与内容正确，但不能当长期归档。
