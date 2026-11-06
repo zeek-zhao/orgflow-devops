@@ -139,7 +139,7 @@ ldap_wait_healthy() {
 
     run ldap_query -s sub '(objectClass=*)' dn
     [ "$status" -eq 0 ]
-    [ "$(grep -c '^dn:' <<< "$output")" -eq 34 ]
+    [ "$(grep -c '^dn:' <<< "$output")" -eq 33 ]
 
     # 备份之后注入一条探测数据：它不在归档里，恢复后必须消失——
     # 这才是「恢复真的回滚了数据」的证据，只对比条目数抓不住删错卷的错。
@@ -163,7 +163,7 @@ sn: Probe'
 
     run ldap_query -s sub '(objectClass=*)' dn
     [ "$status" -eq 0 ]
-    [ "$(grep -c '^dn:' <<< "$output")" -eq 34 ]
+    [ "$(grep -c '^dn:' <<< "$output")" -eq 33 ]
     run ldap_query '(uid=backup.probe)' dn
     [ "$status" -eq 0 ]
     ! grep -q '^dn:' <<< "$output"
