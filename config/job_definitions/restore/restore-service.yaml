@@ -12,19 +12,34 @@
           wipe-workspace: false
     dsl: |
       @Library('orgflow-shared') _
-      node('orgflow-docker') {{
-        def scm = [$class: 'GitSCM',
-          branches: [[name: 'main']],
-          userRemoteConfigs: [[
-            url: 'https://github.com/zeek-zhao/orgflow-devops.git',
-            credentialsId: 'github-token'
-          ]]]
-        checkout(scm)
-        restoreService(
-          service: params.SERVICE,
-          backupFile: params.BACKUP_FILE,
-          confirm: params.CONFIRM
-        )
+      pipeline {{
+        agent {{ label 'orgflow-docker' }}
+        options {{ timestamps() }}
+        stages {{
+          stage('准备：检出代码') {{
+            steps {{
+              checkout([$class: 'GitSCM',
+                branches: [[name: 'main']],
+                userRemoteConfigs: [[
+                  url: 'https://github.com/zeek-zhao/orgflow-devops.git',
+                  credentialsId: 'github-token'
+                ]]])
+            }}
+          }}
+          stage('执行：恢复数据卷（破坏性）') {{
+            steps {{
+              restoreService(
+                service: params.SERVICE,
+                backupFile: params.BACKUP_FILE,
+                confirm: params.CONFIRM
+              )
+            }}
+          }}
+        }}
+        post {{
+          success {{ echo '恢复成功：SERVICE=' + params.SERVICE + '（数据卷已被覆盖）' }}
+          failure {{ echo '恢复失败：SERVICE=' + params.SERVICE + '，数据卷状态见上方 stage 日志，勿重复重试' }}
+        }}
       }}
     parameters:
       - choice:

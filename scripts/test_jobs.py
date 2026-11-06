@@ -335,8 +335,13 @@ class NexusJobDefinitionTests(unittest.TestCase):
 
     def test_job_runs_on_the_docker_agent_through_the_shared_library(self):
         text = (ROOT / "config/job_definitions/nexus/nexus-deploy.yaml").read_text(encoding="utf-8")
-        # 双花括号是 JJB 模板的转义形式（渲染后是单花括号），故意按渲染前断言
-        self.assertIn("node('orgflow-docker') {{", text)
+        # 双花括号是 JJB 模板的转义形式（渲染后是单花括号），故意按渲染前断言。
+        # #91：从 node('orgflow-docker') { } 块改成 declarative pipeline 的 agent label，
+        # 语义不变（仍跑在 orgflow-docker 这个可信 agent 上），所以断言改成新写法，
+        # 并顺带把「declarative + 至少两个 stage」也断言上 —— 是收紧不是放宽。
+        self.assertIn("agent {{ label 'orgflow-docker' }}", text)
+        self.assertIn("pipeline {{", text)
+        self.assertGreaterEqual(text.count("stage("), 2)
         self.assertIn("deployNexus(", text)
         self.assertNotIn("docker run", text)  # 部署逻辑在脚本里，job 只负责调度
 
