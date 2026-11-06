@@ -77,8 +77,8 @@ Jenkins 镜像自带 pipeline 等常用插件，装机即可用，不靠人工 U
 
 ## 交付后的记录
 
-（派单方填，执行方不用填）
+（派单方 2026-11-06 回填；执行方不用填）
 
-- PR：#
-- 结果：
-- 与本卡的偏离：
+- PR：PR #101（`merge/batch1`，Rebase 合并）
+- 结果：main = `fa447db8`；本卡 commit `ff5a7b357`。集成分支 `make test` RC=0（150 用例）、`make check-jenkins-image` RC=0、`make identity-check` RC=0。
+- 与本卡的偏离：`tests/images.lock` 的 Jenkins 自定义镜像 digest 仍是「待构建后回填」占位，`make check-pins` RC=2（**上线闸门，非合并闸门**），需构建镜像→推 GHCR→回填真实 digest；运行时插件清单未实测。
