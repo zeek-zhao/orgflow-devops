@@ -153,6 +153,43 @@ digest 引用（`repo:tag@sha256:...`），compose 若去构建就会拿它当 t
 `USE_GHCR` 走，`make up` 早就是这么做的；这条路径直到 2026-10-31 才第一次在真机上跑，
 CI 的 harness 是 `compose up --no-build --pull never` 直连、不经过 `deploy.sh`，覆盖不到。
 
+## 手动推送（本地构建 → GHCR，用 `$GITHUB_TOKEN`）
+
+CI 侧 `images.yml` / `mirror.yml` 用工作流内置的 `GITHUB_TOKEN`（`packages: write`）
+推送，不需要人工登录。只有在**本地手工构建并推送**时才需要下面这套；
+照抄即可，令牌只从环境变量读，绝不落到文件、命令行参数或 shell 历史里。
+
+```sh
+# 1) 登录：--password-stdin 从管道读，不出现 -p（-p 会进 ps 与 history）
+export GHCR_USER="${GHCR_USER:-zeek-zhao}"
+export GITHUB_TOKEN="$(cat ~/.config/wb/github.token)"   # 或由 CI secret 注入
+printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+# 2) 构建 + 打 tag（命名空间固定 ghcr.io/<owner>/orgflow-devops/<组件>）
+IMAGE="ghcr.io/zeek-zhao/orgflow-devops/router"
+TAG="$(git rev-parse --short=7 HEAD)"
+docker build -t "$IMAGE:$TAG" services/router
+docker tag "$IMAGE:$TAG" "$IMAGE:24.04-v1"
+
+# 3) 推送：sha 标签与可读标签各推一次
+docker push "$IMAGE:$TAG"
+docker push "$IMAGE:24.04-v1"
+
+# 4) 退出登录，别把凭据留在 ~/.docker/config.json
+docker logout ghcr.io
+```
+
+要点：
+
+- **令牌权限**：classic PAT 需要 `write:packages`（推）与 `read:packages`（拉私有包）；
+  没有该 scope 时 `docker push` 返回 403，报错文本里不会提 scope，容易被误判成网络问题。
+- **构建位置**：213 / 214 出不了 Docker Hub（blob 被 reset），本地构建必须在不依赖 Hub
+  的机器上做，或者改用 `mirror.yml` 的 `mode=all` 走 CI 搬运，不要试图在 213 上 `docker build` 拉基础镜像。
+- **推完保持 public**：13 个包必须匿名可拉，`tests/bats/18_public.bats` 会走完全匿名路径取
+  manifest，改回 private 会让 PR 阶段直接红。
+- **digest 回写**：手工推送产生的 digest 与 `tests/images.lock` 不是自动同步的，
+  要参与部署仍须 `make images-pin`（见上一节），不要手改 lock。
+
 ## GHCR 配额
 
 私有包的存储/流量可能计入账号配额并按量计费，注意账户的 Packages 用量、

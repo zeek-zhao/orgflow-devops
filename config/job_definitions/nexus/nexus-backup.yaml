@@ -1,0 +1,60 @@
+- job:
+    name: nexus-backup
+    description: >-
+      M0 Nexus 备份（#93 / REQ-M0-B5）：停写打包 → 内容校验（H2 数据库 +
+      blob store 双要件）→ 解包到独立 drill 卷逐项核对 → boot check
+      （用 drill 卷起临时 Nexus 验证 H2 真能打开）。全程不触碰生产卷
+      orgflow-devops_nexus_data。
+    project-type: pipeline
+    sandbox: true
+    scm:
+      - git:
+          url: https://github.com/zeek-zhao/orgflow-devops.git
+          branches: [main]
+          credentials-id: github-token
+          skip-tag: true
+          wipe-workspace: false
+    dsl: |
+      @Library('orgflow-shared') _
+      pipeline {{
+        agent {{ label 'orgflow-docker' }}
+        options {{ timestamps() }}
+        stages {{
+          stage('准备：检出代码') {{
+            steps {{
+              checkout([$class: 'GitSCM',
+                branches: [[name: 'main']],
+                userRemoteConfigs: [[
+                  url: 'https://github.com/zeek-zhao/orgflow-devops.git',
+                  credentialsId: 'github-token'
+                ]]])
+            }}
+          }}
+          stage('执行：Nexus 备份与恢复演练') {{
+            steps {{
+              nexusBackup(
+                retentionDays: params.RETENTION_DAYS,
+                restoreDrill: params.RESTORE_DRILL,
+                bootCheck: params.BOOT_CHECK
+              )
+            }}
+          }}
+        }}
+        post {{
+          success {{ echo 'Nexus 备份通过：RETENTION=' + params.RETENTION_DAYS + 'd，db 与 blob store 双要件已核对' }}
+          failure {{ echo 'Nexus 备份失败：见上方 stage 日志，未发布残缺包' }}
+        }}
+      }}
+    parameters:
+      - string:
+          name: RETENTION_DAYS
+          default: "7"
+          description: "保留天数（0-99999）；0 表示拒绝清理旧包，只备份"
+      - bool:
+          name: RESTORE_DRILL
+          default: true
+          description: "解包到独立 drill 卷并核对 db/blob（建议保持 true）"
+      - bool:
+          name: BOOT_CHECK
+          default: true
+          description: "用 drill 卷起临时 Nexus 验证 H2 可打开（约 1-2 分钟）"

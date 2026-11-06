@@ -226,7 +226,24 @@ sys.exit(status)
         self.assertFalse(self.running.exists())
         self.assertFalse(any("start" in call for call in self.calls()))
 
+    def seed_nexus_volume(self):
+        """把假卷造成 Nexus 的真实形状：db/ 与 blobs/ 两处（#93 内容级门禁要求）。
+
+        backup.sh 对 nexus 包会跑 check_nexus_archive.py，只含 .hidden 与
+        directory/ 的通用假卷会被判「缺 H2 数据库与 blob store」——这正是门禁
+        应有的行为；所以这里按真实卷补上两类文件，让 --all 走绿路径。
+        「只备 db」的红路径由 test_jobs.py 的 JOB_TEST_NEXUS_DB_ONLY 与
+        test_nexus_archive.py 覆盖。
+        """
+        (self.volume / "db").mkdir(exist_ok=True)
+        (self.volume / "db/nexus.mv.db").write_bytes(b"H2" * 64)
+        (self.volume / "blobs/default/content").mkdir(parents=True, exist_ok=True)
+        (self.volume / "blobs/default/metadata.properties").write_bytes(
+            b"blobStoreName=default\n")
+        (self.volume / "blobs/default/content/x.bin").write_bytes(b"\x00\x01" * 32)
+
     def test_all_volume_mappings(self):
+        self.seed_nexus_volume()
         result = self.run_script("backup", "--all")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(list(self.backups.glob("*.tgz"))), 3)

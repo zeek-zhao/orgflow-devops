@@ -1,0 +1,28 @@
+feat(backup): Nexus 备份 Job + db/blob 双要件校验 + 恢复演练 (#93)
+
+Nexus 的数据分 db/ 与 blobs/ 两处，只备一半的包照样能通过 tar 与 sha256，
+恢复出来却是残缺实例。更糟的是：Nexus 自 #46 移出 compose 之后，
+backup.sh / restore.sh 里的 `docker compose ps/stop/start nexus` 必然报
+`no such service` —— 这条备份链路当时是完全不通的，只是没人跑过。
+
+- scripts/backup-common.sh：加服务运行时抽象 container_exists / running_service /
+  stop_service / start_service，nexus 走 docker（容器名 NEXUS_CONTAINER 可覆盖），
+  其余服务仍走 compose
+- scripts/check_nexus_archive.py（新）：db/nexus.mv.db 非空 + blobs/<store>/
+  metadata.properties 非空 + blobs 总字节 > 0，三条判据；只备一半必须红，
+  后端若换成 PostgreSQL 会明确提示判据需同步改，不静默放过
+- scripts/backup.sh：nexus 分支在发布前跑内容级门禁，不完整直接删包报错
+- scripts/nexus-backup.sh（新）：备份 → 校验 → 解包到独立 drill 卷
+  （db sha256 一致、blobs 文件数与字节一致）→ boot check（用 drill 卷起临时
+  Nexus，等到 Started Sonatype Nexus 且 HTTP 200），全程不碰生产卷
+- config/job_definitions/nexus/nexus-backup.yaml + shared-library/vars/nexusBackup.groovy（新）：
+  参数化 Job RETENTION_DAYS / RESTORE_DRILL / BOOT_CHECK
+- docs/备份与恢复.md：新增 Nexus 章节（H2 取证、双要件判据、反证命令、drill 设计）
+- docs/M0-镜像与CI.md：新增 GHCR 手动推送段，照抄即可、令牌只用 $GITHUB_TOKEN
+- .env.example：登记 GHCR_USER / GHCR_TOKEN / NEXUS_CONTAINER 键名（不填真值）
+- tests：新增 scripts/test_nexus_archive.py（12 用例）；test_jobs.py 与
+  test_backup.py 的夹具按真实 Nexus 卷形状补齐（是收紧不是放宽），
+  并新增 JOB_TEST_NEXUS_DB_ONLY 反证，证明「只备 db」会被门禁拦住
+
+213 实跑：包 870441 B（db 2076672 B + blobs 85 文件 / 830352 B），
+drill 卷核对一致，临时 Nexus 20s 启动 HTTP 200；反证只 db / 只 blobs 均 RC=1。

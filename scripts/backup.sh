@@ -68,7 +68,7 @@ cleanup() {
   fi
   if [ -n "$restart_service" ]; then
     echo "启回服务: $restart_service" >&2
-    if ! "${COMPOSE_COMMAND[@]}" start "$restart_service"; then
+    if ! start_service "$restart_service"; then
       echo "无法启回 $restart_service，请人工处理" >&2
       status=1
     fi
@@ -109,6 +109,12 @@ for s in "${targets[@]}"; do
     -v "${vol}:/data:ro" \
     alpine tar czf - -C /data . >"$work/archive.tgz"
   tar tzf "$work/archive.tgz" >/dev/null || fail "tar 校验失败，删除损坏包: $out"
+  # 内容级门禁（#93 / REQ-M0-B5）：Nexus 的数据分 db/ 与 blobs/ 两处，
+  # 只备一半的包照样能通过 tar 与 sha256，恢复出来却是残缺实例 —— 拦在这里。
+  if [ "$s" = "nexus" ]; then
+    python3 "$(dirname "${BASH_SOURCE[0]}")/check_nexus_archive.py" "$work/archive.tgz" ||
+      fail "nexus 备份包内容不完整（缺 H2 数据库或缺 blob store），拒绝发布: $out"
+  fi
   digest="$(sha256sum "$work/archive.tgz")"
   printf '%s  %s\n' "${digest:0:64}" "$(basename "$out")" >"$work/archive.sha256"
   {
@@ -125,7 +131,7 @@ for s in "${targets[@]}"; do
   rmdir -- "$work"
   work=""
   if [ -n "$restart_service" ]; then
-    "${COMPOSE_COMMAND[@]}" start "$restart_service"
+    start_service "$restart_service"
     restart_service=""
   fi
   # Keep all acquired locks until retention completes and this process exits.

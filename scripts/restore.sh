@@ -77,7 +77,7 @@ if [ "$DRY_RUN" = 1 ]; then
   echo "dry-run：未停止服务、未修改卷"
   exit 0
 fi
-[ -n "$("${COMPOSE_COMMAND[@]}" ps -a -q "$SERVICE")" ] ||
+container_exists "$SERVICE" ||
   fail "服务容器不存在，请先部署 $SERVICE 后再恢复"
 stopped=0
 on_exit() {
@@ -95,7 +95,7 @@ stopped=1
 check_empty
 docker run --rm -i -v "${vol}:/data" alpine \
   sh -ec 'find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; tar xzpf - -C /data' <"$FILE"
-"${COMPOSE_COMMAND[@]}" start "$SERVICE"
+start_service "$SERVICE"
 stopped=0
 echo "恢复完成: service=$SERVICE volume=$vol file=$FILE 原条目数=$entries"
 echo "服务已启回；请按 docs/备份与恢复.md 检查 healthy 与业务数据。"
