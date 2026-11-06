@@ -15,120 +15,127 @@ objectclass: top
 objectclass: organizationalUnit
 ou: users
 
-# Entry 2: cn=Admin Zeek,ou=users,dc=devops,dc=com
-dn: cn=Admin Zeek,ou=users,dc=devops,dc=com
-cn: Admin Zeek
+# Entry 2: uid=svc-platform-admin,ou=users,dc=devops,dc=com
+dn: uid=svc-platform-admin,ou=users,dc=devops,dc=com
+cn: svc-platform-admin
 gidnumber: 501
-givenname: Admin
-homedirectory: /home/users/admin.zeek
+givenname: svc-platform-admin
+homedirectory: /home/users/svc-platform-admin
 loginshell: /bin/bash
-mail: admin.zeek@devops.com
+mail: svc-platform-admin@devops.com
 objectclass: inetOrgPerson
 objectclass: posixAccount
 objectclass: top
-sn: Zeek
-uid: admin.zeek
+sn: svc-platform-admin
+displayname: svc-platform-admin
+uid: svc-platform-admin
 uidnumber: 1000
 userpassword: {SSHA}7JYBbA1ijSWV6AGYL8Ze3h9BVm7hGzn/a\+tkGw==
 
-# Entry 3: cn=Dev Zeek,ou=users,dc=devops,dc=com
-dn: cn=Dev Zeek,ou=users,dc=devops,dc=com
-cn: Dev Zeek
+# Entry 3: uid=svc-platform-dev,ou=users,dc=devops,dc=com
+dn: uid=svc-platform-dev,ou=users,dc=devops,dc=com
+cn: svc-platform-dev
 gidnumber: 501
-givenname: Dev
-homedirectory: /home/users/dev.zeek
+givenname: svc-platform-dev
+homedirectory: /home/users/svc-platform-dev
 loginshell: /bin/bash
-mail: dev.zeek@devops.com
+mail: svc-platform-dev@devops.com
 objectclass: inetOrgPerson
 objectclass: posixAccount
 objectclass: top
-sn: Zeek
-uid: dev.zeek
+sn: svc-platform-dev
+displayname: svc-platform-dev
+uid: svc-platform-dev
 uidnumber: 1002
 userpassword: {SSHA}lhJzQIeCPa80b7MLTK9UVI6XU3Snczll0YqjZw==
 
-# Entry 4: cn=Devops Qa,ou=users,dc=devops,dc=com
-dn: cn=Devops Qa,ou=users,dc=devops,dc=com
-cn: Devops Qa
+# Entry 4: uid=svc-platform-qa,ou=users,dc=devops,dc=com
+dn: uid=svc-platform-qa,ou=users,dc=devops,dc=com
+cn: svc-platform-qa
 gidnumber: 501
-givenname: Devops
-homedirectory: /home/users/devops.qa
+givenname: svc-platform-qa
+homedirectory: /home/users/svc-platform-qa
 loginshell: /bin/bash
-mail: devops.qa@devops.com
+mail: svc-platform-qa@devops.com
 objectclass: inetOrgPerson
 objectclass: posixAccount
 objectclass: top
-sn: Devops
-uid: devops.qa
+sn: svc-platform-qa
+displayname: svc-platform-qa
+uid: svc-platform-qa
 uidnumber: 1003
 userpassword: {SSHA}ImQ5a5GQwHFMbay\+7PB1IwQKbo4oupO5L6NYmQ==
 
-# Entry 5: cn=Gerrit Anonymous,ou=users,dc=devops,dc=com
-dn: cn=Gerrit Anonymous,ou=users,dc=devops,dc=com
-cn: Gerrit Anonymous
+# Entry 5: uid=svc-gerrit-anonymous,ou=users,dc=devops,dc=com
+dn: uid=svc-gerrit-anonymous,ou=users,dc=devops,dc=com
+cn: svc-gerrit-anonymous
 gidnumber: 501
-givenname: Gerrit
-homedirectory: /home/users/gerrit.anonymous
+givenname: svc-gerrit-anonymous
+homedirectory: /home/users/svc-gerrit-anonymous
 loginshell: /bin/bash
-mail: gerrit.anonymous@devops.com
+mail: svc-gerrit-anonymous@devops.com
 objectclass: inetOrgPerson
 objectclass: posixAccount
 objectclass: top
-sn: Anonymous
-uid: gerrit.anonymous
+sn: svc-gerrit-anonymous
+displayname: svc-gerrit-anonymous
+uid: svc-gerrit-anonymous
 uidnumber: 1004
 userpassword: {SSHA}AZy5NGz/2ytwZdLhV9nD2WoSS2aOp7Q2TKx\+Hg==
 
-# Entry 6: cn=Gerrit Dev,ou=users,dc=devops,dc=com
-dn: cn=Gerrit Dev,ou=users,dc=devops,dc=com
-cn: Gerrit Dev
+# Entry 6: uid=svc-gerrit-dev,ou=users,dc=devops,dc=com
+dn: uid=svc-gerrit-dev,ou=users,dc=devops,dc=com
+cn: svc-gerrit-dev
 gidnumber: 501
-givenname: Gerrit
-homedirectory: /home/users/gerrit.dev
+givenname: svc-gerrit-dev
+homedirectory: /home/users/svc-gerrit-dev
 loginshell: /bin/bash
-mail: gerrit.dev@devops.com
+mail: svc-gerrit-dev@devops.com
 objectclass: inetOrgPerson
 objectclass: posixAccount
 objectclass: top
-sn: Dev
-uid: gerrit.dev
+sn: svc-gerrit-dev
+displayname: svc-gerrit-dev
+uid: svc-gerrit-dev
 uidnumber: 1005
 userpassword: {SSHA}nlvGeY1A66BOsZcZIocEu8fk5AoScwfepodQ\+w==
 
-# Entry 7: cn=Nexus Anonymous,ou=users,dc=devops,dc=com
-dn: cn=Nexus Anonymous,ou=users,dc=devops,dc=com
-cn: Nexus Anonymous
+# Entry 7: uid=svc-nexus-anonymous,ou=users,dc=devops,dc=com
+dn: uid=svc-nexus-anonymous,ou=users,dc=devops,dc=com
+cn: svc-nexus-anonymous
 gidnumber: 501
-givenname: Nexus
-homedirectory: /home/users/nexus.anonymous
+givenname: svc-nexus-anonymous
+homedirectory: /home/users/svc-nexus-anonymous
 loginshell: /bin/bash
-mail: nexus.anonymous@devops.com
+mail: svc-nexus-anonymous@devops.com
 objectclass: inetOrgPerson
 objectclass: posixAccount
 objectclass: top
-sn: Anonymous
-uid: nexus.anonymous
+sn: svc-nexus-anonymous
+displayname: svc-nexus-anonymous
+uid: svc-nexus-anonymous
 uidnumber: 1006
 userpassword: {SSHA}aO3bkNKAljAWxHI/0AYPJI7Q4ju36n/CvaTlxw==
 
-# Entry 8: cn=Nexus Dev,ou=users,dc=devops,dc=com
-dn: cn=Nexus Dev,ou=users,dc=devops,dc=com
-cn: Nexus Dev
+# Entry 8: uid=svc-nexus-dev,ou=users,dc=devops,dc=com
+dn: uid=svc-nexus-dev,ou=users,dc=devops,dc=com
+cn: svc-nexus-dev
 gidnumber: 501
-givenname: Nexus
-homedirectory: /home/users/nexus.dev
+givenname: svc-nexus-dev
+homedirectory: /home/users/svc-nexus-dev
 loginshell: /bin/bash
-mail: nexus.dev@devops.com
+mail: svc-nexus-dev@devops.com
 objectclass: inetOrgPerson
 objectclass: posixAccount
 objectclass: top
-sn: Dev
-uid: nexus.dev
+sn: svc-nexus-dev
+displayname: svc-nexus-dev
+uid: svc-nexus-dev
 uidnumber: 1007
 userpassword: {SSHA}lllNm\+yuOryQYEjvIHg9Uq1drthc3yMVVOxbug==
 
-# Entry 9: cn=Zeek Zhao,ou=users,dc=devops,dc=com
-dn: cn=Zeek Zhao,ou=users,dc=devops,dc=com
+# Entry 9: uid=zeek.zhao,ou=users,dc=devops,dc=com
+dn: uid=zeek.zhao,ou=users,dc=devops,dc=com
 cn: Zeek Zhao
 gidnumber: 501
 givenname: Zeek
@@ -139,40 +146,41 @@ objectclass: inetOrgPerson
 objectclass: posixAccount
 objectclass: top
 sn: Zhao
+displayname: Zeek Zhao
 uid: zeek.zhao
 uidnumber: 1008
 userpassword: {SSHA}i/dGSFYL\+g8US4/9WD0aR5S65hlxWhbYxeYFQA==
 
-# Entry 10: cn=Admin Jira,ou=users,dc=devops,dc=com
-dn: cn=Admin Jira,ou=users,dc=devops,dc=com
-cn: Admin Jira
+# Entry 10: uid=svc-jira-admin,ou=users,dc=devops,dc=com
+dn: uid=svc-jira-admin,ou=users,dc=devops,dc=com
+cn: svc-jira-admin
 gidnumber: 501
-givenname: Admin
-homedirectory: /home/users/admin.jira
+givenname: svc-jira-admin
+homedirectory: /home/users/svc-jira-admin
 loginshell: /bin/bash
-mail: admin.jira@devops.com
+mail: svc-jira-admin@devops.com
 objectclass: inetOrgPerson
 objectclass: posixAccount
 objectclass: top
-sn: Jira
-uid: admin.jira
+sn: svc-jira-admin
+displayname: svc-jira-admin
+uid: svc-jira-admin
 uidnumber: 1009
 userpassword: {SSHA}1AbCfCbfrT6GohLU\+In8P\+6S4yqfei/X5BRxig==
 
-
-
-# Entry 11: cn=Dev Jira,ou=users,dc=devops,dc=com
-dn: cn=Dev Jira,ou=users,dc=devops,dc=com
-cn: Dev Jira
+# Entry 11: uid=svc-jira-dev,ou=users,dc=devops,dc=com
+dn: uid=svc-jira-dev,ou=users,dc=devops,dc=com
+cn: svc-jira-dev
 gidnumber: 501
-givenname: Dev
-homedirectory: /home/users/dev.jira
+givenname: svc-jira-dev
+homedirectory: /home/users/svc-jira-dev
 loginshell: /bin/bash
-mail: dev.jira@devops.com
+mail: svc-jira-dev@devops.com
 objectclass: inetOrgPerson
 objectclass: posixAccount
 objectclass: top
-sn: Jira
-uid: dev.jira
+sn: svc-jira-dev
+displayname: svc-jira-dev
+uid: svc-jira-dev
 uidnumber: 1001
 userpassword: {SSHA}vDTR7BWFG3NS/YO\+FaRpHTIdcrJRIaRLiaMA\+w==

@@ -104,7 +104,7 @@ issuer、redirectURIs、oauth2-proxy 端点和 whitelist。
 ## 首次登录与改密
 
 访问 `https://jenkins.<domain>/`，依次跳转 oauth2-proxy（`auth.<domain>`）、Dex 的
-OpenLDAP 登录页。默认导入账号为 `admin.zeek`（DN：
+OpenLDAP 登录页。默认导入账号为 `svc-platform-admin`（DN：
 `cn=Admin Zeek,ou=users,dc=devops,dc=com`），初始密码为 `123456`，
 仅限首次本地验证，**立即改密**。若出现授权确认页，按提示同意。OIDC 回调
 `https://auth.<domain>/oauth2/callback` 写入会话 cookie 后返回 Jenkins。
@@ -139,7 +139,7 @@ curl -sk -o /dev/null -w '%{http_code}\n' \
   --resolve jenkins.org-devops.com:443:127.0.0.1 https://jenkins.org-devops.com/ # 302
 docker compose exec ldap ldapsearch -x -H ldap://ldap:389 \
   -D cn=admin,dc=devops,dc=com -W \
-  -b dc=devops,dc=com -s sub '(uid=admin.zeek)' dn
+  -b dc=devops,dc=com -s sub '(uid=svc-platform-admin)' dn
 ```
 
 应急时绕过 Caddy，直接访问 **Jenkins 容器的 8080**。Compose 只 `expose: 8080`，
