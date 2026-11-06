@@ -34,8 +34,8 @@ setup() {
     grep -q "verifyService(" "$file"
     grep -q "service: '{svc}'" "$file"
     grep -q 'name: DRY_RUN' "$file"
-    # 与既有 job 同款：固定节点 + 同一 scm 声明（贴 deploy-service 的口径）
-    grep -q "node('orgflow-docker')" "$file"
+    # 与既有 job 同款：固定节点(JJB agent 模板语法) + 同一 scm 声明(#93 后口径)
+    grep -q "agent {{ label 'orgflow-docker' }}" "$file"
     grep -q 'credentials-id: github-token' "$file"
 }
 
