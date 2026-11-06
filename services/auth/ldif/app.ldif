@@ -26,7 +26,7 @@ ou: nexus
 dn: cn=nexus-admin,ou=nexus,ou=groups,dc=devops,dc=com
 cn: nexus-admin
 gidnumber: 503
-memberuid: admin.zeek
+memberuid: svc-platform-admin
 objectclass: posixGroup
 objectclass: top
 
@@ -34,8 +34,8 @@ objectclass: top
 dn: cn=nexus-dev,ou=nexus,ou=groups,dc=devops,dc=com
 cn: nexus-dev
 gidnumber: 504
-memberuid: nexus.dev
-memberuid: dev.zeek
+memberuid: svc-nexus-dev
+memberuid: svc-platform-dev
 memberuid: zeek.zhao
 objectclass: posixGroup
 objectclass: top
@@ -44,7 +44,7 @@ objectclass: top
 dn: cn=nexus-anonymous,ou=nexus,ou=groups,dc=devops,dc=com
 cn: nexus-anonymous
 gidnumber: 505
-memberuid: nexus.anonymous
+memberuid: svc-nexus-anonymous
 objectclass: posixGroup
 objectclass: top
 
@@ -57,7 +57,7 @@ ou: gerrit
 dn: cn=gerrit-admin,ou=gerrit,ou=groups,dc=devops,dc=com
 cn: gerrit-admin
 gidnumber: 506
-memberuid: admin.zeek
+memberuid: svc-platform-admin
 objectclass: posixGroup
 objectclass: top
 
@@ -65,8 +65,8 @@ objectclass: top
 dn: cn=gerrit-dev,ou=gerrit,ou=groups,dc=devops,dc=com
 cn: gerrit-dev
 gidnumber: 507
-memberuid: gerrit.dev
-memberuid: dev.zeek
+memberuid: svc-gerrit-dev
+memberuid: svc-platform-dev
 memberuid: zeek.zhao
 objectclass: posixGroup
 objectclass: top
@@ -75,8 +75,8 @@ objectclass: top
 dn: cn=gerrit-service,ou=gerrit,ou=groups,dc=devops,dc=com
 cn: gerrit-service
 gidnumber: 508
-memberuid: devops.qa
-memberuid: gerrit.anonymous
+memberuid: svc-platform-qa
+memberuid: svc-gerrit-anonymous
 objectclass: posixGroup
 objectclass: top
 
@@ -91,7 +91,7 @@ ou: jenkins
 dn: cn=jenkins-admin,ou=jenkins,ou=groups,dc=devops,dc=com
 cn: jenkins-admin
 gidnumber: 509
-memberuid: admin.zeek
+memberuid: svc-platform-admin
 objectclass: posixGroup
 objectclass: top
 
@@ -99,8 +99,8 @@ objectclass: top
 dn: cn=jenkins-dev,ou=jenkins,ou=groups,dc=devops,dc=com
 cn: jenkins-dev
 gidnumber: 510
-memberuid: gerrit.dev
-memberuid: dev.zeek
+memberuid: svc-gerrit-dev
+memberuid: svc-platform-dev
 memberuid: zeek.zhao
 objectclass: posixGroup
 objectclass: top
@@ -115,8 +115,8 @@ ou: jira
 dn: cn=jira-admin,ou=jira,ou=groups,dc=devops,dc=com
 cn: jira-admin
 gidnumber: 511
-memberuid: admin.zeek
-memberuid: admin.jira
+memberuid: svc-platform-admin
+memberuid: svc-jira-admin
 objectclass: posixGroup
 objectclass: top
 
@@ -124,9 +124,9 @@ objectclass: top
 dn: cn=jira-dev,ou=jira,ou=groups,dc=devops,dc=com
 cn: jira-dev
 gidnumber: 512
-memberuid: dev.zeek
-memberuid: dev.jira
+memberuid: svc-platform-dev
+memberuid: svc-jira-dev
 memberuid: zeek.zhao
-memberuid: devops.qa
+memberuid: svc-platform-qa
 objectclass: posixGroup
 objectclass: top
