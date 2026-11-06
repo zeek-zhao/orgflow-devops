@@ -103,7 +103,7 @@ make jobs-test   # 离线渲染，只验证定义能不能生成
 `make check-pins` 挂在 `USE_GHCR=1` 的 `up` / `deploy` 前置，命中占位即失败。
 `USE_GHCR=1` 时 compose 必须 `--no-build`（override 的 `image` 是 digest 引用）。
 
-**未验证**：容器内插件清单（`jenkins-plugin-cli --list`）、24.04-v2 的 digest 与
+**已闭环（2026-11-07）**：24.04-v2 digest 已推 GHCR 并回填 lock/ghcr compose(#104-1,PR #120)，运行时已部署该 digest；容器内插件清单（`jenkins-plugin-cli --list`）与
 GHCR 可复现性——都要等构建轮补齐。回填后去掉占位，才允许 `USE_GHCR=1 make deploy`。
 
 ## 关键环境变量
@@ -232,7 +232,7 @@ bash scripts/jenkins-cli.sh log nexus-deploy last
 
 ### 已知边界 / 未验证项
 
-- **成功触发一次真实构建未验证**：本轮为避免污染线上，只验证了 `run` 的参数校验与错误路径（非法 `KEY=VAL` 直接报错且不发请求；不存在的 Job 名返回 403）。没有伪造 201 或 queue id。
+- ~~成功触发一次真实构建未验证~~ **已完成（2026-11-07，#104-4）**：crumb+会话 cookie 生成 API token → `jenkins-cli.sh run nexus-deploy` → HTTP 201 / queue item 24 → 构建 #3 `SUCCESS`，`log last` 正常取回。幂等 job（nexus 已在），零副作用。
 - 用 `.env` 里的**管理员密码**做 Basic auth 时，GET 正常，但 POST 被 Jenkins CSRF 拦截，返回 `403 No valid crumb was included in the request`。这与官方 "API tokens are preferred instead of crumbs" 一致：Jenkins 只对 **API token** 认证豁免 crumb，账号密码不豁免。本脚本按需求**不用 crumb 作为首选**；要让 `run` 成功触发，应把 `JENKINS_ADMIN_PASSWORD` 换成该管理员真正的 **API token**（或对 POST 显式补 crumb，不属本卡首选方案）。
 - 反证：故意用错 API token，`list` / `get` / `run` / `log` 均返回 401、非 0 退出并打印明确错误。
 
@@ -317,7 +317,7 @@ W-01 修复依据 —— JCasC 运行时导出（GET `viewExport` 为 405、POST
               remote: "https://github.com/zeek-zhao/orgflow-devops.git"
 ```
 
-**可见警告 = 4 条**（W-01 ~ W-04）。页面另有 2 个 `jenkins-hidden` 的 monitor 占位，
+**可见警告 = 2 条**（W-03 ~ W-04；2026-11-07 v2 镜像部署后复抓，W-01/W-02 运行时消警确认）。页面另有 2 个 `jenkins-hidden` 的 monitor 占位，
 不是当前激活的警告，不计入：
 
 | 占位 | 级别 | 状态 |
@@ -331,8 +331,15 @@ W-01 修复依据 —— JCasC 运行时导出（GET `viewExport` 为 405、POST
 
 | 编号 | 现象 | 处置 | 理由 | 复核日期 |
 |---|---|---|---|---|
-| W-01 | JCasC 报 "Configuration as Code obsolete file format: 'git' is obsolete, please use 'gitSource'"（无 monitor-id 的独立 alert-warning） | 已修 | `config/jenkins.yaml` 的 `scm: git:` 改为运行时导出的规范符号 `gitSource:`（`remote` / `credentialsId` 字段不变），依据见上方 JCasC 导出实证；运行时是否消警见「未验证项」 | 2026-11-13 |
-| W-02 | "Building on the built-in node can be a security issue. You should set the number of executors on the built-in node to 0."（ControllerExecutorsAgents） | 已修 | `config/jenkins.yaml` 顶层 `numExecutors: 2` 改为 `0`；5 类 Job 全部 `node('orgflow-docker')`，内置节点无构建负载；agent 节点的 `numExecutors: 2` 保持不变；运行时是否消警见「未验证项」 | 2026-11-13 |
+### 已消警归档（不再计入活动台账，历史保留）
+
+- **W-01**（`jenkins.casc.obsolete.git`，warning）：`config/jenkins.yaml` 的 `scm: git:` 改为规范符号
+  `gitSource:`（remote/credentialsId 不变）。**2026-11-07 v2 镜像(24.04-v2)部署后运行时复抓，已消失。**
+- **W-02**（`jenkins.diagnostics.ControllerExecutorsAgents`，warning）：顶层 `numExecutors: 0`
+  （5 类 Job 全部 `node('orgflow-docker')`，内置节点无构建负载）。
+  **2026-11-07 v2 镜像部署后运行时复抓，已消失。**
+
+### 台账
 | W-03 | "Java 21 end of life in Jenkins ... support for which will end on or after Sep 30, 2027."（JavaVersionRecommendationAdminMonitor） | 不修 | 是当前 LTS/JDK 组合对**未来** EOL 的预告，Java 21 目前仍受支持；消除它只能换 JDK / 基础镜像，等于靠升降版本绕过（本卡禁止），须与 B1 镜像流程一并决策，不在本卡单独改 | 2027-09-30 |
 | W-04 | "Jenkins can enforce Content Security Policy (CSP) ... CSP is disabled by default ... it is recommended to enable it"（CspRecommendation，info 级） | 不修 | info 级建议非故障；启用 CSP 会收紧插件与 Job 页面的内联脚本，需全量 UI 回归，本轮不改运行时；且不能用隐藏/抑制方式「清零」，留专项评估 | 2026-12-06 |
 
