@@ -18,7 +18,6 @@
       @Library('orgflow-shared') _
       pipeline {{
         agent {{ label 'orgflow-docker' }}
-        options {{ timestamps() }}
         stages {{
           stage('准备：检出代码') {{
             steps {{
