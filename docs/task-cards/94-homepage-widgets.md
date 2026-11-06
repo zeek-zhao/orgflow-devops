@@ -85,4 +85,4 @@
 
 - PR：PR #101（`merge/batch1`，Rebase 合并）
 - 结果：main = `fa447db8`；本卡 commit `10b310a1f`。集成分支 `make test` RC=0，含 `scripts/test_homepage_config.py` 12 个用例全绿、`identity-check` RC=0。
-- 与本卡的偏离：首页 HTTP 200 / 6 张卡实际渲染 / 状态点翻转 / 天气实取未做运行时验证；容器内 v2.7.0 widget 版本核对与配置层反证已在交付评论中给出。213 主工作区 `config/homepage/` 属主 `rdsw`、jenkins 无写权限，新配置尚未部署到运行中的 homepage。
+- 与本卡的偏离：首页 HTTP 200 / 6 张卡实际渲染 / 状态点翻转 / 天气实取未做运行时验证；容器内 v2.7.0 widget 版本核对与配置层反证已在交付评论中给出。213 主工作区 `config/homepage/` 属主 **OS 用户** `rdsw`、jenkins 无写权限，新配置尚未部署到运行中的 homepage。

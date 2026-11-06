@@ -27,7 +27,6 @@ dn: cn=nexus-admin,ou=nexus,ou=groups,dc=devops,dc=com
 cn: nexus-admin
 gidnumber: 503
 memberuid: admin.zeek
-memberuid: rdsw
 objectclass: posixGroup
 objectclass: top
 
@@ -59,7 +58,6 @@ dn: cn=gerrit-admin,ou=gerrit,ou=groups,dc=devops,dc=com
 cn: gerrit-admin
 gidnumber: 506
 memberuid: admin.zeek
-memberuid: rdsw
 objectclass: posixGroup
 objectclass: top
 
@@ -94,7 +92,6 @@ dn: cn=jenkins-admin,ou=jenkins,ou=groups,dc=devops,dc=com
 cn: jenkins-admin
 gidnumber: 509
 memberuid: admin.zeek
-memberuid: rdsw
 objectclass: posixGroup
 objectclass: top
 
@@ -119,7 +116,6 @@ dn: cn=jira-admin,ou=jira,ou=groups,dc=devops,dc=com
 cn: jira-admin
 gidnumber: 511
 memberuid: admin.zeek
-memberuid: rdsw
 memberuid: admin.jira
 objectclass: posixGroup
 objectclass: top
