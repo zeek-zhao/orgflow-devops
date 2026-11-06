@@ -67,7 +67,7 @@ deploy / backup / restore / verify / nexus 五类 Job 改成 Pipeline，每个�
   `zeek.zhao <zeek.zhao@foxmail.com>`，不带 AI 署名。
 - 本轮**只提交并推送分支，不要开 PR、不要自行合并**（派单方统一 rebase 合并）。
 - 交付时报告：分支名、commit hash、`make test` 原样输出、验收条目逐条实测结果、未验证项。
-- 基线：main = `fa447db8`（PR #101 合并后）。开工前 `git fetch origin --prune` 复核 main 未再前进。
+- 基线：以开工时 `origin/main` 为准（本卡落库时 = `2f5bf23`）。开工前必须 `git fetch origin --prune` 复核并记录实际 sha；若已前进，停下汇报，不要自行 rebase。
 
 ## 交付后的记录
 
