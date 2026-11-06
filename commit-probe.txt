@@ -1,0 +1,11 @@
+fix(backup): boot check 改用共享网络命名空间的探针 (#93)
+
+build #4 在 Jenkins agent 里跑到 boot check 时 HTTP 探测返回 000：
+端口发布在**宿主**的 127.0.0.1 上，agent 自己的 127.0.0.1 连不到。
+这不是服务起不来，是网络命名空间不同。
+
+改为 `docker run --rm --network container:<临时容器> alpine wget ...`，
+与 Nexus 共用同一个 loopback，宿主机与 agent 两种场景都成立。
+接受 200/302/401/403（Nexus 的 / 可能重定向到 REST 入口）。
+
+宿主机复跑：容器内 HTTP 200，演练通过。

@@ -182,11 +182,16 @@ done
 [ "$booted" = 1 ] || fail "boot check 超时 ${BOOT_TIMEOUT}s：未出现 'Started Sonatype Nexus'"
 
 PORT="$(docker port "$DRILL_CT" 8081/tcp | head -n1 | sed 's/.*://')"
-CODE="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/" || true)"
-log "  Nexus 已启动（耗时约 ${waited}s），宿主端口 ${PORT}，HTTP ${CODE}"
+# 探针必须与临时容器**共享网络命名空间**：在 Jenkins agent 里跑时，端口发布在
+# 宿主的 127.0.0.1 上，agent 自己的 127.0.0.1 连不到（HTTP 000）。
+# --network container:<name> 让 alpine 和 Nexus 共用同一个 loopback，两种场景都成立。
+CODE="$(docker run --rm --network "container:$DRILL_CT" alpine sh -c \
+  'wget -S -O /dev/null http://127.0.0.1:8081/ 2>&1 \
+     | sed -n "s|.*HTTP/[0-9.]* \([0-9][0-9][0-9]\).*|\1|p" | head -n1' 2>/dev/null || true)"
+log "  Nexus 已启动（耗时约 ${waited}s），宿主端口 ${PORT}，容器内 HTTP ${CODE:-000}"
 case "$CODE" in
-  200|401|403) ;;
-  *) fail "boot check 的 HTTP 探测异常: ${CODE}" ;;
+  200|302|401|403) ;;
+  *) fail "boot check 的 HTTP 探测异常: ${CODE:-000}" ;;
 esac
 log "✓ 恢复演练通过：H2 数据库可打开、blob store 完整、服务可启动"
 
