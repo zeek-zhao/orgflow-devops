@@ -14,9 +14,9 @@ ldap_query() {
     run ldap_query -s sub '(objectClass=*)' dn
     [ "$status" -eq 0 ]
     [ "$(grep -c '^dn:' <<< "$output")" -eq 33 ]
-    run ldap_query '(uid=admin.zeek)' mail
+    run ldap_query '(uid=svc-platform-admin)' mail
     [ "$status" -eq 0 ]
-    assert_contains "$output" "uid=admin.zeek"
+    assert_contains "$output" "uid=svc-platform-admin"
     grep -Eq '^mail: .+' <<< "$output"
     for ou in groups users departments; do
         run ldap_query "(ou=$ou)" dn

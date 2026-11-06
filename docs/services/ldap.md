@@ -81,7 +81,7 @@ docker compose exec -T ldap ldapsearch -x -b dc=devops,dc=com -s sub "(objectCla
 **4. 某个用户在吗**
 
 ```bash
-docker compose exec -T ldap ldapsearch -x -b dc=devops,dc=com "(uid=admin.zeek)" uid mail
+docker compose exec -T ldap ldapsearch -x -b dc=devops,dc=com "(uid=svc-platform-admin)" uid mail
 ```
 
 返回空说明这个用户不存在——Dex 登录会报「用户不存在」，但界面上的错误信息不会告诉你是 LDAP 的问题。

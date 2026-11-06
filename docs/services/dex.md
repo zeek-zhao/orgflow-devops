@@ -113,7 +113,7 @@ curl -sS -k --resolve dex.org-devops.com:443:127.0.0.1 https://dex.org-devops.co
 **5. 能查 LDAP 吗（登录失败时查这个）**
 
 ```bash
-docker compose exec -T dex ldapsearch -x -H ldap://ldap:389 -b dc=devops,dc=com "(uid=admin.zeek)" uid
+docker compose exec -T dex ldapsearch -x -H ldap://ldap:389 -b dc=devops,dc=com "(uid=svc-platform-admin)" uid
 ```
 
 返回空说明这个用户不在目录里，Dex 会报「用户不存在」。
