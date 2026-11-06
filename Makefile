@@ -114,6 +114,7 @@ test: check-jenkins-image
 	@python3 scripts/test_deploy.py
 	@python3 scripts/test_jobs.py
 	@python3 scripts/test_backup.py
+	@python3 scripts/test_nexus_archive.py
 	@python3 scripts/test_ci.py
 	@python3 scripts/test_docs.py
 	@python3 scripts/test_homepage_config.py
