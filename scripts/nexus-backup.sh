@@ -116,10 +116,13 @@ step "恢复演练：解包到独立 drill 卷"
 DRILL_VOL="orgflow-devops_nexus_drill_$(date +%Y%m%d%H%M%S)_$$"
 docker volume create "$DRILL_VOL" >/dev/null
 log "  drill 卷: $DRILL_VOL（与生产卷 orgflow-devops_nexus_data 无关）"
-docker run --rm \
+# 归档必须经 stdin 投递，不能 bind mount 它的目录：Jenkins agent 里跑时，
+# agent 与宿主是两个文件系统（agent 用宿主的 docker.sock），
+# `-v <agent里的目录>:/backup:ro` 会在宿主上找不到该路径。
+# restore.sh 也是这么做的（tar xzpf - -C /data <"$FILE"）。
+docker run --rm -i \
   -v "${DRILL_VOL}:/data" \
-  -v "$(dirname "$ARCHIVE"):/backup:ro" \
-  alpine sh -c 'set -e; tar xzf "/backup/$1" -C /data; chown -R 200:200 /data' sh "$(basename "$ARCHIVE")"
+  alpine sh -c 'set -e; tar xzf - -C /data; chown -R 200:200 /data' <"$ARCHIVE"
 DRILL_READY=1
 
 DRILL_DB_SHA="$(docker run --rm -v "${DRILL_VOL}:/data:ro" alpine sha256sum /data/db/nexus.mv.db | cut -d' ' -f1)"

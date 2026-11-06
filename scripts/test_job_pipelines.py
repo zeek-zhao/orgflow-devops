@@ -8,11 +8,18 @@
   3. 每个 job 的 stage 数 >= 2（不许把整段逻辑留在一个 node 块里）
   4. 同一个 job 内 stage 名不得重复
   5. 每个 stage 体不得为空（去掉花括号与空白后仍有内容）
+  6. `options { }` 里只能出现 declarative 认的 option 类型
+
+第 6 条是 #93 加的血的教训：`options { timestamps() }` 能通过 1-5 条全部静态
+检查，但 Jenkins 在**运行时**直接 `Invalid option type "timestamps"` 整条编译失败
+（Timestamper 插件既不在 services/jenkins/plugins.txt，也不在镜像里）。
+静态检查必须把运行时的白名单编码进来，否则「全绿」只证明 yaml 写对了。
 
 反证用法：
   - 把两个 stage 改成同名        -> 第 4 条红
   - 把某个 stage 体清空           -> 第 5 条红
   - 把 stage 全删掉               -> 第 3 条红
+  - options 里写 timestamps()     -> 第 6 条红
 
 注意：本脚本只做静态检查。`make jobs` 真实推送与 Jenkins 构建页的 stage
 列表属于运行时验收，不在本脚本范围内（见 #104）。
@@ -26,6 +33,22 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JOBDIR = os.path.join(ROOT, 'config', 'job_definitions')
 
 STAGE_RE = re.compile(r"stage\s*\(\s*'([^']*)'\s*\)\s*\{")
+OPTIONS_RE = re.compile(r'\boptions\s*\{')
+
+# 运行时白名单：直接抄 Jenkins 的报错原文
+#   Invalid option type "timestamps". Valid option types: [buildDiscarder,
+#   catchError, checkoutToSubdirectory, disableConcurrentBuilds, ...]
+# 抄原文而不是自己猜，才能保证「静态检查 = 运行时判据」。
+OPTION_WHITELIST = frozenset((
+    'buildDiscarder', 'catchError', 'checkoutToSubdirectory',
+    'disableConcurrentBuilds', 'disableRestartFromStage', 'disableResume',
+    'durabilityHint', 'newContainerPerStage', 'overrideIndexTriggers',
+    'parallelsAlwaysFailFast', 'preserveStashes', 'quietPeriod',
+    'rateLimitBuilds', 'retry', 'script', 'skipDefaultCheckout',
+    'skipStagesAfterUnstable', 'timeout', 'waitUntil', 'warnError',
+    'withContext', 'withCredentials', 'withEnv', 'wrap', 'ws',
+))
+OPTION_CALL_RE = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)\s*\(')
 
 
 def undouble(text):
@@ -95,6 +118,34 @@ def stage_bodies(dsl):
     return res
 
 
+def brace_block(text, open_idx):
+    """从 open_idx 指向的 '{' 做花括号配对，返回 (体内容, 结束下标)；不配对返回 (None, None)。"""
+    depth = 0
+    i = open_idx
+    start = open_idx + 1
+    while i < len(text):
+        if text[i] == '{':
+            depth += 1
+        elif text[i] == '}':
+            depth -= 1
+            if depth == 0:
+                return text[start:i], i
+        i += 1
+    return None, None
+
+
+def option_calls(body):
+    """逐块抽取 `options { }` 里的调用名，返回 [(块体, [名字...])]。"""
+    res = []
+    for m in OPTIONS_RE.finditer(body):
+        inner, _end = brace_block(body, m.end() - 1)
+        if inner is None:
+            res.append((None, []))
+            continue
+        res.append((inner, OPTION_CALL_RE.findall(inner)))
+    return res
+
+
 def main():
     jobs = load_jobs()
     if not jobs:
@@ -146,6 +197,17 @@ def main():
             if not residue:
                 fails.append('%s: stage %r 是空 stage（体内容去掉花括号与空白后为空）' % (label, n))
 
+        # 第 6 条：options 里只能出现运行时认的 option 类型
+        for inner, calls in option_calls(body):
+            if inner is None:
+                fails.append('%s: options 块花括号不配对' % label)
+                continue
+            bad = sorted(set(c for c in calls if c not in OPTION_WHITELIST))
+            if bad:
+                fails.append('%s: options 里出现非法 option %s —— Jenkins 运行时会报 '
+                             'Invalid option type，整条 pipeline 编译失败'
+                             % (label, ', '.join('%s()' % b for b in bad)))
+
     print('-' * 100)
     print('检查 %d 个 job / job-template' % len(jobs))
     if fails:
@@ -153,7 +215,8 @@ def main():
         for f in fails:
             print('  - ' + f)
         return 1
-    print('✓ 流水线化自检通过：全部是 declarative pipeline，每个 job >= 2 个非空且不重名的 stage')
+    print('✓ 流水线化自检通过：全部是 declarative pipeline，每个 job >= 2 个非空且不重名的 '
+          'stage，options 里没有非法 option')
     return 0
 
 
