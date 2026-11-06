@@ -14,7 +14,7 @@
 
 ## 目标
 
-所有用户 DN 与 uid 按 `docs/身份命名规范.md` §5 完成迁移：用户 DN 统一
+所有用户 DN 与 uid 按 `docs/身份命名规范.md` §3 完成迁移：用户 DN 统一
 `uid=<uid>,ou=users,dc=devops,dc=com`，口令统一 `{SSHA}` / 初始值 `123456`；
 Dex / Jenkins / Nexus / phpLDAPadmin / 文档 / 测试里的引用点全部同步，旧 uid 在全库归零。
 
@@ -34,7 +34,7 @@ Dex / Jenkins / Nexus / phpLDAPadmin / 文档 / 测试里的引用点全部同�
 **改**
 - `services/auth/ldif/users.ldif`、`app.ldif`：按 §3 映射表全量改名 + 改 DN + uidNumber 连续化
 - `services/auth/dex/` 模板（若有 uid 引用）；`out/dex/config.yaml` 由真源重渲染，不手改
-- `tests/bats/10_ldap.bats` 及其他 uid 断言（注意当前断言是 34 条 / 11 个 posixAccount）
+- `tests/bats/10_ldap.bats` 及其他 uid 断言（注意当前断言是 33 条 / 10 个 posixAccount）
 - `docs/账号与登录.md`、`docs/身份命名规范.md` 状态、Windows 侧 `orgflow-hosts.bat creds` / `orgflow-login.ps1` 账号说明
 
 **新增**
@@ -42,7 +42,7 @@ Dex / Jenkins / Nexus / phpLDAPadmin / 文档 / 测试里的引用点全部同�
 
 ## 验收
 
-- [ ] `ldapsearch -x -H ldap://localhost -D 'cn=admin,dc=devops,dc=com' -w "$LDAP_ADMIN_PASSWORD" -b 'ou=users,dc=devops,dc=com' '(objectClass=posixAccount)' uid` 列出的 uid 与规范 §5 完全一致（**线上导入未授权时，此项降级为对 LDIF 文件做等价静态校验并明确标注未验证**）
+- [ ] `ldapsearch -x -H ldap://localhost -D 'cn=admin,dc=devops,dc=com' -w "$LDAP_ADMIN_PASSWORD" -b 'ou=users,dc=devops,dc=com' '(objectClass=posixAccount)' uid` 列出的 uid 与规范 §3 完全一致（**线上导入未授权时，此项降级为对 LDIF 文件做等价静态校验并明确标注未验证**）
 - [ ] 脚本校验每个 `posixGroup.memberUid` 都能解析到存在的 uid（贴输出）
 - [ ] `grep -r` 旧 uid 在 `docs/` `config/` `services/` `tests/` 中归零（贴命令与 0 行输出）
 - [ ] `make test` 退出码 0（贴原样输出）
@@ -77,6 +77,18 @@ Dex / Jenkins / Nexus / phpLDAPadmin / 文档 / 测试里的引用点全部同�
 
 （派单方填，执行方不用填）
 
-- PR：#
-- 结果：
-- 与本卡的偏离：
+- PR：**#107**（`9f52f39` → main `155b4407`）；执行方为派单方手工（子代理派工 429）。
+- 结果：10 个 uid 与 DN 全量迁移、21 处 `memberUid` 重写、新增 `scripts/migrate_identity.py`（`--check` / `--apply` / `--rollback-ldif` / `--verify`）、6 份运行真本文档同步、`--verify` 纳入 `make test`；`make test` RC=0，两条反证绿/红/红/绿。Issue 已关单、Project 置 Done。
+- 与本卡的偏离：按派工边界只做仓库侧；线上切换由派单方另行执行，最终按用户裁决以「不备份 + 删卷重建」完成（见下节）。
+
+## 线上切换记录（派单方，2026-11-06 18:20）
+
+**用户裁决**：不需要备份，把 LDAP 改完以后删除、再重新部署 —— 覆盖本卡「只做仓库侧、必须带回滚 LDIF、不碰线上」的边界。
+
+**切换前预演救了一次事故**：独立空卷容器导入真 LDIF，`ldapwhoami` 只有 2/10 成功。根因是 `{SSHA}` base64 里的 `+` 被写成 `\+`，`ldapadd` 不还原反斜杠；**PR #112**（`d35cf1c`）修 10 处并新增 `scripts/test_ldif_passwords.py` 纳入 `make test`。修后预演 10/10 才动生产卷。
+
+**执行**：`docker compose stop ldap` → `rm -f ldap` → `volume rm orgflow-devops_ldap_data orgflow-devops_ldap_config` → `up -d --no-deps ldap` → `bootstrap-ldif.sh` → 重启 dex / ldapadmin / oauth2-proxy。全程未做任何备份。
+
+**线上验收**：33 条 / 10 个 `posixAccount` / DN 全为 `uid=` / `uidNumber` 1000–1009 / `displayName` 10/10 / 旧 uid 与 `rdsw` 0 处 / 21 处 `memberUid` 无悬空 / 10 个账号 `ldapwhoami -w 123456` 全成功 / Dex `userSearch` 与 `groupSearch` 命中。OIDC 跳转链与 LDAP 认证也已真跑通（错误口令 401、正确口令进入授权确认页并拿到会话 cookie）；Jenkins 侧 403 是 `securityRealm: local` 的既有缺口，归 #87。
+
+**残留**：`out/backups/` 里 6 个旧 LDAP 包仍是旧 uid，按裁决未新建备份；`verify-ldap` 会真恢复并把线上静默回滚，需单独处理。
