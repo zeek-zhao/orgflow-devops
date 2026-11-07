@@ -135,7 +135,10 @@ def render(settings, routes):
         if (r.get("name") or "").strip() == "docs":
             out.append(f"https://docs.{domain} {{")
             out.extend([
-                "\tforward_auth oauth2-proxy:4180 {",
+                # 匹配器豁免 /oauth2/*:start/callback 若也被 forward_auth 拦下,
+                # 会 302 到自身造成 rd 无限增长(实测踩过)
+                "\t@notoauth2 not path /oauth2/*",
+                "\tforward_auth @notoauth2 oauth2-proxy:4180 {",
                 "\t\turi /oauth2/auth",
                 "\t\tcopy_headers X-Auth-Request-User X-Auth-Request-Email",
                 "\t\t@unauth status 401",
