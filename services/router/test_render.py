@@ -171,7 +171,7 @@ class RouterTests(unittest.TestCase):
         content = self.out.read_text()
         self.assertEqual(content.count("forward_auth "), 1)
         docs_block = content.split("https://docs.", 1)[1].split("\nhttps://", 1)[0]
-        self.assertIn("forward_auth oauth2-proxy:4180", docs_block)
+        self.assertIn("forward_auth @notoauth2 oauth2-proxy:4180", docs_block)
         self.assertIn("redir * https://docs.org-devops.com/oauth2/start", docs_block)
         self.assertIn("reverse_proxy oauth2-proxy:4180", docs_block)
         self.assertIn("root * /srv/docs", docs_block)
