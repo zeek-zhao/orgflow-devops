@@ -259,7 +259,7 @@ elif "--version" in args or "version" in args:
         self.assertEqual(result.returncode, 0, result.stderr)
         caddyfile = (self.root / "out/Caddyfile").read_text()
         self.assertIn("https://jenkins.example.test {", caddyfile)
-        self.assertIn("https://auth.example.test/oauth2/start", caddyfile)
+        self.assertIn("https://docs.example.test/oauth2/start", caddyfile)
         self.assertNotIn("org-devops.com", caddyfile)
         dex = (self.root / "out/dex/config.yaml").read_text()
         self.assertIn("issuer: https://dex.example.test/dex", dex)
@@ -562,7 +562,7 @@ class HostsSnippetTests(unittest.TestCase):
             "jenkins.org-devops.com", "nexus.org-devops.com",
             "ldapadmin.org-devops.com", "dex.org-devops.com",
             "auth.org-devops.com", "home.org-devops.com",
-            "ca.org-devops.com",
+            "ca.org-devops.com", "docs.org-devops.com",
         ])
 
     def test_domain_override_changes_the_suffix(self):

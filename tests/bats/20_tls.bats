@@ -25,8 +25,8 @@ setup() {
     [ -s "$ROOT_CA" ]
     local entry sub path expected
     # dex 的端点都在 /dex 下，根路径本来就是 404，不能拿 / 当探针；
-    # ldapadmin 开了网关鉴权（#36），未登录是 302 跳 oauth2，不是 200
-    for entry in "nexus:/:200" "ldapadmin:/:302" "dex:/dex/healthz:200"; do
+    # ldapadmin 已摘网关(#86):未登录直达 phpLDAPadmin 自身页面;docs 未登录 302 跳网关
+    for entry in "nexus:/:200" "ldapadmin:/:200" "dex:/dex/healthz:200" "docs:/oauth2/start:302"; do
         sub=${entry%%:*}
         path=${entry#*:}; path=${path%%:*}
         expected=${entry##*:}

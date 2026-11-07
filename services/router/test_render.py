@@ -86,18 +86,20 @@ class RouterTests(unittest.TestCase):
             process.terminate()
             process.communicate(timeout=5)
 
-    def test_seven_domain_sites_and_unchanged_output(self):
+    def test_eight_domain_sites_and_unchanged_output(self):
         self.assertEqual(self.run_render().returncode, 0)
         content = self.out.read_text()
         self.assertIn("\tlocal_certs", content)
-        for sub in ("jenkins", "nexus", "ldapadmin", "dex", "auth", "home", "ca"):
+        for sub in ("jenkins", "nexus", "ldapadmin", "dex", "auth", "home", "ca", "docs"):
             self.assertIn(f"https://{sub}.org-devops.com {{", content)
-        self.assertEqual(content.count("reverse_proxy "), 7)
-        # jenkins 与 ldapadmin 两站开网关鉴权（#36）
-        self.assertEqual(content.count("forward_auth "), 2)
-        # 域名路由后不应再有路径匹配块
+        self.assertEqual(content.count("reverse_proxy "), 8)
+        # #86 后唯一受网关保护的是 docs 站点
+        self.assertEqual(content.count("forward_auth "), 1)
+        # 域名路由后不应再有路径匹配块(ADR-13);
+        # docs 站点内部的 handle /oauth2/* 是站点内路由,不算站点级路径入口
         self.assertNotIn("handle_path", content)
-        self.assertNotIn("handle /", content)
+        self.assertNotIn("handle /jenkins", content)
+        self.assertNotIn("handle /ldapadmin", content)
         before = self.out.stat()
         self.assertEqual(self.run_render().returncode, 0)
         self.assertEqual(self.out.stat().st_mtime_ns, before.st_mtime_ns)
@@ -132,7 +134,7 @@ class RouterTests(unittest.TestCase):
         content = self.out.read_text()
         self.assertIn("https://jenkins.example.internal {", content)
         # 认证域名跟着 name: auth 那条路由走，没有独立的环境变量可覆盖
-        self.assertIn("https://auth.example.internal/oauth2/start", content)
+        self.assertIn("https://docs.example.internal/oauth2/start", content)
         self.assertNotIn("org-devops.com", content)
 
     def test_auth_route_is_required(self):
@@ -148,7 +150,7 @@ class RouterTests(unittest.TestCase):
         self.assertFalse(self.out.exists())
 
     def test_auth_route_subdomain_drives_the_redirect(self):
-        """改 auth 路由的 subdomain，跳转地址随之变化——单一真源，不会错位。"""
+        """#86 后受保护站点只有 docs,跳转固定落 docs 域;auth 改名只影响其自身站点块。"""
         self.routes.write_text(
             self.routes.read_text().replace(
                 "  - name: auth\n    subdomain: auth\n",
@@ -159,41 +161,37 @@ class RouterTests(unittest.TestCase):
         content = self.out.read_text()
         self.assertIn("https://sso.org-devops.com {", content)
         self.assertIn(
-            "redir * https://sso.org-devops.com/oauth2/start"
+            "redir * https://docs.org-devops.com/oauth2/start"
             "?rd={scheme}://{host}{uri} 302", content)
         self.assertNotIn("https://auth.org-devops.com/oauth2/start", content)
 
-    def test_auth_forward_auth_precedes_jenkins_proxy(self):
+    def test_docs_is_the_only_forward_auth_site(self):
+        """#86:jenkins/ldapadmin 摘网关;docs 特例跳转落 docs 域(单域闭环)。"""
         self.assertEqual(self.run_render().returncode, 0)
         content = self.out.read_text()
-        jenkins = content.split("https://jenkins.org-devops.com {", 1)[1]
-        self.assertIn("forward_auth oauth2-proxy:4180 {", jenkins)
-        self.assertIn("uri /oauth2/auth", jenkins)
-        self.assertIn("copy_headers X-Auth-Request-User X-Auth-Request-Email", jenkins)
-        self.assertIn("@unauth status 401", jenkins)
-        self.assertIn("handle_response @unauth {", jenkins)
-        # 认证域名与业务域名分离：跳转必须是绝对地址，rd 带完整原始 URL
-        self.assertIn(
-            "redir * https://auth.org-devops.com/oauth2/start"
-            "?rd={scheme}://{host}{uri} 302", jenkins)
-        self.assertLess(jenkins.index("forward_auth"), jenkins.index("reverse_proxy"))
-        self.assertEqual(content.count("forward_auth "), 2)
+        self.assertEqual(content.count("forward_auth "), 1)
+        docs_block = content.split("https://docs.", 1)[1].split("\nhttps://", 1)[0]
+        self.assertIn("forward_auth oauth2-proxy:4180", docs_block)
+        self.assertIn("redir * https://docs.org-devops.com/oauth2/start", docs_block)
+        self.assertIn("reverse_proxy oauth2-proxy:4180", docs_block)
+        self.assertIn("root * /srv/docs", docs_block)
+        self.assertIn("file_server", docs_block)
 
-    def test_ldapadmin_site_is_gateway_protected(self):
-        """#36：管理面站点必须开网关鉴权，匿名访问由 Caddy 直接 302 到登录页。"""
+    def test_jenkins_site_is_off_the_gateway(self):
+        """#86:jenkins 摘掉网关(直连 LDAP 由 A4/#87 落地),站点块只剩反代。"""
         self.assertEqual(self.run_render().returncode, 0)
         content = self.out.read_text()
-        # 站点段到下一个站点头为止，避免后面站点的块混进来
-        def site(segment):
-            return segment.split("\nhttps://", 1)[0]
-        ldapadmin = site(content.split("https://ldapadmin.org-devops.com {", 1)[1])
-        self.assertIn("forward_auth oauth2-proxy:4180 {", ldapadmin)
-        self.assertIn("redir * https://auth.org-devops.com/oauth2/start", ldapadmin)
-        self.assertLess(
-            ldapadmin.index("forward_auth"), ldapadmin.index("reverse_proxy"))
-        # 反向校验：nexus 这类公开站点不得被波及
-        nexus = site(content.split("https://nexus.org-devops.com {", 1)[1])
-        self.assertNotIn("forward_auth", nexus)
+        jenkins = content.split("https://jenkins.org-devops.com {", 1)[1].split("\nhttps://", 1)[0]
+        self.assertNotIn("forward_auth", jenkins)
+        self.assertIn("reverse_proxy jenkins:8080", jenkins)
+
+    def test_ldapadmin_site_is_off_the_gateway(self):
+        """#86:phpLDAPadmin 自带 LDAP 登录,摘掉网关鉴权(站点块只剩反代)。"""
+        self.assertEqual(self.run_render().returncode, 0)
+        content = self.out.read_text()
+        ldapadmin = content.split("https://ldapadmin.org-devops.com {", 1)[1].split("\nhttps://", 1)[0]
+        self.assertNotIn("forward_auth", ldapadmin)
+        self.assertIn("reverse_proxy ldapadmin:80", ldapadmin)
 
     def test_auth_defaults_to_false_and_explicit_false_is_unprotected(self):
         self.routes.write_text(
@@ -323,7 +321,7 @@ class RouterTests(unittest.TestCase):
             with urllib.request.urlopen(url, timeout=2) as response:
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.headers.get_content_type(), "application/json")
-                self.assertEqual(json.load(response), {"ok": True, "routes": 7})
+                self.assertEqual(json.load(response), {"ok": True, "routes": 8})
             # 换成一份只有两个站点的配置：auth 路由必须留着，否则渲染会直接报错
             self.routes.write_text(
                 'routes:\n'
@@ -353,7 +351,7 @@ class RouterTests(unittest.TestCase):
                 self.wait_for(lambda: len(server.requests) >= 2)
                 with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz",
                                             timeout=2) as response:
-                    self.assertEqual(json.load(response), {"ok": True, "routes": 7})
+                    self.assertEqual(json.load(response), {"ok": True, "routes": 8})
 
     def test_healthz_missing_routes_recovers_in_watch_mode(self):
         with socket.socket() as sock:
@@ -378,7 +376,7 @@ class RouterTests(unittest.TestCase):
             self.routes.write_bytes(ROUTES.read_bytes())
             self.wait_for(self.out.exists)
             with urllib.request.urlopen(url, timeout=2) as response:
-                self.assertEqual(json.load(response), {"ok": True, "routes": 7})
+                self.assertEqual(json.load(response), {"ok": True, "routes": 8})
 
 
 class RouteApiTests(unittest.TestCase):
@@ -439,7 +437,7 @@ class RouteApiTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(body["gateway_domain"], GATEWAY_DOMAIN)
             self.assertEqual([r["name"] for r in body["routes"]],
-                             ["jenkins", "nexus", "ldapadmin", "dex", "auth", "homepage", "ca"])
+                             ["jenkins", "nexus", "ldapadmin", "dex", "auth", "homepage", "ca", "docs"])
 
     def test_delete_removes_entry_and_keeps_rest(self):
         with RouterAPIServer(self.routes, self.out) as api:

@@ -39,6 +39,7 @@ redirect="https://auth.${domain}/oauth2/callback"
 
 sed -e "s|__DEX_ISSUER__|${issuer}|g" \
     -e "s|__OAUTH2_REDIRECT_URI__|${redirect}|g" \
+    -e "s|__DOCS_OAUTH2_REDIRECT_URI__|https://docs.${domain}/oauth2/callback|g" \
     "$TEMPLATE" > "$OUTPUT"
 
 # dex 容器以 uid 1001 运行，必须能读到这份配置；调用方的 umask 可能是 077
@@ -47,7 +48,7 @@ sed -e "s|__DEX_ISSUER__|${issuer}|g" \
 chmod 0644 "$OUTPUT"
 
 # 自检：占位符必须被清空，否则 dex 会带着字面量启动
-if grep -q '__DEX_ISSUER__\|__OAUTH2_REDIRECT_URI__' "$OUTPUT"; then
+if grep -q '__DEX_ISSUER__\|__OAUTH2_REDIRECT_URI__\|__DOCS_OAUTH2_REDIRECT_URI__' "$OUTPUT"; then
     echo "渲染失败：$OUTPUT 仍有未替换的占位符" >&2
     exit 1
 fi

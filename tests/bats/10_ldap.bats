@@ -8,12 +8,12 @@ ldap_query() {
     compose_exec ldap sh -c 'exec ldapsearch -x -H ldap://localhost:389 -D cn=admin,dc=devops,dc=com -w "$LDAP_ADMIN_PASSWORD" -b dc=devops,dc=com "$@"' sh "$@"
 }
 
-@test "ldap: authenticated base, exactly 33 entries, admin mail and three OUs" {
+@test "ldap: authenticated base, exactly 35 entries, admin mail and three OUs" {
     run ldap_query -s base
     [ "$status" -eq 0 ]
     run ldap_query -s sub '(objectClass=*)' dn
     [ "$status" -eq 0 ]
-    [ "$(grep -c '^dn:' <<< "$output")" -eq 33 ]
+    [ "$(grep -c '^dn:' <<< "$output")" -eq 35 ]
     run ldap_query '(uid=svc-platform-admin)' mail
     [ "$status" -eq 0 ]
     assert_contains "$output" "uid=svc-platform-admin"

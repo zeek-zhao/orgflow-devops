@@ -188,7 +188,9 @@ services:
       - "${GATEWAY_HTTP_PORT:-80}:80"
       - "${GATEWAY_HTTPS_PORT:-443}:443"
     volumes:
-      - ./out:/etc/caddy:ro
+      - ./out:/etc/caddy
+      # 文档站静态内容(#86/#88):唯一受网关保护的站点由 Caddy file_server 直接服务
+      - ./docs:/srv/docs:ro:ro
       - caddy_data:/data
     depends_on:
       router:
@@ -353,12 +355,18 @@ services:
       - --reverse-proxy=true
       - --set-xauthrequest=true
       - --cookie-secure=true
-      - --cookie-domain=.${GATEWAY_DOMAIN:-org-devops.com}
+      # cookie 收窄到 docs 单域(#86):网关只守文档站,不再全域通吃
+      - --cookie-domain=docs.${GATEWAY_DOMAIN:-org-devops.com}
       - --cookie-refresh=1h
       - --whitelist-domain=.${GATEWAY_DOMAIN:-org-devops.com}
-      - --redirect-url=https://auth.${GATEWAY_DOMAIN:-org-devops.com}/oauth2/callback
+      # 回调按请求 host 推导(docs 域发起就回 docs 域,cookie 才落对域);
+      # 固定 --redirect-url 会把 cookie 钉在 auth 域造成跨域拒收,故删除
       - --ping-path=/ping
-      - --email-domain=*
+      # 组授权:仅 docs-users 组成员可完成登录(#86);非组成员 Dex 认证成功也被拒
+      - --allowed-group=docs-users
+      # 反向代理信任收窄:只信 Caddy 的固定 IP,伪造 X-Forwarded-* 不再可行
+      - --trusted-proxy-ip=172.31.0.10/32
+      - --email-domain=devops.com
       - --skip-provider-button=true
     expose:
       - "4180"
