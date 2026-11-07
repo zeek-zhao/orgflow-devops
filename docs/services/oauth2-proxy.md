@@ -187,8 +187,10 @@ oauth2-proxy **无状态、无数据卷**：未配 `--session-store`，会话在
 - **组授权**：`--allowed-group=docs-users`——Dex 认证成功但不在 `docs-users`
   组（`cn=docs-users,ou=docs,ou=groups`，成员见 `services/auth/ldif/app.ldif`）的账号
   会被 oauth2-proxy 拒绝（403 Access Denied）。权限一律由 `posixGroup.memberUid` 决定。
-- **伪造防护**：`--trusted-proxy-ip=172.31.0.10/32`——只有 Caddy 的固定 IP 传入的
-  `X-Forwarded-*` 可信，直连 oauth2-proxy:4180 伪造身份头不再可行。
+- **伪造防护**：上游 oauth2-proxy 至 v7.9.0 均无 `--trusted-proxy-ip` 旗标
+  （7.6.0/7.7.1/7.8.2/7.9.0 `--help` 逐一核实，只有语义相反的 `--trusted-ip`=按 IP 免认证）。
+  实际防线是**网络隔离**：4180 仅 `expose` 不发布端口，宿主与局域网路由不可达，
+  伪造 `X-Forwarded-*` 只能来自 orgflow 网络内容器（上游对 reverse-proxy 信任的推荐即网络隔离）。
 - **cookie 单域**：`--cookie-domain=docs.<domain>`——登录(`oauth2/start`)与
   回调(`oauth2/callback`)都在 docs 域闭环，其他子域拿不到会话。
 - **回调配额**：Dex 客户端注册了 auth 与 docs 两个回调(`render-dex.sh` 渲染)。
