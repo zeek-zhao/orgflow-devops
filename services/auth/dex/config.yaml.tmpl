@@ -7,6 +7,7 @@
 # 占位符：
 #   __DEX_ISSUER__           https://dex.<domain>/dex
 #   __OAUTH2_REDIRECT_URI__  https://auth.<domain>/oauth2/callback
+#   __DOCS_OAUTH2_REDIRECT_URI__  https://docs.<domain>/oauth2/callback (#86:docs 单域闭环)
 
 issuer: __DEX_ISSUER__
 storage:
@@ -18,6 +19,7 @@ staticClients:
     secretEnv: OAUTH2_CLIENT_SECRET
     redirectURIs:
       - __OAUTH2_REDIRECT_URI__
+      - __DOCS_OAUTH2_REDIRECT_URI__
     name: OrgFlow
 connectors:
   - type: ldap

@@ -57,7 +57,7 @@ print(urllib.request.urlopen("http://caddy:2019/config/", timeout=10).read().dec
     compose_cmd exec -T router python3 -c '
 import json, urllib.request
 body = json.load(urllib.request.urlopen("http://localhost:8090/routes"))
-assert isinstance(body["routes"], list) and len(body["routes"]) == 8
+assert isinstance(body["routes"], list) and len(body["routes"]) == 9
 assert any(r["name"] == "demo" for r in body["routes"])'
 
     # DELETE：恢复现场，文件 sha256 回到原值

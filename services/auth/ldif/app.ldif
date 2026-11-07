@@ -130,3 +130,19 @@ memberuid: zeek.zhao
 memberuid: svc-platform-qa
 objectclass: posixGroup
 objectclass: top
+
+dn: ou=docs,ou=groups,dc=devops,dc=com
+objectclass: organizationalUnit
+objectclass: top
+ou: docs
+
+# Entry 2: cn=docs-users,ou=docs,ou=groups,dc=devops,dc=com
+dn: cn=docs-users,ou=docs,ou=groups,dc=devops,dc=com
+cn: docs-users
+gidnumber: 513
+memberuid: svc-platform-admin
+memberuid: svc-platform-dev
+memberuid: svc-platform-qa
+memberuid: zeek.zhao
+objectclass: posixGroup
+objectclass: top
