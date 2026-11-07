@@ -190,7 +190,7 @@ services:
     volumes:
       - ./out:/etc/caddy
       # 文档站静态内容(#86/#88):唯一受网关保护的站点由 Caddy file_server 直接服务
-      - ./docs:/srv/docs:ro:ro
+      - ./docs:/srv/docs:ro
       - caddy_data:/data
     depends_on:
       router:
