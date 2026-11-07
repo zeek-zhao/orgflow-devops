@@ -4,11 +4,12 @@ setup() {
     setup_gw
 }
 
-@test "ldapadmin: 管理面站点已摘网关(#86):未登录直达 phpLDAPadmin 自身页面(自带 LDAP 登录)" {
-    assert_gw ldapadmin / 200
-    # 跳转目标必须是认证站点，且带回原地址（rd=），登录后才能回到 ldapadmin
-    local location
-    location=$(gw_header ldapadmin / Location)
-    [[ "$location" == "https://${GW_AUTH}.${GW_DOMAIN}/oauth2/start"* ]]
-    [[ "$location" == *"rd="* ]]
+@test "ldapadmin: 管理面站点已摘网关(#86):不再 302 到 oauth2,由 phpLDAPadmin 自身应答" {
+    run gw_header ldapadmin / Location
+    if [ "$status" -eq 0 ]; then
+        ! grep -q "oauth2/start" <<< "$output"
+    fi
+    # 自身应答:200(首页)或 302(phpLDAPadmin 自身登录跳转),绝非网关的 401/302 oauth2
+    run gw_code ldapadmin /
+    assert_contains "$output" -E "200|302"
 }
