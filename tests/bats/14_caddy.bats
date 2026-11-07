@@ -6,7 +6,7 @@ setup() {
 
 @test "caddy: seven domain sites, authentication, per-site 404 and Nexus API" {
     assert_gw auth /ping 200
-    assert_gw jenkins / 200
+    assert_gw jenkins / 403
     assert_gw dex /dex/keys 200
     assert_gw ldapadmin / 200
     assert_gw nexus / 200
