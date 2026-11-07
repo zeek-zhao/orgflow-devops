@@ -76,7 +76,7 @@ docker compose exec -T ldap ldapwhoami -x -H ldap://localhost -D "cn=admin,dc=de
 docker compose exec -T ldap ldapsearch -x -b dc=devops,dc=com -s sub "(objectClass=*)" dn | grep -c '^dn:'
 ```
 
-期望 **33**（2026-11-06 清除 `rdsw` 后回到 33。加 1 个账号就 +1；少于说明 LDIF 没导全，多于说明重复导入过）。
+期望 **35**（2026-11-07 #86 新增 ou=docs + docs-users 两条。加 1 个账号就 +1；少于说明 LDIF 没导全，多于说明重复导入过）。
 
 **4. 某个用户在吗**
 

@@ -27,7 +27,7 @@ docker compose exec -T router wget -qO- http://oauth2-proxy:4180/ping
 - **入口**：`https://auth.org-devops.com`。这个子域由 `routes.yaml` 里 `name: auth` 那条路由决定，
   **没有独立的环境变量**——受保护站点的登录跳转就打到这个站点的 `/oauth2/start`
 - **依赖谁**：`dex`（IdP）、`dnsmasq`
-- **被谁依赖**：所有 `auth: true` 的站点（目前是 jenkins）
+- **被谁依赖**：唯一受保护站点 `docs`（#86 选项 1——网关只守无原生认证的静态内容）；jenkins/ldapadmin 已摘网关直连自身认证
 
 **关键设计：认证域名与业务域名分离。** 浏览器侧走 `https://auth.<domain>`，
 服务端到服务端（redeem / jwks）走容器网络 `http://dex:5556`。这样换 token 不绕公网，
@@ -51,7 +51,7 @@ docker compose up -d oauth2-proxy
 | `--insecure-oidc-skip-issuer-verification=true` | 跳过 issuer 校验 | issuer 是公网域名，实际请求是容器网络，host 必然对不上 |
 | `--upstream=static://202` | 不反代任何东西 | 它只做鉴权判断，返回 202 表示放行 |
 | `--cookie-secure=true` | cookie 只走 HTTPS | 网关已是 TLS |
-| `--cookie-domain=.<domain>` | cookie 跨子域共享 | 登录在 auth 站，业务在别的子域 |
+| `--cookie-domain=docs.<domain>` | cookie 收窄到 docs 单域(#86) | 登录/回调都在 docs 域闭环,不再全域通吃 |
 
 ## 关键环境变量
 
@@ -181,3 +181,14 @@ oauth2-proxy **无状态、无数据卷**：未配 `--session-store`，会话在
 配置全在 `docker-compose.yml` + `.env` + `config/routes.yaml`（Git / 受控密钥保管），
 容器可随时重建，不在 `make backup` 范围内。见
 [备份与恢复](../备份与恢复.md)「范围与前提」。
+
+## 权限模型（#86 / REQ-M0-A3）
+
+- **组授权**：`--allowed-group=docs-users`——Dex 认证成功但不在 `docs-users`
+  组（`cn=docs-users,ou=docs,ou=groups`，成员见 `services/auth/ldif/app.ldif`）的账号
+  会被 oauth2-proxy 拒绝（403 Access Denied）。权限一律由 `posixGroup.memberUid` 决定。
+- **伪造防护**：`--trusted-proxy-ip=172.31.0.10/32`——只有 Caddy 的固定 IP 传入的
+  `X-Forwarded-*` 可信，直连 oauth2-proxy:4180 伪造身份头不再可行。
+- **cookie 单域**：`--cookie-domain=docs.<domain>`——登录(`oauth2/start`)与
+  回调(`oauth2/callback`)都在 docs 域闭环，其他子域拿不到会话。
+- **回调配额**：Dex 客户端注册了 auth 与 docs 两个回调(`render-dex.sh` 渲染)。

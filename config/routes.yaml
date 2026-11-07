@@ -13,19 +13,19 @@
 gateway_domain: org-devops.com
 
 routes:
+  # A4 起 Jenkins 直连 LDAP 自带登录,网关不再代管(#86:摘 auth)
   - name: jenkins
     subdomain: jenkins
     upstream: jenkins:8080
-    auth: true
 
   - name: nexus
     subdomain: nexus
     upstream: nexus:8081
 
+  # phpLDAPadmin 自带 LDAP 登录(#86:摘网关 auth)
   - name: ldapadmin
     subdomain: ldapadmin
     upstream: ldapadmin:80
-    auth: true
 
   # Dex 的端点挂在 issuer 路径 /dex 下（/dex/auth、/dex/token、/dex/keys）
   - name: dex
@@ -48,3 +48,10 @@ routes:
   - name: ca
     subdomain: ca
     upstream: router:8090
+
+  # 文档站：唯一受网关保护的站点（#86 选项 1——只守无原生认证的静态内容）。
+  # 特例路由：Caddy file_server 直接服务 docs/ 静态文件，/oauth2/* 走 oauth2-proxy
+  # （登录与回调都在 docs 域闭环，cookie 落在 docs 单域，见 render.py 的 docs 特例）。
+  - name: docs
+    subdomain: docs
+    upstream: oauth2-proxy:4180

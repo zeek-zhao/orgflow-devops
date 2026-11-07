@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""#86 权限用例的 OIDC 登录流程器：以指定账号走完 docs 站点的网关链路。
+
+用法: oidc_flow.py <host> <https-port> <user> <password>
+输出: 最后一跳的 HTTP 状态码与最终 URL,行为: 若会话建立则再 GET 首页一次。
+
+链路: docs(401/302) → docs/oauth2/start → Dex LDAP 登录 → approval → 回 docs。
+不校验 TLS(测试栈内部 CA,由 20_tls 单独验证链路)。
+"""
+import html
+import re
+import ssl
+import sys
+import urllib.parse
+import urllib.request
+
+host, port, user, password = sys.argv[1:5]
+ctx = ssl.create_default_context()
+ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
+
+
+opener = urllib.request.build_opener(NoRedirect, urllib.request.HTTPCookieProcessor())
+
+
+def fetch(url, data=None, headers=None):
+    req = urllib.request.Request(url, data=data, method="POST" if data else "GET",
+                                 headers=headers or {})
+    try:
+        with opener.open(req, timeout=15) as r:
+            return r.status, r.geturl(), r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return e.code, e.geturl() if hasattr(e, "geturl") else url, e.read().decode("utf-8", "replace")
+
+
+def fix(url):
+    """内层栈把 443 映射到 <port>:浏览器侧 URL 不带端口,请求时补上。"""
+    return re.sub(r"(https://[^/]+)(/|$)", rf"\1:{port}\2", url, count=1)
+
+
+def form_fields(text, base_url):
+    m = re.search(r'<form[^>]*action="([^"]+)"', text)
+    action = urljoin(base_url, html.unescape(m.group(1))) if m else base_url
+    fields = {}
+    for block in re.findall(r"<form[^>]*>.*?</form>", text, re.S) or [text]:
+        for k, v in re.findall(r'<input[^>]*type="hidden"[^>]*name="([^"]+)"[^>]*value="([^"]*)"', block):
+            fields[html.unescape(k)] = html.unescape(v)
+    return action, fields
+
+
+def login_flow(entry, user, password):
+    url = fix(entry)
+    for _ in range(8):
+        status, url, body = fetch(url)
+        if "/dex/auth/ldap/login" in url:
+            action, fields = form_fields(body, url)
+            fields["login"], fields["password"] = user, password
+            status, url, body = fetch(action, data=urllib.parse.urlencode(fields).encode())
+            if "/dex/approval" in url:
+                block = re.search(r"<form[^>]*>.*?</form>", body, re.S).group(0)
+                fields = {html.unescape(k): html.unescape(v) for k, v in
+                          re.findall(r'<input[^>]*type="hidden"[^>]*name="([^"]+)"[^>]*value="([^"]*)"', block)}
+                btn = re.search(r'<button[^>]*name="([^"]+)"[^>]*value="([^"]*)"', block)
+                if btn:
+                    fields[html.unescape(btn.group(1))] = html.unescape(btn.group(2))
+                status, url, body = fetch(url, data=urllib.parse.urlencode(fields).encode())
+            continue
+        if "/oauth2/start" in url or "/oauth2/sign_in" in url:
+            status, url, body = fetch(url)
+            continue
+        return status, url, body
+    return status, url, body
+
+
+status, url, body = login_flow(f"https://{host}:{port}/", user, password)
+print(status)
+print(url)
+print(body[:200].replace("\n", " "))

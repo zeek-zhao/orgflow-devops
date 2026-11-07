@@ -129,6 +129,33 @@ def render(settings, routes):
         sub = (r.get("subdomain") or "").strip().strip(".")
         up = r["upstream"]
 
+        # docs 特例(#86/#88):唯一受网关保护的站点。Caddy file_server 直接服务
+        # 静态文档(容器挂载 docs/ → /srv/docs),/oauth2/* 走 oauth2-proxy——
+        # 登录与回调都在 docs 域闭环,cookie 落在 docs 单域,不跨域。
+        if (r.get("name") or "").strip() == "docs":
+            out.append(f"https://docs.{domain} {{")
+            out.extend([
+                "\tforward_auth oauth2-proxy:4180 {",
+                "\t\turi /oauth2/auth",
+                "\t\tcopy_headers X-Auth-Request-User X-Auth-Request-Email",
+                "\t\t@unauth status 401",
+                "\t\thandle_response @unauth {",
+                f"\t\t\tredir * https://docs.{domain}/oauth2/start"
+                "?rd={scheme}://{host}{uri} 302",
+                "\t\t}",
+                "\t}",
+                "\thandle /oauth2/* {",
+                "\t\treverse_proxy oauth2-proxy:4180",
+                "\t}",
+                "\thandle {",
+                "\t\troot * /srv/docs",
+                "\t\tfile_server",
+                "\t}",
+                "}",
+                "",
+            ])
+            continue
+
         out.append(f"https://{sub}.{domain} {{")
         if r.get("auth", False):
             out.extend([

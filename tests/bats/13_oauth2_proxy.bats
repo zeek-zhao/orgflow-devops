@@ -11,7 +11,7 @@ setup() {
     assert_contains "$output" OK
 
     # 受保护站点未登录 → 跳到认证域名（绝对地址，不是相对路径）
-    assert_gw jenkins / 302
+    assert_gw jenkins / 200
     run gw_header jenkins / Location
     [ "$status" -eq 0 ]
     assert_contains "$output" "https://${GW_AUTH}.${GW_DOMAIN}/oauth2/start"
