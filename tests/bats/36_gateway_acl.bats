@@ -13,15 +13,19 @@ setup() {
 }
 
 @test "gateway acl: oauth2-proxy 参数收紧(allowed-group/单域 cookie/无发布端口)" {
-    run compose_cmd config
+    run compose_cmd config --format json
     [ "$status" -eq 0 ]
-    grep -q "allowed-group=docs-users" <<< "$output"
-    grep -q "cookie-domain=docs.${GW_DOMAIN}" <<< "$output"
-    ! grep -q "email-domain=\*" <<< "$output"
-    # 伪造 X-Forwarded-* 的实际防线是网络隔离:oauth2-proxy 不发布端口,
-    # 只能被 orgflow 网络内的容器(compose config 的 expose)访问
-    ! grep -A30 "^  oauth2-proxy:" <<< "$output" | grep -E "^    ports:"
-    grep -A30 "^  oauth2-proxy:" <<< "$output" | grep -q "expose:"
+    compose_cmd config --format json | python3 -c '
+import json, sys
+cfg = json.load(sys.stdin)
+svc = cfg["services"]["oauth2-proxy"]
+cmd = " ".join(svc.get("command", []))
+assert "allowed-group=docs-users" in cmd, cmd
+assert any("cookie-domain=docs." in a for a in cmd), cmd
+assert "email-domain=*" not in cmd
+assert not svc.get("ports"), "oauth2-proxy 不得发布端口(伪造防线=网络隔离)"
+assert svc.get("expose"), "4180 必须 expose 给 orgflow 网络"
+print("OK")'
 }
 
 @test "gateway acl: 组成员(svc-platform-dev)完成 OIDC 后访问文档站放行" {

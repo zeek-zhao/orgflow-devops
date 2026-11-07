@@ -29,13 +29,21 @@ opener = urllib.request.build_opener(NoRedirect, urllib.request.HTTPCookieProces
 
 
 def fetch(url, data=None, headers=None):
-    req = urllib.request.Request(url, data=data, method="POST" if data else "GET",
-                                 headers=headers or {})
-    try:
-        with opener.open(req, timeout=15) as r:
-            return r.status, r.geturl(), r.read().decode("utf-8", "replace")
-    except urllib.error.HTTPError as e:
-        return e.code, e.geturl() if hasattr(e, "geturl") else url, e.read().decode("utf-8", "replace")
+    for _ in range(10):
+        req = urllib.request.Request(url, data=data, method="POST" if data else "GET",
+                                     headers=headers or {})
+        try:
+            with opener.open(req, timeout=15) as r:
+                return r.status, r.geturl(), r.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as e:
+            loc = e.headers.get("Location")
+            if e.code in (301, 302, 303, 307) and loc:
+                url = fix(loc if loc.startswith("http") else
+                          urllib.parse.urljoin(url, html.unescape(loc)))
+                data = None  # 303/302 后转 GET
+                continue
+            return e.code, url, e.read().decode("utf-8", "replace")
+    raise RuntimeError("redirect loop")
 
 
 def fix(url):
@@ -77,7 +85,12 @@ def login_flow(entry, user, password):
     return status, url, body
 
 
-status, url, body = login_flow(f"https://{host}:{port}/", user, password)
-print(status)
-print(url)
-print(body[:200].replace("\n", " "))
+try:
+    status, url, body = login_flow(f"https://{host}:{port}/", user, password)
+    print(status)
+    print(url)
+    print(body[:200].replace("\n", " "))
+except Exception as exc:
+    print("FLOW-ERROR")
+    print(repr(exc)[:300])
+    sys.exit(3)
