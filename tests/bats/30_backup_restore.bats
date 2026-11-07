@@ -3,11 +3,11 @@
 # test_backup.py 的假 docker 单测，真卷上从未跑过）。这里在 DinD 内层栈补齐：
 #   1. 真卷备份：归档 + sha256 + meta 三件套齐全，--verify 复验通过
 #   2. --dry-run 只出恢复计划，不停服、不碰卷
-#   3. 备份 → 注入探测数据 → 恢复 → 探测数据消失、基线 33 条复原
+#   3. 备份 → 注入探测数据 → 恢复 → 探测数据消失、基线 35 条复原
 #
 # 取舍：
 #   - 用 ldap 而不是 jenkins/nexus：卷最小、启停最快，且 bootstrap 数据有
-#     已知确定基线（33 条，10_ldap 已断言），恢复结果可精确对照。
+#     已知确定基线（35 条，10_ldap 已断言），恢复结果可精确对照。
 #   - BACKUP_DIR 一律指到 /tmp：out/ 是宿主共享 bind mount，往 out/backups
 #     写测试归档会污染真机的备份目录。
 #   - 两个脚本内部硬编码 `docker run … alpine`，但内层 daemon 只预灌 compose
@@ -131,7 +131,7 @@ ldap_wait_healthy() {
     [ "$(docker inspect -f '{{.State.StartedAt}}' of-ldap)" = "$started_before" ]
 }
 
-@test "restore: 注入探测数据后恢复，探测数据消失、基线回到 33 条" {
+@test "restore: 注入探测数据后恢复，探测数据消失、基线回到 35 条" {
     local dir=/tmp/m0-backup-ldap
     local archive
     archive="$(ls "$dir"/ldap-*.tgz 2>/dev/null | head -1)"
@@ -139,7 +139,7 @@ ldap_wait_healthy() {
 
     run ldap_query -s sub '(objectClass=*)' dn
     [ "$status" -eq 0 ]
-    [ "$(grep -c '^dn:' <<< "$output")" -eq 33 ]
+    [ "$(grep -c '^dn:' <<< "$output")" -eq 35 ]
 
     # 备份之后注入一条探测数据：它不在归档里，恢复后必须消失——
     # 这才是「恢复真的回滚了数据」的证据，只对比条目数抓不住删错卷的错。
@@ -163,7 +163,7 @@ sn: Probe'
 
     run ldap_query -s sub '(objectClass=*)' dn
     [ "$status" -eq 0 ]
-    [ "$(grep -c '^dn:' <<< "$output")" -eq 33 ]
+    [ "$(grep -c '^dn:' <<< "$output")" -eq 35 ]
     run ldap_query '(uid=backup.probe)' dn
     [ "$status" -eq 0 ]
     ! grep -q '^dn:' <<< "$output"

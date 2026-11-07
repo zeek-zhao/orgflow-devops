@@ -11,10 +11,19 @@ import html
 import re
 import ssl
 import sys
+import socket
 import urllib.parse
 import urllib.request
 
 host, port, user, password = sys.argv[1:5]
+_domain_suffix = "." + host.split(".", 1)[1]
+
+_orig_getaddrinfo = socket.getaddrinfo
+def _patched_getaddrinfo(h, *a, **k):
+    if h.endswith(_domain_suffix):
+        h = "127.0.0.1"
+    return _orig_getaddrinfo(h, *a, **k)
+socket.getaddrinfo = _patched_getaddrinfo
 ctx = ssl.create_default_context()
 ctx.check_hostname = False
 ctx.verify_mode = ssl.CERT_NONE

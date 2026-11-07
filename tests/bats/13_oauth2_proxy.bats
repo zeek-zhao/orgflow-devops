@@ -10,15 +10,22 @@ setup() {
     [ "$status" -eq 0 ]
     assert_contains "$output" OK
 
-    # 受保护站点未登录 → 跳到认证域名（绝对地址，不是相对路径）
+    # #86:jenkins 摘网关后,其 403 是 Jenkins 自身对匿名用户的响应(自带登录),
+    # 不再有 oauth2 跳转——受保护站点只剩 docs
     assert_gw jenkins / 403
     run gw_header jenkins / Location
-    [ "$status" -eq 0 ]
-    assert_contains "$output" "https://${GW_AUTH}.${GW_DOMAIN}/oauth2/start"
-    # rd 带完整原始 URL，登录后能回到用户本来要去的页面
-    assert_contains "$output" "jenkins.${GW_DOMAIN}"
+    if [ "$status" -eq 0 ]; then
+        ! grep -q "oauth2/start" <<< "$output"
+    fi
 
-    # 认证网关自身再跳 dex（跨域名的第二个跳转）
+    # 受保护站点(docs)未登录 → 302 萳本域 oauth2/start(#86 单域闭环,rd 带回原地址)
+    assert_gw docs / 302
+    run gw_header docs / Location
+    [ "$status" -eq 0 ]
+    assert_contains "$output" "https://docs.${GW_DOMAIN}/oauth2/start"
+    assert_contains "$output" "rd="
+
+    # auth 站点保留 /oauth2/start 入口(兼容),同样 302 到 dex
     assert_gw auth /oauth2/start 302
     run gw_header auth /oauth2/start Location
     [ "$status" -eq 0 ]
