@@ -11,5 +11,5 @@ setup() {
     fi
     # 自身应答:200(首页)或 302(phpLDAPadmin 自身登录跳转),绝非网关的 401/302 oauth2
     run gw_code ldapadmin /
-    assert_contains "$output" -E "200|302"
+    [ "$output" = "200" ] || [ "$output" = "302" ]
 }

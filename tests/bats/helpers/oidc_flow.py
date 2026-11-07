@@ -20,8 +20,10 @@ _domain_suffix = "." + host.split(".", 1)[1]
 
 _orig_getaddrinfo = socket.getaddrinfo
 def _patched_getaddrinfo(h, *a, **k):
-    if h.endswith(_domain_suffix):
-        h = "127.0.0.1"
+    # http.client 在某些路径会把 host:port 整串传进来,判定前剥掉端口
+    base = h.rsplit(":", 1)[0] if isinstance(h, str) and h.count(":") == 1 else h
+    if isinstance(base, str) and base.endswith(_domain_suffix):
+        return _orig_getaddrinfo("127.0.0.1", *a, **k)
     return _orig_getaddrinfo(h, *a, **k)
 socket.getaddrinfo = _patched_getaddrinfo
 ctx = ssl.create_default_context()
@@ -34,7 +36,9 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-opener = urllib.request.build_opener(NoRedirect, urllib.request.HTTPCookieProcessor())
+opener = urllib.request.build_opener(
+    NoRedirect, urllib.request.HTTPCookieProcessor(),
+    urllib.request.HTTPSHandler(context=ctx))
 
 
 def fetch(url, data=None, headers=None):
@@ -56,8 +60,13 @@ def fetch(url, data=None, headers=None):
 
 
 def fix(url):
-    """内层栈把 443 映射到 <port>:浏览器侧 URL 不带端口,请求时补上。"""
-    return re.sub(r"(https://[^/]+)(/|$)", rf"\1:{port}\2", url, count=1)
+    """内层栈把 443 映射到 <port>:浏览器侧 URL 不带端口,请求时补上。
+    已带端口的 URL(netloc 含冒号)原样返回,避免 host:443:443。"""
+    parts = urllib.parse.urlsplit(url)
+    if ":" in parts.netloc:
+        return url
+    return urllib.parse.urlunsplit(
+        (parts.scheme, f"{parts.netloc}:{port}", parts.path, parts.query, parts.fragment))
 
 
 def form_fields(text, base_url):
@@ -101,5 +110,7 @@ try:
     print(body[:200].replace("\n", " "))
 except Exception as exc:
     print("FLOW-ERROR")
-    print(repr(exc)[:300])
+    print(repr(exc)[:400])
+    import traceback
+    traceback.print_exc()
     sys.exit(3)
