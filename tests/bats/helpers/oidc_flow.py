@@ -14,6 +14,7 @@ import sys
 import socket
 import urllib.parse
 import urllib.request
+from urllib.parse import urljoin
 
 host, port, user, password = sys.argv[1:5]
 _domain_suffix = "." + host.split(".", 1)[1]
@@ -43,8 +44,14 @@ opener = urllib.request.build_opener(
 
 def fetch(url, data=None, headers=None):
     for _ in range(10):
+        # Host 头按「当前跳」的域名重算:oauth2-proxy/Dex 用它推导 redirect_uri,
+        # 必须与 Dex 注册的不带端口回调一致;连接目标仍是 127.0.0.1:<port>。
+        # (Host 若沿用上一跳域名,Caddy 会把请求路由到错误站点,实测成环)
+        _parts = urllib.parse.urlsplit(url)
+        merged = dict(headers or {})
+        merged["Host"] = _parts.hostname
         req = urllib.request.Request(url, data=data, method="POST" if data else "GET",
-                                     headers=headers or {})
+                                     headers=merged)
         try:
             with opener.open(req, timeout=15) as r:
                 return r.status, r.geturl(), r.read().decode("utf-8", "replace")
@@ -109,6 +116,10 @@ try:
     print(status)
     print(url)
     print(body[:200].replace("\n", " "))
+    if len(sys.argv) > 5:
+        # 会话建立后再取一个真实文件:成员应 200(放行证明),与内容生成(C2)解耦
+        s2, u2, b2 = fetch(f"https://{host}:{port}{sys.argv[5]}")
+        print("POST-LOGIN-FETCH", s2)
 except Exception as exc:
     print("FLOW-ERROR")
     print(repr(exc)[:400])
