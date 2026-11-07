@@ -81,7 +81,8 @@ def form_fields(text, base_url):
 
 def login_flow(entry, user, password):
     url = fix(entry)
-    for _ in range(8):
+    for hop in range(20):
+        print(f"hop{hop}: {url[:120]}", file=sys.stderr)
         status, url, body = fetch(url)
         if "/dex/auth/ldap/login" in url:
             action, fields = form_fields(body, url)
