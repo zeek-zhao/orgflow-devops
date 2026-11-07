@@ -21,7 +21,7 @@ cfg = json.load(sys.stdin)
 svc = cfg["services"]["oauth2-proxy"]
 cmd = " ".join(svc.get("command", []))
 assert "allowed-group=docs-users" in cmd, cmd
-assert any("cookie-domain=docs." in a for a in cmd), cmd
+assert "cookie-domain=docs." in cmd, cmd
 assert "email-domain=*" not in cmd
 assert not svc.get("ports"), "oauth2-proxy 不得发布端口(伪造防线=网络隔离)"
 assert svc.get("expose"), "4180 必须 expose 给 orgflow 网络"
