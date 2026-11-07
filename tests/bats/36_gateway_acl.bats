@@ -12,13 +12,16 @@ setup() {
     ! grep -q "https://jenkins.${GW_DOMAIN} {" <<< "$(grep -B1 -A6 forward_auth "$M0_REPO/out/Caddyfile")"
 }
 
-@test "gateway acl: oauth2-proxy 参数收紧(trusted-proxy-ip/allowed-group/单域 cookie)" {
+@test "gateway acl: oauth2-proxy 参数收紧(allowed-group/单域 cookie/无发布端口)" {
     run compose_cmd config
     [ "$status" -eq 0 ]
-    [ "$(grep -c trusted-proxy-ip <<< "$output")" -ge 1 ]
     grep -q "allowed-group=docs-users" <<< "$output"
     grep -q "cookie-domain=docs.${GW_DOMAIN}" <<< "$output"
     ! grep -q "email-domain=\*" <<< "$output"
+    # 伪造 X-Forwarded-* 的实际防线是网络隔离:oauth2-proxy 不发布端口,
+    # 只能被 orgflow 网络内的容器(compose config 的 expose)访问
+    ! grep -A30 "^  oauth2-proxy:" <<< "$output" | grep -E "^    ports:"
+    grep -A30 "^  oauth2-proxy:" <<< "$output" | grep -q "expose:"
 }
 
 @test "gateway acl: 组成员(svc-platform-dev)完成 OIDC 后访问文档站放行" {

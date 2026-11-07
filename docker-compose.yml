@@ -364,8 +364,10 @@ services:
       - --ping-path=/ping
       # 组授权:仅 docs-users 组成员可完成登录(#86);非组成员 Dex 认证成功也被拒
       - --allowed-group=docs-users
-      # 反向代理信任收窄:只信 Caddy 的固定 IP,伪造 X-Forwarded-* 不再可行
-      - --trusted-proxy-ip=172.31.0.10/32
+      # X-Forwarded-* 伪造防护(#86):上游 oauth2-proxy 至 v7.9.0 均无
+      # --trusted-proxy-ip 旗标(7.6.0/7.7.1/7.8.2/7.9.0 --help 逐一核实),
+      # 实际防线=网络隔离:4180 仅 expose 不发布端口,只有 orgflow 网络内容器可达,
+      # 宿主与局域网根本路由不到(上游文档对 reverse-proxy 信任的推荐即网络隔离)。
       - --email-domain=devops.com
       - --skip-provider-button=true
     expose:
