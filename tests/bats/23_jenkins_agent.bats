@@ -36,8 +36,9 @@ setup() {
 
 @test "jenkins-agent: JCasC 建出的节点在线，且带 orgflow-docker 标签" {
     local admin pass info deadline
-    admin=$(sed -n 's/^JENKINS_ADMIN_ID=//p' "$M0_ENV_FILE" | tail -1)
-    pass=$(sed -n 's/^JENKINS_ADMIN_PASSWORD=//p' "$M0_ENV_FILE" | tail -1)
+    # #87:本地 admin 已移除,管理权限在 jenkins-admin 组的 LDAP 账号上
+    admin="svc-platform-admin"
+    pass='123456' 
     [ -n "$admin" ]
     [ -n "$pass" ]
 
@@ -74,8 +75,9 @@ setup() {
 
 @test "jenkins-agent: JCasC 把 SSH 私钥装进了系统凭据库" {
     local admin pass raw
-    admin=$(sed -n 's/^JENKINS_ADMIN_ID=//p' "$M0_ENV_FILE" | tail -1)
-    pass=$(sed -n 's/^JENKINS_ADMIN_PASSWORD=//p' "$M0_ENV_FILE" | tail -1)
+    # #87:本地 admin 已移除,管理权限在 jenkins-admin 组的 LDAP 账号上
+    admin="svc-platform-admin"
+    pass='123456' 
 
     # 本卡踩过：JCasC 用了不可实例化的类（fileOnMaster），Jenkins 启动直接中断。
     # 现在虽然启动能过，但「节点离线」有两种完全不同的原因 ——
