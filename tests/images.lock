@@ -9,4 +9,4 @@ nexus	sonatype/nexus3:3.92.2	sha256:a32ae23e0fdacccc4f2a9cbf3aa613388d11a1495d5d
 homepage	gethomepage/homepage:v2.7.0	sha256:19c5c09184458a41b7b5915e71463a39f36cd33540f41bdbed008791b8182d5f
 # #90: jenkins 自建插件镜像 tag 24.04-v2（2026-11-06 构建+推送 GHCR 并回填，#104-1）。
 # 下行是明确的文字占位（不是 sha256）；回填前 make check-pins 会拦住 USE_GHCR=1 上线。
-jenkins	ghcr.io/zeek-zhao/orgflow-devops/jenkins:24.04-v2	sha256:a05c22a42384b1510950336ff08b54270dc01e5a5375f3d46b2f1f7b5709d4e2
+jenkins	ghcr.io/zeek-zhao/orgflow-devops/jenkins:24.04-v3	sha256:ee7dd0022ffe10ac15009a8b27d35c090b36a7fb712090686ede6696fa37ceab

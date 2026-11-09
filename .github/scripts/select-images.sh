@@ -21,7 +21,7 @@ table() {
     cat <<'EOF'
 router	services/router
 jjb	tools/jjb
-jenkins	tools/jenkins
+jenkins	services/jenkins
 jenkins-agent	tools/jenkins-agent
 m0-test	tests/harness
 dnsmasq	services/dnsmasq

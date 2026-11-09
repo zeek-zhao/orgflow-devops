@@ -21,7 +21,7 @@ services:
   # 占位期间的闸门：tests/images.sh ensure 要求 image 为 @sha256:[a-f0-9]{64}；
   # make check-pins 拦 USE_GHCR=1 的 up/deploy（见 Makefile）。
   jenkins:
-    image: ghcr.io/zeek-zhao/orgflow-devops/jenkins:24.04-v2@sha256:a05c22a42384b1510950336ff08b54270dc01e5a5375f3d46b2f1f7b5709d4e2
+    image: ghcr.io/zeek-zhao/orgflow-devops/jenkins:24.04-v3@sha256:ee7dd0022ffe10ac15009a8b27d35c090b36a7fb712090686ede6696fa37ceab
   jenkins-agent:
     image: ghcr.io/zeek-zhao/orgflow-devops/jenkins-agent:24.04-v1@sha256:dd8067a1b1cf5ef7524f024faa37c4e546666ed4143dda877573655b92ebf17d
   ldap:
