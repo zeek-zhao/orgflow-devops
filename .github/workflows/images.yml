@@ -128,7 +128,7 @@ jobs:
           tags: |
             type=sha,format=short
             type=raw,value=24.04-v1
-            ${{ matrix.image == 'jenkins' && format('type=raw,value=24.04-v3') || '' }}
+            ${{ matrix.image == 'jenkins' && 'type=raw,value=24.04-v3' || '' }}
             type=raw,value=latest,enable={{is_default_branch}}
       - uses: docker/build-push-action@v6
         id: build
