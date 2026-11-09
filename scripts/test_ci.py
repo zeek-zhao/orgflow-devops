@@ -252,7 +252,7 @@ class SelectImagesTests(unittest.TestCase):
     EXPECTED = {
         "router": "services/router",
         "jjb": "tools/jjb",
-        "jenkins": "tools/jenkins",
+        "jenkins": "services/jenkins",
         "jenkins-agent": "tools/jenkins-agent",
         "m0-test": "tests/harness",
         "dnsmasq": "services/dnsmasq",
@@ -277,7 +277,7 @@ class SelectImagesTests(unittest.TestCase):
         self.assertEqual(self.selected(result, parsed), ["jenkins-agent"])
 
     def test_multiple_directories_build_all_of_them_in_table_order(self):
-        result, parsed = self.run_select("services/dnsmasq/entrypoint.sh\ntools/jenkins/plugins.txt\n")
+        result, parsed = self.run_select("services/dnsmasq/entrypoint.sh\nservices/jenkins/plugins.txt\n")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.selected(result, parsed), ["jenkins", "dnsmasq"])
 

@@ -411,3 +411,33 @@ make backup                              # 备份 jenkins_home（会先停服）
 `config/`、Job 定义、共享库都在 Git；`.env` 与 `secrets/` 不入库，走受控密钥保管流程另存。
 恢复演练的验证点是「容器 healthy + 能登录 + 关键 Job / 构建记录存在」，完整步骤与三件套
 （`.tgz` / `.sha256` / `.meta`）见 [备份与恢复](../备份与恢复.md)。
+
+## LDAP 安全域（#87 / REQ-M0-A4）
+
+`config/jenkins.yaml` 的 `securityRealm.ldap` 直连 `ldap:389`（容器网络）：
+manager 绑定 `cn=admin`（口令走 `${LDAP_ADMIN_PASSWORD}` 环境变量，**不进 JCasC 明文**），
+用户搜索 `uid={0}` @ `ou=users`，组解析 `fromGroupSearch` 过滤器
+`(& (objectClass=posixGroup) (memberUid={1}))`，`java.naming.referral=ignore`
+（follow 有凭据外泄/SSRF 风险；静态检查 scripts/test_deploy.py `test_referral_is_ignore`，
+改成 follow 必红）。
+
+**授权**：`projectMatrix` 按 `posixGroup` 组——`jenkins-admin` 组 = 全管；
+`jenkins-dev` 组 = 读/构建/取消；其余组登录后无任何权限。本地 admin 已移除。
+
+**真机验证（2026-11-09）**：
+- 匿名 `curl -I https://jenkins.<domain>/` → **403**（不再 302 到 Dex）
+- `svc-platform-dev`（jenkins-dev 组）登录 200，`/manage/` → **403**
+- `svc-platform-admin`（jenkins-admin 组）登录 200，`/manage/` → **200**
+- 错误口令 → 401；agent 节点 `orgflow-docker` 保持在线（SSH 接入不依赖安全域）
+
+## LDAP 安全域回退（应急）
+
+LDAP 配置错误会把 Jenkins 锁死在启动阶段。回退步骤：
+
+1. `git checkout <上一个含 local securityRealm 的提交> -- config/jenkins.yaml`
+2. `docker compose --env-file .env restart jenkins`
+3. `.env` 的 `JENKINS_ADMIN_ID` / `JENKINS_ADMIN_PASSWORD` 恢复本地 admin 登录
+
+**切换前先跑容器内 JNDI 三步测试**（等价 UI 的 Test LDAP settings；本插件版本无
+服务端测试端点，`docker exec of-jenkins bash /tmp/ldaptest3.jsh`——manager bind →
+搜索用户 → 用户 bind，三步全 OK 才允许切）。

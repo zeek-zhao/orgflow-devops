@@ -13,9 +13,9 @@ LDAP 的网页管理界面（phpLDAPadmin）。查用户、改部门、重置密
 
 ## 入口与依赖
 
-- **入口**：`https://ldapadmin.org-devops.com`，**需要登录**（`routes.yaml` 里 `auth: true`，#36）。
-  浏览器先过 oauth2/Dex 统一登录（与 jenkins 站点同一套），登录后才是 phpLDAPadmin
-  自己的 LDAP 登录框（`cn=admin,dc=devops,dc=com` + `LDAP_ADMIN_PASSWORD`）——两层登录。
+- **入口**：`https://ldapadmin.org-devops.com`，**已摘网关**（#86/#88：phpLDAPadmin
+  自带 LDAP bind 就是唯一登录）。直接用目录管理员
+  `cn=admin,dc=devops,dc=com` + `.env` 的 `LDAP_ADMIN_PASSWORD` 登录。
 - **依赖谁**：`ldap`（所有数据都从它读）、`dnsmasq`、`oauth2-proxy`（网关鉴权）
 - **被谁依赖**：无
 
