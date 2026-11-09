@@ -6,3 +6,17 @@ plain-credentials
 ssh-slaves
 ldap
 configuration-as-code
+matrix-auth
+matrix-project
+pipeline-graph-view
+pipeline-stage-view
+dark-theme
+gerrit-trigger
+tap
+ssh-agent
+docker-plugin
+docker-workflow
+build-monitor-plugin
+throttle-concurrents
+timestamper
+ws-cleanup

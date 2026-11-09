@@ -535,6 +535,26 @@ class WinAcceptanceScriptTests(unittest.TestCase):
                 self.assertEqual(raw.count(b"\n") - raw.count(b"\r\n"), 0, "存在裸 LF")
 
 
+class JenkinsLdapRealmTests(unittest.TestCase):
+    """#87:LDAP 安全域静态口径——referral 必须 ignore(follow 有凭据外泄风险)。"""
+
+    def setUp(self):
+        self.root = Path(__file__).resolve().parents[1]
+        self.yaml = (self.root / "config/jenkins.yaml").read_text(encoding="utf-8")
+
+    def test_ldap_realm_present(self):
+        self.assertGreaterEqual(self.yaml.count("ldap:"), 1)
+
+    def test_logged_in_users_can_do_anything_gone(self):
+        self.assertNotIn("loggedInUsersCanDoAnything", self.yaml)
+
+    def test_referral_is_ignore(self):
+        # environmentProperties 形状:name/value 两行;follow 即红(#87 反证口径)
+        m = re.search(r"name: java\.naming\.referral\s+value: (\w+)", self.yaml)
+        self.assertIsNotNone(m, "缺少 java.naming.referral 环境属性")
+        self.assertEqual(m.group(1), "ignore")
+
+
 class HostsSnippetTests(unittest.TestCase):
     """gen-hosts.sh 的输出会直接写进 /etc/hosts，格式错了排查成本极高。"""
 

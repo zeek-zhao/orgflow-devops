@@ -200,3 +200,18 @@ make backup                             # 备份 nexus_data
 注意数据库与 blob store 的同刻一致性（H2 内置备份任务，见上）；镜像本身与仓库定义可重建，
 不含在卷备份里。恢复演练的验证点是「仓库列表与基线一致 + 抽查制品可下载」，
 完整步骤见 [备份与恢复](../备份与恢复.md)。
+
+## LDAP 认证（#88 / REQ-M0-A5）与 SAML 说明
+
+**Nexus CE 支持 LDAP 认证**——社区版不支持的是 SAML SSO / Crowd / User Token，
+「免费版不支持 LDAP」不成立（Sonatype Feature Matrix 官方口径）。
+
+配置路径（管理员 UI）：`⚙ Security → LDAP` → Create：
+Server Address `ldap`，Port `389`，Auth Schema Simple（manager 绑定
+`cn=admin,dc=devops,dc=com` + `.env` 的 `LDAP_ADMIN_PASSWORD`），
+Search Base `ou=users,dc=devops,dc=com`，User Search Filter `uid={0}`，
+Group Search Base 同 LDAP 组段。**连接测试按钮必须通过**后再 Save。
+REST 等价：`PUT /service/rest/v1/security/ldap/{name}`（管理员凭据）。
+
+**SAML**：Pro-only。CE 不支持 SAML SSO，不支持 Crowd；如需 SSO 只能走 LDAP 或
+RUT（Role/User Token）。本文档按 CE 口径写，避免误导后续运维去 Pro 功能里找 LDAP。

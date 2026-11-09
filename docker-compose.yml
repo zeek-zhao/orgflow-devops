@@ -58,6 +58,7 @@ services:
     container_name: of-jenkins
     restart: unless-stopped
     environment:
+      - JENKINS_OPTS=-Djava.util.logging.config.file=/var/jenkins_home/logging.properties
       - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
       - CASC_JENKINS_CONFIG=/var/jenkins_home/casc/jenkins.yaml
       - JENKINS_URL=${JENKINS_URL:-https://jenkins.${GATEWAY_DOMAIN:-org-devops.com}/}

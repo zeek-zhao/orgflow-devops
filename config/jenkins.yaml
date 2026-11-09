@@ -2,15 +2,34 @@ jenkins:
   systemMessage: "orgflow-devops M0 —— Jenkins 自举最小核心"
   # 内置节点不跑构建（5 类 Job 都在 orgflow-docker agent），设 0 消除安全警告 (#92)
   numExecutors: 0
+  # 安全域:#87 起唯一一道登录 = LDAP。应急回退见 docs/services/jenkins.md。
   securityRealm:
-    local:
-      allowsSignup: false
-      users:
-        - id: "${JENKINS_ADMIN_ID}"
-          password: "${JENKINS_ADMIN_PASSWORD}"
+    ldap:
+      configurations:
+        - server: ldap:389
+          rootDN: dc=devops,dc=com
+          userSearchBase: ou=users
+          userSearch: uid={0}
+          groupSearchBase: ou=groups
+          groupSearchFilter: '(& (objectClass=posixGroup) (cn={1}))'
+          groupMembershipStrategy:
+            fromGroupSearch:
+              filter: '(& (objectClass=posixGroup) (memberUid={1}))'
+          managerDN: "cn=admin,dc=devops,dc=com"
+          managerPasswordSecret: "${LDAP_ADMIN_PASSWORD}"
+          environmentProperties:
+            - name: java.naming.referral
+              value: ignore
+  # 授权按组(#87):jenkins-admin=全管,jenkins-dev=构建读写,其余组无权限
   authorizationStrategy:
-    loggedInUsersCanDoAnything:
-      allowAnonymousRead: false
+    projectMatrix:
+      permissions:
+        - "hudson.model.Hudson.Administer:jenkins-admin"
+        - "hudson.model.Hudson.Read:jenkins-dev"
+        - "hudson.model.Item.Read:jenkins-dev"
+        - "hudson.model.Item.Build:jenkins-dev"
+        - "hudson.model.Item.Workspace:jenkins-dev"
+        - "hudson.model.Item.Cancel:jenkins-dev"
   # agent 节点（#45）。三个 pipeline job 都写 node('orgflow-docker')，
   # 之前没有这个节点，所以那三个 job 从建起来就一直 pending。
   #
