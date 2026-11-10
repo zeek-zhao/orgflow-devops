@@ -211,7 +211,13 @@ Server Address `ldap`，Port `389`，Auth Schema Simple（manager 绑定
 `cn=admin,dc=devops,dc=com` + `.env` 的 `LDAP_ADMIN_PASSWORD`），
 Search Base `ou=users,dc=devops,dc=com`，User Search Filter `uid={0}`，
 Group Search Base 同 LDAP 组段。**连接测试按钮必须通过**后再 Save。
-REST 等价：`PUT /service/rest/v1/security/ldap/{name}`（管理员凭据）。
+REST 等价：`POST /service/rest/v1/security/ldap`（创建；PUT 是更新）。
+**2026-11-10 实测**：REST 已按上述参数建置成功（回读 200），但 `security/users?source=ldap`
+拉取仍为空、LDAP 账号登录 401——Nexus 对 LDAP 连接失败有自动停用机制
+（maxIncidentsCount 计满即踢出配置）。**UI 向导逐项核对 + 自带的连接测试按钮
+是验收的正路**（REST 没有测试端点），此项挂 Issue #88 待人工完成。
+另注意：目录 ACL 需允许 `by users read`（#87 落地时已加），否则任何
+以用户身份搜组的组件（含 Jenkins fromGroupSearch）都会静默失败。
 
 **SAML**：Pro-only。CE 不支持 SAML SSO，不支持 Crowd；如需 SSO 只能走 LDAP 或
 RUT（Role/User Token）。本文档按 CE 口径写，避免误导后续运维去 Pro 功能里找 LDAP。
