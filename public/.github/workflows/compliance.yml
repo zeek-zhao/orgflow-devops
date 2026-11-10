@@ -1,0 +1,23 @@
+name: Compliance
+
+# 公开仓 CI 免费额度充足:这里跑发布合规门禁与密钥扫描。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  redaction-gate:
+    name: 发布合规门禁(内网信息/凭据扫描)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: 扫描内网 IP / 内部主机名 / 真实用户名
+        run: bash scripts/check-public-redaction.sh .
+      - name: gitleaks(密钥泄漏扫描)
+        uses: gacts/gitleaks@v1
+        with:
+          args: --no-git --redact .
