@@ -17,7 +17,7 @@ ifeq ($(USE_GHCR),1)
 COMPOSE += -f docker-compose.yml -f docker-compose.ghcr.yml
 endif
 
-.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock images-pin hooks identity-check hosts ca clean check-jenkins-image check-pins
+.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock images-pin hooks identity-check hosts ca clean check-jenkins-image check-pins docs-check sbom cve links mirror
 
 help:
 	@echo "make render   渲染 routes.yaml -> out/Caddyfile"
@@ -31,7 +31,12 @@ help:
 	@echo "make restore  SERVICE=ldap BACKUP_FILE=包路径（交互确认覆盖）"
 	@echo "make backup-verify BACKUP_FILE=包路径（只校验）"
 	@echo "make lint     静态检查（shellcheck/yamllint）"
-	@echo "make test     跑 Python 侧测试（路由/导入/Job 定义/文档四段覆盖）"
+	@echo "make test     跑 Python 侧测试（路由/导入/Job 定义/文档四段覆盖/文档登记册）"
+	@echo "make docs-check 只跑文档登记册门禁（IEEE 828：双向一致/ID唯一/状态见证）"
+	@echo "make sbom     生成声明式 SBOM（SPDX 2.3，输出 out/sbom.spdx.json）"
+	@echo "make cve      对本项目分发的每个镜像跑 trivy（先出账不阻断；未装 trivy 会明确失败）"
+	@echo "make mirror   导出公开镜像仓内容 + 脱敏门禁（DEST=目录，发布前必跑）"
+	@echo "make links    校验导出目录链接自洽（无 404）"
 	@echo "make check-jenkins-image 静态校验 plugins.txt 必装项 + Dockerfile 用 jenkins-plugin-cli（#90）"
 	@echo "make check-pins 校验 tests/images.lock 无「待构建后回填」占位（USE_GHCR=1 上线闸门）"
 	@echo "make test-groovy 跑共享库行为测试（需要 groovy，缺失则跳过）"
@@ -122,7 +127,32 @@ test: check-jenkins-image
 	@python3 scripts/test_job_pipelines.py
 	@python3 scripts/migrate_identity.py --verify
 	@python3 scripts/test_ldif_passwords.py
+	@$(MAKE) --no-print-directory docs-check
 	@echo "python syntax ok"
+
+# 文档配置管理门禁（IEEE 828 轻量落地）：双向一致性、DOC-ID 唯一、状态与见证匹配，
+# 复审超期只报 WARN。规则见 docs/文档规范.md，清单见 docs/文档登记册.md。
+# 反证：删掉登记册里任意一行，这条必须红；补回去复绿。
+docs-check:
+	@python3 scripts/check_docs_meta.py
+
+# 声明式 SBOM（SPDX 2.3）。组件取自 compose/nexus 脚本的 digest，许可证取自
+# scripts/gen-sbom.py 的 DECLARED 表（依据 public/THIRD_PARTY_NOTICES.md）。
+sbom:
+	@python3 scripts/gen-sbom.py out/sbom.spdx.json
+
+# CVE 扫描：先出账不阻断。未装 trivy 时明确报错退出，不让「没扫」被当成「扫过且干净」。
+cve:
+	@bash scripts/cve-scan.sh
+
+# 发布物链接自洽：导出目录里指向未导出内部文档的链接必须已降级。
+links:
+	@python3 scripts/check_export_links.py "$${DEST:-.mirror-export}"
+
+# 一条命令做「导出 → 脱敏门禁」，发布前必跑；导出脚本自身会做必需文件冒烟与链接降级。
+mirror:
+	@bash scripts/mirror-public.sh "$${DEST:-.mirror-export}"
+	@bash scripts/check-public-redaction.sh "$${DEST:-.mirror-export}"
 
 # #90 / REQ-M0-B1：Jenkins 镜像静态自检。本轮不构建镜像，容器内插件清单无法实测，
 # 用「清单必含项 + Dockerfile 用 jenkins-plugin-cli 安装」替代（见 docs/M0-镜像与CI.md）。
