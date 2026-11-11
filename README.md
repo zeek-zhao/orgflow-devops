@@ -27,10 +27,23 @@
 
 ```bash
 cp .env.example .env        # 填域名/端口/账号；镜像 digest 由 tests/images.lock 锁定
-make deploy                 # 起 M0 底座（域名与端口取自 .env）
+make deploy                 # 起 M0 底座（镜像从 GHCR 拉，域名与端口取自 .env）
 make hosts                  # 生成 /etc/hosts 片段：域名 → 本机（局域网用 --write <IP>）
 make ca                     # 安装 Caddy 内部 CA 根证书（自签 TLS 必需）
 make jobs                   # 推送参数化 deploy/backup Job 到 Jenkins
+```
+
+**镜像只有一个来源：GitHub Actions 构建并推到 GHCR，本地只拉不建。**
+12 个包全部 public，拉取不需要 `docker login`，也不需要任何凭据。
+`make deploy` 前会过一道闸门（`scripts/check-image-source.sh`）：若镜像上下文
+（Dockerfile / JCasC / 路由渲染器等）自上次构建以来改过，就直接拒绝部署 ——
+否则会拉到上一版镜像、健康检查全绿、跑的却是旧代码。
+
+改了镜像相关内容要本地立刻验证时：
+
+```bash
+make build-local            # 显式本地构建，产物不推 GHCR，只供本地验证
+USE_GHCR=0 make deploy      # 用本地这套镜像起来
 ```
 
 **从 `https://home.org-devops.com/` 进**——一屏看到所有服务，点进去直达。

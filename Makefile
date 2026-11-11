@@ -13,11 +13,22 @@ export DOCKER_GID
 # （该类构造时就 parseKey），所以 deploy.sh / harness / 这里三处都要导出。
 JENKINS_AGENT_HOST_KEY ?= $(shell awk 'NR==1{print $$1" "$$2}' secrets/agent_host_key.pub 2>/dev/null)
 export JENKINS_AGENT_HOST_KEY
+# 镜像只有一个来源：GitHub Actions 构建推进 GHCR，本地只拉不建。
+# 为什么默认改为 1：仓库要对公众开放，任何人 clone 下来都应拿到**同一批镜像**；
+# 默认本地构建时，同一份源码在不同机器上会编译出不同结果，也就没有可复现性可言。
+# 本地构建仍然保留，但要显式 `make build-local` / `USE_GHCR=0 make deploy` ——
+# 「默认」和「允许」是两件事，出问题时要能从命令本身看出走的是哪条路。
+USE_GHCR ?= 1
 ifeq ($(USE_GHCR),1)
 COMPOSE += -f docker-compose.yml -f docker-compose.ghcr.yml
+# 不带覆盖层的 Compose：仅供 build-local 使用，避免构建路径被 digest 锁定的
+# image: 干扰（拿 `tag@sha256:...` 去 build 会被 compose 拒绝打 tag）。
+COMPOSE_LOCAL = docker compose
+else
+COMPOSE_LOCAL = $(COMPOSE)
 endif
 
-.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock images-pin hooks identity-check hosts ca clean check-jenkins-image check-pins docs-check sbom cve links mirror
+.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock images-pin images-guard build-local hooks identity-check hosts ca clean check-jenkins-image check-pins docs-check sbom cve links mirror
 
 help:
 	@echo "make render   渲染 routes.yaml -> out/Caddyfile"
@@ -38,12 +49,14 @@ help:
 	@echo "make mirror   导出公开镜像仓内容 + 脱敏门禁（DEST=目录，发布前必跑）"
 	@echo "make links    校验导出目录链接自洽（无 404）"
 	@echo "make check-jenkins-image 静态校验 plugins.txt 必装项 + Dockerfile 用 jenkins-plugin-cli（#90）"
-	@echo "make check-pins 校验 tests/images.lock 无「待构建后回填」占位（USE_GHCR=1 上线闸门）"
+	@echo "make images-guard 镜像来源闸门：digest 锁死 / pinned-at 可解析 / 镜像未落后于源码（deploy 前置）"
 	@echo "make test-groovy 跑共享库行为测试（需要 groovy，缺失则跳过）"
 	@echo "make test-bats DinD 容器内跑 10 个 compose 服务 + job 部署的 nexus（KEEP=1 保现场）"
 	@echo "make images-lock 从本地镜像 digest 更新 tests/images.lock"
 	@echo "make images-pin 从 GHCR 回写自建镜像 digest（先跑 images.yml）"
-	@echo "USE_GHCR=1 make up / test-bats 使用 GHCR 锁定镜像（包全 public，无需 docker login）"
+	@echo "镜像默认来自 GHCR（USE_GHCR=1）：由 images.yml 构建推送，本地只拉不建"
+	@echo "make build-local 显式本地构建（只供本地验证，不推 GHCR）"
+	@echo "USE_GHCR=0 make deploy 使用本地构建的镜像部署"
 	@echo "make hooks    安装 git 钩子（提交身份校验 + 主干保护），新克隆必做"
 	@echo "make identity-check 校验仓库提交身份是否唯一（见 docs/提交规范.md）"
 	@echo "make down     停止并移除容器"
@@ -64,16 +77,22 @@ hosts:
 ca:
 	@bash scripts/ca-install.sh
 
-deploy: render
-	$(if $(filter 1,$(USE_GHCR)),@$(MAKE) --no-print-directory check-pins)
+deploy: render images-guard
 	@ENV_FILE="$(ENV_FILE)" COMPOSE="$(COMPOSE)" USE_GHCR="$(USE_GHCR)" bash scripts/deploy.sh $(if $(SERVICE),--service $(SERVICE),)
 
 doctor:
 	@ENV_FILE="$(ENV_FILE)" COMPOSE="$(COMPOSE)" python3 scripts/doctor.py
 
-up:
-	$(if $(filter 1,$(USE_GHCR)),@$(MAKE) --no-print-directory check-pins)
+up: images-guard
 	$(COMPOSE) --env-file $(ENV_FILE) up -d $(if $(filter 1,$(USE_GHCR)),--no-build)
+
+# 本地构建（显式）：改了 Dockerfile 想立刻验证时用，产物只在本地，**不推 GHCR**。
+# 建完用 `USE_GHCR=0 make deploy` 起来；验证通过后走正常流程（PR → CI → images-pin），
+# 不要拿本地镜像去部署共享环境。
+build-local:
+	@echo "== 本地构建（USE_GHCR=0）：产物不推 GHCR，只供本地验证 =="
+	$(COMPOSE_LOCAL) build router dnsmasq jjb jenkins jenkins-agent
+	@echo "== 完成；用 USE_GHCR=0 make deploy 部署这套本地镜像 =="
 
 down:
 	$(COMPOSE) --env-file $(ENV_FILE) down
@@ -121,6 +140,7 @@ test: check-jenkins-image
 	@python3 scripts/test_backup.py
 	@python3 scripts/test_nexus_archive.py
 	@python3 scripts/test_ci.py
+	@python3 scripts/test_image_source.py
 	@python3 scripts/test_docs.py
 	@python3 scripts/test_homepage_config.py
 	@python3 scripts/test_service_doc_sections.py
@@ -173,14 +193,15 @@ check-jenkins-image:
 	fi; \
 	echo "✓ 镜像自检通过: 5 项必装插件齐备，Dockerfile 用 jenkins-plugin-cli 安装"
 
-# #90：tests/images.lock 里还有「待构建后回填」占位时禁止带占位上线。
-# 本轮不构建不推送，digest 尚未产生；USE_GHCR=1 的 up / deploy 会先撞这条闸门。
-check-pins:
-	@if grep -v '^#' tests/images.lock | grep -q '待构建后回填'; then \
-		echo "✗ tests/images.lock 仍有未回填的 digest 占位（待构建后回填）；先构建镜像并回填真实 digest，禁止上线"; \
-		exit 1; \
-	fi; \
-	echo "✓ images.lock 无待回填占位"
+# #90 / 镜像来源闸门：USE_GHCR=1 时禁止把「源码已改、镜像没重建」的状态部署出去。
+# 三条判据见 scripts/check-image-source.sh：digest 锁死无占位 / pinned-at 可解析 /
+# 镜像上下文自 pinned-at 以来无改动。反证：改一下 services/jenkins/Dockerfile
+# 再跑 make deploy，这条必须红；git checkout 回去复绿。
+images-guard:
+	@USE_GHCR="$(USE_GHCR)" bash scripts/check-image-source.sh
+
+# 旧名字保留：外部脚本/文档里还写着 make check-pins
+check-pins: images-guard
 
 test-bats:
 	@USE_GHCR="$(USE_GHCR)" bash tests/images.sh ensure

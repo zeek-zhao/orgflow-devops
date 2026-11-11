@@ -27,8 +27,13 @@ class ImageTests(unittest.TestCase):
             shutil.copyfile(ROOT / name, target)
         binary = self.root / "bin"
         binary.mkdir()
+        # 不在这里设 IMAGES_TAG：正常回写的 tag 是**每个镜像各自的**版本语义
+        # （jenkins 24.04-v3、其余 24.04-v1）。设成统一值会把这条差异掩盖掉，
+        # 而 pin-images.sh 上一版正是把 tag 写死成 24.04-v1、给 jenkins 挂上了
+        # 24.04-v3 才该用的 digest。
         self.env = dict(os.environ, PATH=f"{binary}:{os.environ['PATH']}",
-                        ALLOW_PULL_DOCKER_HUB="0", USE_GHCR="0", IMAGES_TAG="latest")
+                        ALLOW_PULL_DOCKER_HUB="0", USE_GHCR="0",
+                        PINNED_AT_SHA="a" * 40)
         mock = binary / "docker"
         mock.write_text(f"""#!{sys.executable}
 import json
@@ -119,7 +124,10 @@ if args[0] == "inspect":
             self.assertEqual(re.search(pattern, path.read_text(), re.MULTILINE).group(),
                              re.search(pattern, original, re.MULTILINE).group())
         for name in ("router", "jjb", "m0-test", "dnsmasq", "jenkins", "jenkins-agent"):
-            self.assertIn(f"/{name}:24.04-v1@{DIGEST}", path.read_text())
+            # jenkins 的 tag 是 24.04-v3（插件集变过一次），其余是 24.04-v1。
+            # 回写必须沿用各自已登记的 tag，不能统一成 v1。
+            tag = "24.04-v3" if name == "jenkins" else "24.04-v1"
+            self.assertIn(f"/{name}:{tag}@{DIGEST}", path.read_text())
         self.assertIn("x-m0-test-image:", path.read_text())
         result = self.run_script("scripts/pin-images.sh")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -127,7 +135,13 @@ if args[0] == "inspect":
         self.assertEqual((self.root / "tests/images.lock").read_bytes(), lock)
         # 六个自建镜像各查一次 digest，脚本跑两遍 → 12
         self.assertEqual(len([call for call in self.calls() if "inspect" in call]), 12)
-        self.assertTrue(all(call[-1].endswith(":latest") for call in self.calls() if "inspect" in call))
+        inspected = {call[-1].rsplit("/", 1)[-1] for call in self.calls() if "inspect" in call}
+        self.assertEqual(inspected, {
+            "router:24.04-v1", "jjb:24.04-v1", "m0-test:24.04-v1",
+            "dnsmasq:24.04-v1", "jenkins:24.04-v3", "jenkins-agent:24.04-v1",
+        })
+        # pinned-at 必须写进覆盖层，否则 check-image-source.sh 无法判断镜像是否过期
+        self.assertIn("# pinned-at: " + "a" * 40, path.read_text())
 
     def test_explicit_sha_tag_supports_premerge_acceptance(self):
         result = self.run_script("scripts/pin-images.sh", IMAGES_TAG="sha-ba5e76e")
