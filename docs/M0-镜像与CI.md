@@ -129,22 +129,55 @@ docker pull ghcr.io/zeek-zhao/orgflow-devops/router:24.04-v1
 
 ```sh
 make render
-# 有正确配置的 .env；--no-build 避免已有 build 字段触发本地重建
-USE_GHCR=1 make up
+# 默认就是 GHCR（USE_GHCR 缺省 1）；--no-build 避免 build 字段触发本地重建
+make up
 # 等价的显式 Compose 调用
 docker compose -f docker-compose.yml -f docker-compose.ghcr.yml --env-file .env up -d --no-build
-USE_GHCR=1 make test-bats
+make test-bats
 ```
 
-`USE_GHCR=1` 为 Make 的 Compose 命令叠加 GHCR override。
-测试同时从 GHCR 拉取锁定的 router/上游服务/harness，不再本地构建；
+`USE_GHCR` 缺省为 **1**：`make deploy` / `make up` / `make test-bats` 一律叠加
+GHCR override 并从 registry 拉取，不再本地构建。
+测试从 GHCR 拉取锁定的 router/上游服务/harness；
 `M0_COMPOSE_EXTRA` 把额外 override 文件路径传给 DinD 和 bats 的 Compose helper，
 最后仍以已验证宿主镜像的 config ID override 预灌内层 daemon。
 不要绕过首次 pin：未 pin 的文件只包含七个上游服务，可以通过 Compose 配置检查，
 但不能在没有 Hub 缓存的 213 上完成自建镜像部署。
 
-不设置 `USE_GHCR` 时保留本地构建行为。213 缺 Hub 镜像立即报错，不尝试不可达的网络；
+**本地构建必须显式**：`make build-local`（产物不推 GHCR），起来用
+`USE_GHCR=0 make deploy`。两条路径的作用不同，不是等价选项 ——
+默认值必须保证「任何人 clone 下来拿到同一批镜像」，否则同源码在不同机器
+编出不同结果，就没有可复现性可言。
+
+本地构建路径下 213 缺 Hub 镜像会立即报错，不尝试不可达的网络；
 GitHub 托管 runner 无缓存，工作流显式设置 `ALLOW_PULL_DOCKER_HUB=1` 才允许拉取。
+
+### 镜像来源闸门（`scripts/check-image-source.sh`）
+
+默认从 GHCR 拉之后，出现了一种新的失败模式，而且它长得像成功：
+
+> 改了 `services/jenkins/Dockerfile`，没等 CI 跑完就 `make deploy`。
+> Compose 顺利拉到**上一版**镜像，健康检查全绿，端点自检全绿，部署的却是旧代码。
+
+闸门拦的就是这个。三条判据：
+
+| 判据 | 失败表现 | 为什么用这个判据 |
+|---|---|---|
+| digest 全部 `@sha256` 锁定、`tests/images.lock` 无「待构建后回填」占位 | 浮动 tag 会拉到不同镜像 | 部署结果必须可复现 |
+| `# pinned-at: <sha>` 存在且该提交在本地 | 无法判断镜像与源码的对应关系 | 这是唯一能回答「镜像过期没」的依据 |
+| 镜像上下文自 `pinned-at` 以来无改动（含未提交改动） | 镜像落后于源码 | 见上 |
+
+`pinned-at` 由 `scripts/pin-images.sh` 写入 `docker-compose.ghcr.yml` 头部，
+值是产出这批 digest 的那次提交。**判据刻意不写成「HEAD 是否等于 origin/main」**：
+改一行文档就会让两者不等，那种闸门天天误报，人很快学会无视它 —— 比没有更糟。
+镜像上下文的定义与 `.github/workflows/images.yml` 的 `paths` 逐项一致。
+
+没有 `.git` 元数据时（zip 解压的副本）只警告不失败：那种副本的 digest 与它
+自己的源码同批产出，本来就无从比较，而「下载压缩包」是公开仓最常见的打开方式。
+
+反证：改一个 `services/jenkins/Dockerfile` 再跑 `make deploy`，闸门必须红；
+`git checkout -- services/jenkins/Dockerfile` 后复绿。测试见
+`scripts/test_image_source.py`（建真仓库跑真 git，不用桩）。
 
 **`USE_GHCR=1` 时 `up` 必须带 `--no-build`，不能带 `--build`。** override 里 `image:` 是
 digest 引用（`repo:tag@sha256:...`），compose 若去构建就会拿它当 tag 写，直接报
