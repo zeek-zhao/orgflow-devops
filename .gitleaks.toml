@@ -1,0 +1,28 @@
+# gitleaks：默认规则全开，只对**已逐条核实为占位符**的历史命中做窄口径豁免。
+#
+# 为什么需要这份文件：`compliance.yml` 的 secret-scan 跑的是全历史
+# （`--log-opts=--all`），历史里出现过三条命中，全部不是凭据：
+#
+#   1. `curl-auth-user` × 2 —— Jenkins 官方 Remote Access API 文档的逐字示例
+#      `curl ... --user USER:TOKEN ...`。它被引在 `scripts/jenkins-cli.sh` 的注释
+#      与 `docs/services/jenkins.md` 的「资料依据」表里，上下文恰恰是在讲
+#      「凭据不进 argv、不进日志」。`USER:TOKEN` 是官方占位符。
+#   2. `generic-api-key` × 1 —— `.env.example` 旧版的 `OAUTH2_COOKIE_SECRET`
+#      占位串 `0123456789abcdef0123456789abcdef`（顺序十六进制，肉眼可读）。
+#      当前值已改成 `change-me-...`，低熵，不会再命中。
+#
+# 口径：**不豁免整个文件**。豁免的是「这一行的内容长这样」，
+# 所以同一文件里以后再出现别的形状的密钥，照样会被抓。
+# 每次改动这份清单，都要同时在 PR 里贴「去掉豁免后会命中什么」的反证输出。
+[extend]
+useDefault = true
+
+[allowlist]
+description = "历史误报：Jenkins 官方示例占位符 + .env.example 历史占位串"
+# 默认只拿 secret 片段去比；这里要按整行比，才能覆盖 curl 规则抽出的
+# `USER:TOKEN` 前后的上下文，避免误放宽到「任何含 USER 的行」。
+regexTarget = "line"
+regexes = [
+  '''--user USER:TOKEN''',
+  '''OAUTH2_COOKIE_SECRET=0123456789abcdef0123456789abcdef''',
+]

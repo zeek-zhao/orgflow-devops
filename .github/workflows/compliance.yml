@@ -60,7 +60,9 @@ jobs:
         with:
           # 原参数是 `--no-git`（只扫工作区），等于放弃历史。
           # 历史一旦重写不到位，泄漏就在这里暴露 —— 公开之后这是唯一能挡的时机。
-          args: --redact --verbose --log-opts=--all
+          # `--config` 显式指定而不是靠自动发现：豁免清单只有一份，路径写死才不会
+          # 因为 action 换了工作目录而静默退回默认规则（假红或假绿都不该靠运气）。
+          args: --config .gitleaks.toml --redact --verbose --log-opts=--all
 
   sbom:
     name: SBOM（SPDX 2.3）

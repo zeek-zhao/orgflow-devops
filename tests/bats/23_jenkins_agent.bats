@@ -38,7 +38,9 @@ setup() {
     local admin pass info deadline
     # #87:本地 admin 已移除,管理权限在 jenkins-admin 组的 LDAP 账号上
     admin="svc-platform-admin"
-    pass='123456' 
+    # 口令真值只在 .env（ORGFLOW_INITIAL_PASSWORD）；硬编码过一次 123456，
+    # 口令随机化之后这两个用例直接 401 —— 见 helpers/common.bash 的 ldap_initial_password
+    pass=$(ldap_initial_password) || return 1
     [ -n "$admin" ]
     [ -n "$pass" ]
 
@@ -77,7 +79,7 @@ setup() {
     local admin pass raw
     # #87:本地 admin 已移除,管理权限在 jenkins-admin 组的 LDAP 账号上
     admin="svc-platform-admin"
-    pass='123456' 
+    pass=$(ldap_initial_password) || return 1
 
     # 本卡踩过：JCasC 用了不可实例化的类（fileOnMaster），Jenkins 启动直接中断。
     # 现在虽然启动能过，但「节点离线」有两种完全不同的原因 ——

@@ -23,6 +23,15 @@ compose() {
         --env-file "$M0_ENV_FILE" --project-directory /repo "$@"
 }
 
+# 同一套 compose 参数的可传递形式：scripts/*.sh 走 `COMPOSE` 环境变量约定
+# （与 backup.sh 一致 —— shell 函数没法跨进程传给脚本）。
+compose_cmd_string() {
+    local parts="docker compose -f /repo/docker-compose.yml"
+    if [[ -n ${M0_COMPOSE_EXTRA:-} ]]; then parts+=" -f $M0_COMPOSE_EXTRA"; fi
+    parts+=" -f $M0_COMPOSE_OVERRIDE --project-directory /repo"
+    printf '%s' "$parts"
+}
+
 diagnose() {
     echo "== failed: $stage ==" >&2
     if (( compose_ready )); then
@@ -85,7 +94,8 @@ if [[ -f $source_env ]]; then
     cp "$source_env" "$M0_ENV_FILE"
 else
     cp /repo/.env.example "$M0_ENV_FILE"
-    for key in LDAP_ADMIN_PASSWORD OAUTH2_CLIENT_SECRET OAUTH2_COOKIE_SECRET JENKINS_ADMIN_PASSWORD NEXUS_ADMIN_PASSWORD; do
+    for key in LDAP_ADMIN_PASSWORD OAUTH2_CLIENT_SECRET OAUTH2_COOKIE_SECRET \
+               JENKINS_ADMIN_PASSWORD NEXUS_ADMIN_PASSWORD ORGFLOW_INITIAL_PASSWORD; do
         secret=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
         sed -i "s/^${key}=.*/${key}=${secret}/" "$M0_ENV_FILE"
     done
@@ -216,6 +226,14 @@ NEXUS_ADMIN_PASSWORD="$(sed -n 's/^NEXUS_ADMIN_PASSWORD=//p' "$M0_ENV_FILE" | ta
 
 stage="bootstrapping isolated LDAP"
 compose exec -T ldap sh -c 'LDAP_URI=ldap://localhost:389 bash /opt/orgflow-auth/bootstrap-ldif.sh'
+
+# LDIF 里的 {SSHA} 是一份「谁都不知道真值」的哈希（公开仓库不能挂可用口令）。
+# 目录建好之后改 LDIF 不会改已有条目，所以运行中的口令必须用 ldapmodify 显式设一遍，
+# 否则测试拿 .env 的口令登录会一律 49/401 —— 这是 2026-11-11 三个用例红的根因。
+stage="setting ldap user passwords"
+COMPOSE="$(compose_cmd_string)" ENV_FILE="$M0_ENV_FILE" \
+    bash /repo/scripts/ldap-set-passwords.sh
+
 stage="running bats"
 cd /repo
 # 断言全部走域名 + SNI（--resolve 把域名钉到 127.0.0.1:8443），不依赖 hosts 文件
