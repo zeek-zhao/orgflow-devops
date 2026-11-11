@@ -28,6 +28,8 @@ FROM jenkins/jenkins:lts-jdk21@sha256:74401de6a6f92e1afe1b02d1c8e3d0c33f263bfb52
 
 LABEL org.opencontainers.image.base.name="jenkins/jenkins:lts-jdk21@sha256:74401de6a6f92e1afe1b02d1c8e3d0c33f263bfb5275dd8813f9150355f2367b"
 LABEL org.opencontainers.image.title="orgflow-devops jenkins"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.licenses.note="Jenkins core and the bundled plugins are MIT-licensed"
 LABEL org.opencontainers.image.description="Jenkins controller with the default plugin set (workflow-aggregator, git, credentials, ldap, configuration-as-code)"
 
 # USER root 是必需的：上游镜像末尾已经切回 jenkins 用户，

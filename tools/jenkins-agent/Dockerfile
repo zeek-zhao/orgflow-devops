@@ -13,6 +13,8 @@ FROM jenkins/ssh-agent:jdk21@sha256:a62ab1b4b51fbd77a12ba6382d5f550d105a7ece1cad
 
 LABEL org.opencontainers.image.base.name="jenkins/ssh-agent:jdk21@sha256:a62ab1b4b51fbd77a12ba6382d5f550d105a7ece1cad3b7be49e1df56766d364"
 LABEL org.opencontainers.image.title="orgflow-devops jenkins-agent"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.licenses.note="Built on jenkins/ssh-agent (MIT); only the Docker CLI (Apache-2.0) is added"
 
 # 只装 docker CLI，不装 daemon。
 # daemon 用宿主机的（挂 /var/run/docker.sock 复用），装 docker.io 会白带一个
