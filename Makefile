@@ -203,12 +203,29 @@ images-guard:
 # 旧名字保留：外部脚本/文档里还写着 make check-pins
 check-pins: images-guard
 
+# test-bats 验证的是「**本次源码**构建出来的栈能不能起来」，所以它必须本地构建。
+# 用 GHCR 镜像跑 bats 是自欺：GHCR 上是上一个提交的镜像，PR 改的东西根本不在里面。
+# 因此这里独立一个开关（缺省 0），不跟随全局 USE_GHCR —— 否则把默认值改成 1
+# 之后，bats 会静默退化成「测旧镜像」，而它恰好是这套栈唯一的真验证。
+TEST_BATS_GHCR ?= 0
+# 只在「跑 test-bats 且显式传了 USE_GHCR」时警告：
+#   - $(origin USE_GHCR) 要覆盖 environment 与 command line 两种写法
+#     （`USE_GHCR=1 make …` 是 environment，`make USE_GHCR=1 …` 是 command line）；
+#   - 用 MAKECMDGOALS 过滤，否则 `USE_GHCR=1 make deploy` 也会打出与它无关的警告。
+ifneq ($(filter test-bats,$(MAKECMDGOALS)),)
+ifneq ($(filter environment command line,$(origin USE_GHCR)),)
+ifneq ($(USE_GHCR),$(TEST_BATS_GHCR))
+$(warning USE_GHCR=$(USE_GHCR) 对 test-bats 无效：bats 只测本地构建。要跑 GHCR 镜像请用 TEST_BATS_GHCR=1)
+endif
+endif
+endif
+
 test-bats:
-	@USE_GHCR="$(USE_GHCR)" bash tests/images.sh ensure
-	@if [[ "$(USE_GHCR)" != 1 ]]; then docker build -t orgflow/m0-test:24.04-v1 tests/harness; fi
-	@image=$$(USE_GHCR="$(USE_GHCR)" bash tests/images.sh harness-image) && \
-	docker run --rm --privileged --name orgflow-m0-test -e KEEP="$(KEEP)" \
-		-e M0_COMPOSE_EXTRA="$(if $(filter 1,$(USE_GHCR)),/repo/docker-compose.ghcr.yml)" \
+	@USE_GHCR="$(TEST_BATS_GHCR)" bash tests/images.sh ensure
+	@if [[ "$(TEST_BATS_GHCR)" != 1 ]]; then docker build -t orgflow/m0-test:24.04-v1 tests/harness; fi
+	@image=$$(USE_GHCR="$(TEST_BATS_GHCR)" bash tests/images.sh harness-image) && \
+		docker run --rm --privileged --name orgflow-m0-test -e KEEP="$(KEEP)" \
+		-e M0_COMPOSE_EXTRA="$(if $(filter 1,$(TEST_BATS_GHCR)),/repo/docker-compose.ghcr.yml)" \
 		-v "$(CURDIR):/repo" -v /var/run/docker.sock:/host/docker.sock \
 		-v m0-dind:/var/lib/docker "$$image"
 

@@ -136,9 +136,17 @@ docker compose -f docker-compose.yml -f docker-compose.ghcr.yml --env-file .env 
 make test-bats
 ```
 
-`USE_GHCR` 缺省为 **1**：`make deploy` / `make up` / `make test-bats` 一律叠加
-GHCR override 并从 registry 拉取，不再本地构建。
-测试从 GHCR 拉取锁定的 router/上游服务/harness；
+`USE_GHCR` 缺省为 **1**：`make deploy` / `make up` 一律叠加 GHCR override
+并从 registry 拉取，不再本地构建。
+
+**`make test-bats` 例外，它只测本地构建**（开关是 `TEST_BATS_GHCR`，缺省 0）。
+bats 是这套栈唯一的真验证，验的是「本次源码构建出来的栈能不能起来」；
+用 GHCR 镜像跑它等于测上一个提交，PR 改的东西根本不在里面。
+传 `USE_GHCR=1 make test-bats` 会打出警告说明它对 bats 无效，不静默忽略。
+`TEST_BATS_GHCR=1 make test-bats` 才走 GHCR 镜像（GHCR 模式的 nexus 不在 compose 里，
+要先确认宿主已有所需镜像）。
+
+本地构建模式（`TEST_BATS_GHCR=0`）下测试从 lock 拉上游镜像并构建 router/上游服务/harness；
 `M0_COMPOSE_EXTRA` 把额外 override 文件路径传给 DinD 和 bats 的 Compose helper，
 最后仍以已验证宿主镜像的 config ID override 预灌内层 daemon。
 不要绕过首次 pin：未 pin 的文件只包含七个上游服务，可以通过 Compose 配置检查，

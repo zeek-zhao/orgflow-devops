@@ -29,6 +29,9 @@ jobs:
         run: make identity-check
       - run: make test
       - name: Run bats in DinD
+        # bats 只测本地构建（Makefile 的 TEST_BATS_GHCR 缺省 0，且不跟随 USE_GHCR）：
+        # CI 要验证的是**本次提交的源码**能不能起得来，GHCR 上是上一个提交的镜像。
+        # 托管 runner 可出网，构建 + 拉 Hub 都允许。
         run: |
           set -o pipefail
           ALLOW_PULL_DOCKER_HUB=1 make test-bats 2>&1 | tee /tmp/bats-run.log
