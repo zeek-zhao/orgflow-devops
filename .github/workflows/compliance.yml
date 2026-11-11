@@ -21,7 +21,7 @@ jobs:
     name: 发布物可发布性（必需文件 / 脱敏 / 链接自洽）
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: 必需文件在位
         run: |
@@ -52,11 +52,11 @@ jobs:
     name: 密钥泄漏扫描（全历史）
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0        # 必须全历史，否则 `--log-opts=--all` 也扫不到东西
       - name: gitleaks
-        uses: gacts/gitleaks@v1
+        uses: gacts/gitleaks@4fd785dcdaf557fda64e05b0ae033b8f7d82fb81 # v1
         with:
           # 原参数是 `--no-git`（只扫工作区），等于放弃历史。
           # 历史一旦重写不到位，泄漏就在这里暴露 —— 公开之后这是唯一能挡的时机。
@@ -68,10 +68,10 @@ jobs:
     name: SBOM（SPDX 2.3）
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: 生成声明式 SBOM
         run: python3 scripts/gen-sbom.py out/sbom.spdx.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sbom-spdx
           path: out/sbom.spdx.json

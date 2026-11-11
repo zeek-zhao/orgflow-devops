@@ -49,7 +49,8 @@ Ubuntu 基础镜像本身包含大量组件（GPL/LGPL/BSD 等），其版权与
 
 | 依赖 | 许可证 | 说明 |
 |---|---|---|
-| Jenkins 插件（22 个） | 以 MIT 为主 | 插件随 `jenkins` 镜像分发；许可证以各插件仓库为准。Jenkins 官方 update-center **不提供 license 字段**，逐个人工核对见下注 |
+| Jenkins 插件（22 个） | 全部 MIT | 插件随 `jenkins` 镜像分发。逐个的许可证与依据（仓库路径或 `pom.xml` 的 `<licenses>` 段）见
+[`services/jenkins/plugins-licenses.md`](services/jenkins/plugins-licenses.md)；Jenkins 官方 update-center **不提供 license 字段**，所以依据只能来自插件仓库本身 |
 | Docker Engine / Compose | Apache-2.0 | 宿主提供，不随本项目分发 |
 | Python 标准库 | PSF-2.0 | 本项目 Python 代码**零第三方 PyPI 依赖** |
 
@@ -90,6 +91,9 @@ Nexus Repository 以 EPL-1.0 分发。其源码可从上游仓库（§4.1）获�
 1. **`sonatype/nexus3` 镜像 label 写的是 `Apache-2.0`，实际是 EPL-1.0。**
    上游 `nexus-public/LICENSE.txt` 首行是 `Eclipse Public License - v 1.0`。
    以本文 §1 为准，不要依据镜像 label 做合规判断。
+   **未向上游反馈**：反馈要以维护者个人身份在 `sonatype` 的仓库公开发言，属于对外承诺，
+   需仓库所有者决定口径；在此之前本项目自行更正即可（不从镜像 label 取许可证）。
+   复活条件：决定反馈时，或该镜像出现在本项目之外的消费链路里。
 2. **`osixia/phpldapadmin:0.9.0` 镜像内未随附 GPL-2.0 全文**（实测容器内无
    `COPYING`/`LICENSE`）。本项目在 `licenses/GPL-2.0.txt` 补齐该义务。
 3. **`oauth2-proxy` 的 `LICENSE` 文件只有 MIT 正文、无版权行**，其版权主体以其仓库

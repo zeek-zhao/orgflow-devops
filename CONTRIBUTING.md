@@ -46,6 +46,9 @@ identity, and you will only find out from CI.
 - `author` **and** `committer` must be `zeek.zhao <zeek.zhao@foxmail.com>`.
 - No `Co-authored-by:` / `Signed-off-by:` / `Assisted-by:` trailers — the commit history
   is audit evidence, and two authors per commit destroys "who is responsible".
+  This is the rule for the **maintainer's own commits**. It is not the same question as
+  DCO for outside contributors, which does not currently apply because no outside
+  contribution path exists — see [Why there is no DCO check](#why-there-is-no-dco-check-yet).
 - No AI attribution (`Generated with …`, `Co-authored-by: Copilot`, 🤖). Write what
   changed and why, not who typed it.
 - Message body explains *why*. The diff already says *what*.
@@ -103,7 +106,38 @@ or removing a document, and start from [docs/文档地图.md](docs/文档地图.
 
 See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
+## Why there is no DCO check (yet)
+
+A DCO (Developer Certificate of Origin) asks every commit to carry a
+`Signed-off-by:` line, by which the contributor states they have the right to submit
+that code. It exists to answer one question: *"when a stranger's patch enters this
+history, what did they licence it under, and who vouched for it?"*
+
+This repository has no stranger's patch entering its history, by design — see
+[What we accept](#what-we-accept). Every commit on `main` must carry one fixed author,
+so there is no path by which an outside `Signed-off-by` could arrive. A DCO gate added
+today could never fail: it would be a green badge with nothing behind it, and this
+repository treats a check that cannot fail as worse than no check — it converts
+"nobody looked" into "the machine says it's fine".
+
+So the position is recorded rather than instrumented:
+
+- **Now**: inbound licence is stated (see [License](#license)); no DCO gate, because
+  the object it inspects does not exist.
+- **If external PRs are ever accepted**: DCO becomes mandatory *in the same change*
+  that relaxes the single-author rule. Taking one without the other produces either a
+  forgeable history (DCO without the identity rule) or an unlicensed contribution
+  (identity rule relaxed without DCO).
+
 ## License
 
-By contributing you agree your contribution is licensed under Apache-2.0
-(see [LICENSE](LICENSE)).
+Inbound = outbound. Anything you send to this repository — code, documentation, a patch
+pasted into an issue, a suggested diff in an email — is licensed under
+[Apache-2.0](LICENSE), the same licence the repository ships under. You keep your
+copyright; you grant the project the right to distribute the contribution under that
+licence, and you confirm you have the right to grant it.
+
+This is stated explicitly rather than left implicit: a reviewer looking at this
+repository should be able to answer "what licence applies to a contribution?" from the
+repository alone, without inferring it from the project's outbound licence.
+
