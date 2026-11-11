@@ -236,10 +236,44 @@ bash scripts/jenkins-cli.sh log nexus-deploy last
 - 用 `.env` 里的**管理员密码**做 Basic auth 时，GET 正常，但 POST 被 Jenkins CSRF 拦截，返回 `403 No valid crumb was included in the request`。这与官方 "API tokens are preferred instead of crumbs" 一致：Jenkins 只对 **API token** 认证豁免 crumb，账号密码不豁免。本脚本按需求**不用 crumb 作为首选**；要让 `run` 成功触发，应把 `JENKINS_ADMIN_PASSWORD` 换成该管理员真正的 **API token**（或对 POST 显式补 crumb，不属本卡首选方案）。
 - 反证：故意用错 API token，`list` / `get` / `run` / `log` 均返回 401、非 0 退出并打印明确错误。
 
+## 面板、SSH 节点与 Ansible 占位（#116，2026-11-11 实测）
+
+`config/jenkins.yaml` 由 compose 以**单文件 bind mount** 挂到
+`/var/jenkins_home/casc/jenkins.yaml`（`CASC_JENKINS_CONFIG` 指向它）。改完必须重启
+`of-jenkins` 才生效；Jenkins 起不来时根因看日志里的 `Failed ConfigurationAsCode.init`。
+
+- **视图**：8 个 ListView（总览 `all` + 按动作 4 + 按服务 3），`primaryView: all`。
+  按 `includeRegex` 归类现有 16 个 Job，每个视图至少 2 条；**不移动 Job**，改用
+  Folder 会让既有构建历史失效。
+- **★ 属性名是 `includeRegex` 不是 `includePattern`**。Jenkins 2.580.2 的 JCasC
+  不认后者，写错会直接 `BootFailure: Failed to initialize Jenkins`（页面 500，
+  不是「视图没建出来」这种软失败）。不确定属性名时查
+  `GET /manage/configuration-as-code/reference`，别凭旧版本印象写。
+- **节点**：除原有 `orgflow-docker`（2 executors）外新增
+  `orgflow-ssh-pre`（label `ssh-pre`）与 `orgflow-single`（label `single-core`），
+  都是 `numExecutors: 1`、`manuallyProvidedKeyVerificationStrategy`，复用
+  `secrets/agent_ssh_key` 与同一个 `of-jenkins-agent` 容器，各自 `remoteFS` 不同以免抢 workspace。
+  两个节点各触发过一次最小构建（`SUCCESS` + `builtOn` 正确），临时 Job 验完即删。
+- **节点全离线时的排查顺序**：先看 `/computer/<node>/logText/progressiveText`。
+  本次真因是 agent 容器里 `/etc/ssh/ssh_host_ed25519_key` 的 bind mount 指向**旧
+  inode**（`stat` 看 nlink=0 / ino 与宿主不一致），sshd 拿出的 host key 与
+  `manuallyProvided` 声明的不符。重建 `of-jenkins-agent` 重挂即恢复 —— 与
+  `docs/services/nexus.md` 里 `out/` 悬空是同一类事故：宿主文件换了 inode，
+  容器挂载没跟上。
+- **Ansible**：`ansible/` 只有 loopback 占位 + 一条部署骨架，本机跑
+  `ansible-playbook … --check --diff`。**未接真实目标主机**，复活条件写在
+  `ansible/README.md`。
+
+**Gerrit Trigger 插件已安装但未配置服务器**：`services/jenkins/plugins.txt` 里有它，
+但仓库中没有 Gerrit 端点、没有凭据、没有 trigger 配置，插件不会连任何外部
+Gerrit 实例。启动时日志里的 `Listening to event types: [...]` 只是插件加载，
+**不代表已接入**。
+
 ## 已知边界
 
 - `storage: memory` 的 Dex 重启后 refresh token 失效，已登录会话要重新登录一次
 - Jenkins 的 `VERSION` 类参数只对它自己有意义，不要指望它改网关行为
+- Ansible 只有 dry-run 骨架；Gerrit Trigger 只有插件、没有端点（见上节）
 
 ## 警告台账（#92 / REQ-M0-B3）
 
