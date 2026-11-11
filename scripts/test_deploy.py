@@ -58,13 +58,20 @@ tool = Path(sys.argv[0]).name
 with open("calls.jsonl", "a") as log:
     log.write(json.dumps([tool, *args]) + "\\n")
 if tool == "curl":
-    # 域名路由后自检 URL 是 https://auth.<domain>/ping、https://jenkins.<domain>/、
-    # https://home.<domain>/ —— 前两个一保一护，第三个是公开站点
+    # 域名路由后自检 URL 是 https://auth.<domain>/ping、https://jenkins.<domain>/login、
+    # https://jenkins.<domain>/、https://home.<domain>/ —— 一保一护一公开。
+    # ★ 2026-11-11 起 jenkins 走「自带登录」（#86 摘网关 auth）：
+    #   根路径匿名被 Jenkins 自己拒 = 403，登录页 = 200。替身必须照这个模型，
+    #   否则测的是「旧架构下的 deploy.sh」，真机上照样红。
     url = args[-1]
     if url.endswith("/ping"):
         print(os.environ.get("TEST_PING", "200"))
     elif "home." in url:
         print("200")
+    elif "jenkins." in url and url.endswith("/login"):
+        print("200")
+    elif "jenkins." in url:
+        print("403")
     else:
         print("302")
 elif args[0] == "inspect":
@@ -150,7 +157,9 @@ elif "--version" in args or "version" in args:
             self.assertLess(health, start)
         # 自检必须带域名（SNI/Host 匹配），而不是旧的路径入口
         self.assertIn("端点自检通过: https://auth.org-devops.com/ping = 200", result.stdout)
-        self.assertIn("端点自检通过: https://jenkins.org-devops.com/ = 302", result.stdout)
+        self.assertIn("端点自检通过: https://jenkins.org-devops.com/login = 200", result.stdout)
+        # jenkins 自带登录后，根路径是 403（Jenkins 自己拒），不再是 302
+        self.assertIn("端点自检通过: https://jenkins.org-devops.com/ = 403", result.stdout)
         self.assertIn("网关端口：HTTP 80 / HTTPS 443", result.stdout)
         self.assertIn("Jenkins 管理员密码在 .env 的 JENKINS_ADMIN_PASSWORD", result.stdout)
         # 域名相关产物落盘
@@ -193,8 +202,10 @@ elif "--version" in args or "version" in args:
             self.assertIn(":18443", resolve, f"--resolve 少了端口: {resolve}")
             self.assertIn(":18443", url, f"URL 里少了端口，curl 会退回真实 DNS: {url}")
             checked += 1
-        # auth / jenkins / home 三个站点都走 gw()
-        self.assertEqual(checked, 3)
+        # auth / jenkins(/login) / jenkins(/) / home 四个自检都走 gw()。
+        # 加了新自检项就要同步改这个数 —— 不是为了凑数，是为了防止
+        # 「新增自检」悄悄绕过端口一致性检查。
+        self.assertEqual(checked, 4)
 
     def test_service_shortcut_accepts_every_compose_service(self):
         """--service 的白名单是手写的，compose 里加了服务忘了加它就直接被拒。
@@ -265,7 +276,8 @@ elif "--version" in args or "version" in args:
         self.assertIn("issuer: https://dex.example.test/dex", dex)
         self.assertIn("https://auth.example.test/oauth2/callback", dex)
         self.assertNotIn("__DEX_ISSUER__", dex)
-        self.assertIn("https://jenkins.example.test/ = 302", result.stdout)
+        self.assertIn("https://jenkins.example.test/login = 200", result.stdout)
+        self.assertIn("https://jenkins.example.test/ = 403", result.stdout)
 
     def test_nexus_is_not_a_compose_service_any_more(self):
         """#46：nexus 移出 compose，`--service nexus` 必须明确报错并指向 job。

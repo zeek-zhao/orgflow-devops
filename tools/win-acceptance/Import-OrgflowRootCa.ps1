@@ -45,7 +45,12 @@ function Get-RemoteRootCa {
 
     # --export 是幂等的；已经导出过就直接 cat。注意 ssh 里不要嵌套引号，
     # 多层引号在 Windows 上必然出问题，所以整段当成一个单引号字符串传过去。
-    $remote = "cd $RemoteRepo && { [ -s out/ca/root.crt ] || bash scripts/ca-install.sh --export >/dev/null 2>&1; } && cat out/ca/root.crt"
+    # ★ 每次都重新导出，不用 `[ -s out/ca/root.crt ] || ...` 短路。
+    #   短路看似省事，实际会在 CA 重建后继续发旧文件 —— 2026-11-11 真机就踩到：
+    #   机器级存储里是 10-31 的旧根，而服务端已经在用 11-03 的新根，
+    #   症状是「换用户/服务账户访问就证书告警」，极难联想到是导出的文件过期。
+    #   ca-install.sh --export 本身是幂等的，重复跑没有副作用。
+    $remote = "cd $RemoteRepo && bash scripts/ca-install.sh --export >/dev/null 2>&1; cat out/ca/root.crt"
     $sshArgs = @('-n')
     if (Test-Path -LiteralPath $SshKey) {
         $sshArgs += @('-i', $SshKey, '-o', 'IdentitiesOnly=yes')
@@ -86,6 +91,25 @@ try {
     } else {
         Import-Certificate -FilePath $temp -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
         Write-Host '已导入「受信任的根证书颁发机构」。' -ForegroundColor Green
+    }
+
+    # ★ 清理过期根：CA 重建（docker compose down -v）后旧根会留在存储里，
+    #   它本身无害，但会让「我到底装没装对」这件事长期说不清 ——
+    #   验收脚本曾只看「有没有 Caddy 根」而放过过期的那把，就是被它骗的。
+    foreach ($store in @('LocalMachine', 'CurrentUser')) {
+        $path = "Cert:\$store\Root"
+        $stale = @(Get-ChildItem $path -ErrorAction SilentlyContinue | Where-Object {
+            $_.Subject -like '*Caddy Local Authority*' -and $_.Thumbprint -ne $thumbprint
+        })
+        foreach ($s in $stale) {
+            try {
+                Remove-Item -Path (Join-Path $path $s.Thumbprint) -Force
+                Write-Host ("已删除 {0} 中的过期根 {1}（{2:yyyy-MM-dd} 签发）" -f
+                    $store, $s.Thumbprint, $s.NotBefore) -ForegroundColor Yellow
+            } catch {
+                Write-Host ("删除 {0} 中的过期根失败（可能需管理员）：{1}" -f $store, $s.Thumbprint) -ForegroundColor Yellow
+            }
+        }
     }
 } finally {
     Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue

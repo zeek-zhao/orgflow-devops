@@ -333,7 +333,13 @@ gw() {   # gw <子域> <路径> → HTTP 状态码
 # 复制出去必然打不开。所以显示用 VISIBLE_PORT，请求用上面的 gw()。
 if [ "$HTTPS_PORT" = "443" ]; then VISIBLE_PORT=""; else VISIBLE_PORT=":${HTTPS_PORT}"; fi
 
-for check in "auth /ping 200" "jenkins / 302" "home / 200"; do
+# 期望值说明（#86 之后）：
+#   jenkins /  → 403 或 302 都算「没给内容」。Jenkins 自 #86 起直连 LDAP 自带登录、
+#                网关不再转发 auth，匿名访问根路径由 Jenkins 自己回 403；旧值写死 302
+#                会让任何正确的 #86 环境必然红（2026-11-11 真机复现）。
+#   jenkins /login → 200，这才是「反代通、应用活着、能登录」的正面判据。
+# 期望值用 `|` 分隔表示「任一命中即通过」。
+for check in "auth /ping 200" "jenkins /login 200" "jenkins / 302|403" "home / 200"; do
   read -r sub path expected <<< "$check"
   url="https://${sub}.${GATEWAY_DOMAIN}${VISIBLE_PORT}${path}"
   if ! actual="$(gw "$sub" "$path")"; then
@@ -341,7 +347,7 @@ for check in "auth /ping 200" "jenkins / 302" "home / 200"; do
     diagnose caddy oauth2-proxy
     exit 1
   fi
-  if [ "$actual" != "$expected" ]; then
+  if [[ "|${expected}|" != *"|${actual}|"* ]]; then
     echo "端点自检失败: $url，预期 $expected，实际 $actual" >&2
     diagnose caddy oauth2-proxy
     exit 1
@@ -352,9 +358,9 @@ done
 echo "== 部署完成：compose 侧全部服务 healthy =="
 echo "网关端口：HTTP ${HTTP_PORT} / HTTPS ${HTTPS_PORT}（宿主映射）"
 echo "访问入口（需要先让域名解析到本机）："
-echo "  https://jenkins.${GATEWAY_DOMAIN}${VISIBLE_PORT}/     受保护，未登录 302 是认证跳转"
+echo "  https://jenkins.${GATEWAY_DOMAIN}${VISIBLE_PORT}/     自带登录（#86）：未登录 403，登录页 /login = 200"
 echo "  https://nexus.${GATEWAY_DOMAIN}${VISIBLE_PORT}/       ★ 现在是 502：Nexus 由 job 部署（#46）"
-echo "  https://ldapadmin.${GATEWAY_DOMAIN}${VISIBLE_PORT}/     受保护，未登录 302 是认证跳转"
+echo "  https://ldapadmin.${GATEWAY_DOMAIN}${VISIBLE_PORT}/     自带 LDAP 登录（#86）：未登录 200 是登录页"
 echo "  https://auth.${GATEWAY_DOMAIN}${VISIBLE_PORT}/ping    认证网关"
 echo "  https://dex.${GATEWAY_DOMAIN}${VISIBLE_PORT}/dex/     OIDC"
 echo "  https://home.${GATEWAY_DOMAIN}${VISIBLE_PORT}/        统一入口（所有服务的卡片）"
