@@ -85,6 +85,10 @@ straight to:
 |---|---|
 | What is this thing and how does it run | [M0 最小核心](docs/M0-最小核心.md) |
 | How do I use it day to day | [使用说明](docs/使用说明.md) |
+| How do I change the code | [工程开发说明](docs/工程开发说明.md) |
+| What is required, and how "done" is judged | [requirements/](docs/requirements/README.md) |
+| How requirements, issues and milestones are managed | [项目管理](docs/项目管理.md) |
+| How to work here with an AI assistant | [AGENTS.md](AGENTS.md) · [AI 协作开发](docs/AI-协作开发.md) |
 | How is it verified | [M0 测试体系](docs/M0-测试体系.md) |
 | Images and CI pipeline | [M0 镜像与 CI](docs/M0-镜像与CI.md) |
 | One service is broken | [docs/services/](docs/services/) (11 runbooks) |
