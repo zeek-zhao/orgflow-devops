@@ -128,15 +128,26 @@ make backup
 
 首次建目录前先确认初始口令：仓库里的 `users.ldif` 只存 `{SSHA}` 哈希，**口令真值不在
 仓库里**（[开源合规 §4](../开源合规.md)）。`.env` 里的 `ORGFLOW_INITIAL_PASSWORD` 是真源，
-两者不一致的表现是「密码看着对，bind 却一直返回 49」：
+两者不一致的表现是「密码看着对，bind 却一直返回 49」。
+
+改 LDIF **不等于**改口令，这一点最容易踩：目录建好之后 `ldapadd` 对已存在的 DN 只报
+`already exists`，`bootstrap-ldif.sh` 把它当警告吞掉，于是 LDIF 变了、运行中的口令没变。
+两条命令各管一段：
 
 ```bash
-make ldap-passwords                              # 按 .env 的 ORGFLOW_INITIAL_PASSWORD 重算哈希
+make ldap-passwords    # 只重算**仓库里**的 LDIF 哈希（给「还没建目录」的场景用）
+make ldap-apply        # 用 ldapmodify 把 .env 的口令设到**运行中的目录**（改口令用这条）
 ```
+
+`make ldap-apply` 走的是 `ldapmodify`：口令从 `.env` 读，经 stdin 进容器、落在 mode-600
+临时文件，不进 argv、不打印，末尾会抽一个账号 `ldapwhoami` 证明真的能 bind。CI 的
+DinD harness 在 bootstrap 之后自动跑同一步（`tests/harness/entrypoint.sh`），
+否则测试拿 `.env` 的口令登录会一律 49/401 —— 2026-11-11 就是这样红了 3 个用例。
 
 ```bash
 docker compose up -d ldap
 bash services/auth/bootstrap-ldif.sh            # 幂等，可放心重复跑
+make ldap-apply                                 # 让运行中的目录认 .env 的口令
 docker compose exec -T ldap ldapsearch -x -b dc=devops,dc=com -s sub "(objectClass=*)" dn | grep -c '^dn:'
 make backup                                      # 只含 ldap_data
 ```

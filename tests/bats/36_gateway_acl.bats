@@ -29,17 +29,23 @@ print("OK")'
 }
 
 @test "gateway acl: 组成员(svc-platform-dev)完成 OIDC 后访问文档站放行" {
+    # 口令真值只在 .env；硬编码 123456 在口令随机化之后会把这条测成「登录失败」，
+    # 而失败信息看起来像权限问题 —— 假红的典型来源，见 helpers/common.bash
+    local pass
+    pass=$(ldap_initial_password) || return 1
     # 会话建立后取真实文件 README.md → 200(放行证明;404 期内容生成属 C2)
     run python3 "$M0_REPO/tests/bats/helpers/oidc_flow.py" \
-        "docs.${GW_DOMAIN}" "${GW_HTTPS_PORT}" svc-platform-dev '123456' /%E5%BE%85%E5%8A%9E.md
+        "docs.${GW_DOMAIN}" "${GW_HTTPS_PORT}" svc-platform-dev "$pass" /%E5%BE%85%E5%8A%9E.md
     echo "flow: $output" >&2
     [ "$status" -eq 0 ]
     assert_contains "$output" "POST-LOGIN-FETCH 200"
 }
 
 @test "gateway acl: 非组成员(svc-jira-dev)完成 OIDC 后必须被拒" {
+    local pass
+    pass=$(ldap_initial_password) || return 1
     run python3 "$M0_REPO/tests/bats/helpers/oidc_flow.py" \
-        "docs.${GW_DOMAIN}" "${GW_HTTPS_PORT}" svc-jira-dev '123456'
+        "docs.${GW_DOMAIN}" "${GW_HTTPS_PORT}" svc-jira-dev "$pass"
     echo "flow: $output" >&2
     # oauth2-proxy 在 allowed-group 不匹配时拒绝:403(登录页报 Access Denied)
     assert_contains "$output" "403"

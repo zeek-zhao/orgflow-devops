@@ -28,7 +28,7 @@ else
 COMPOSE_LOCAL = $(COMPOSE)
 endif
 
-.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock images-pin images-guard build-local hooks identity-check hosts ca clean check-jenkins-image check-pins docs-check sbom cve links ldap-passwords redaction
+.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock images-pin images-guard build-local hooks identity-check hosts ca clean check-jenkins-image check-pins docs-check sbom cve links ldap-passwords ldap-apply redaction
 
 help:
 	@echo "make render   渲染 routes.yaml -> out/Caddyfile"
@@ -148,6 +148,7 @@ test: check-jenkins-image
 	@python3 scripts/test_job_pipelines.py
 	@python3 scripts/migrate_identity.py --verify
 	@python3 scripts/test_ldif_passwords.py
+	@python3 scripts/test_ldap_set_passwords.py
 	@$(MAKE) --no-print-directory docs-check
 	@echo "python syntax ok"
 
@@ -178,6 +179,7 @@ redaction:
 
 # 目录初始口令：仓库只存 {SSHA} 哈希，真值在 .env。
 # 两处不一致的表现是「账号密码明明对，bind 却返回 49」，所以做成一条命令而不是手工 slappasswd。
+# 注意：这条只重算**仓库里的 LDIF**，对已经存在的目录条目无效 —— 运行中的目录用 ldap-apply。
 ldap-passwords:
 	@set -e; \
 	if [ ! -f "$(ENV_FILE)" ]; then echo "✗ 缺少 $(ENV_FILE)；先跑 make deploy 生成"; exit 1; fi; \
@@ -188,6 +190,13 @@ ldap-passwords:
 	fi; \
 	ORGFLOW_INITIAL_PASSWORD="$$pw" python3 scripts/gen-ldif-passwords.py >/dev/null; \
 	echo "✓ users.ldif 的 {SSHA} 已按 $(ENV_FILE) 的 ORGFLOW_INITIAL_PASSWORD 重算"
+	@echo "  目录已经存在时这一步不会改运行中的口令；要生效再跑 make ldap-apply"
+
+# 把 .env 的初始口令真正设到**运行中的目录**（ldapmodify）。
+# 为什么单独一条：目录建好之后改 LDIF 不生效（ldapadd 对已存在的 DN 只报 already exists，
+# bootstrap 当警告吞掉），而「改 LDIF 就算改了口令」是这套栈最容易踩的误解。
+ldap-apply:
+	@bash scripts/ldap-set-passwords.sh
 
 # #90 / REQ-M0-B1：Jenkins 镜像静态自检。本轮不构建镜像，容器内插件清单无法实测，
 # 用「清单必含项 + Dockerfile 用 jenkins-plugin-cli 安装」替代（见 docs/M0-镜像与CI.md）。

@@ -87,6 +87,22 @@ http_host_header() {
     }' <<< "$headers"
 }
 
+# ---------------------------------------------------------------- 凭据
+
+# 目录初始口令：真值只存在于 $M0_ENV_FILE 的 ORGFLOW_INITIAL_PASSWORD。
+# 仓库与 LDIF 里都只有 {SSHA} 哈希（公开仓库不能挂可用口令），所以**任何**硬编码
+# 口令都会在下一次轮换后变成假红或假绿 —— 2026-11-11 就是这么红了 3 个用例的。
+# 取不到就显式失败，不要退回到某个「反正能过」的默认值。
+ldap_initial_password() {
+    local pw
+    pw=$(sed -n 's/^ORGFLOW_INITIAL_PASSWORD=//p' "$M0_ENV_FILE" | tail -1)
+    if [ -z "$pw" ]; then
+        echo "✗ $M0_ENV_FILE 里没有 ORGFLOW_INITIAL_PASSWORD；无法完成 LDAP 登录类断言" >&2
+        return 1
+    fi
+    printf '%s' "$pw"
+}
+
 # ---------------------------------------------------------------- 容器断言
 
 compose_cmd() {
