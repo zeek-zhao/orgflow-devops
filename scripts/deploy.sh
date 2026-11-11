@@ -343,8 +343,17 @@ if [ "$HTTPS_PORT" = "443" ]; then VISIBLE_PORT=""; else VISIBLE_PORT=":${HTTPS_
 #                会让任何正确的 #86 环境必然红（2026-11-11 真机复现）。
 #   jenkins /login → 200，这才是「反代通、应用活着、能登录」的正面判据。
 # 期望值用 `|` 分隔表示「任一命中即通过」。
-for check in "auth /ping 200" "jenkins /login 200" "jenkins / 302|403" "home / 200"; do
-  read -r sub path expected <<< "$check"
+#
+# 行尾的 `#NN` 是这个期望值的**出处**：哪个 issue 定下的。规则见
+# docs/文档规范.md §7.1「期望值与架构变更的绑定」。为什么必须有：改架构的人不知道脚本里
+# 埋着期望值，写期望值的人不知道架构改了 —— 两边各改各的，结果是「在正确的环境上必然红」，
+# 然后错误检查被当成「反正会红」而忽略。有出处才能判断这条该不该改。
+#
+# `#initial` = 建仓时就有的值，尚未溯源。标它而不是编一个号：错的溯源比没有更糟，
+# 它会误导下一个来改的人去读一个不相干的 issue。
+for check in "auth /ping 200 #86" "jenkins /login 200 #86" "jenkins / 302|403 #86" "home / 200 #initial"; do
+  src="${check##*#}"           # 86 / initial
+  read -r sub path expected <<< "${check% #*}"
   url="https://${sub}.${GATEWAY_DOMAIN}${VISIBLE_PORT}${path}"
   if ! actual="$(gw "$sub" "$path")"; then
     echo "端点自检连接失败: $url（宿主端口 ${HTTPS_PORT}）" >&2
@@ -356,7 +365,7 @@ for check in "auth /ping 200" "jenkins /login 200" "jenkins / 302|403" "home / 2
     diagnose caddy oauth2-proxy
     exit 1
   fi
-  echo "端点自检通过: $url = $actual"
+  echo "端点自检通过: $url = $actual（期望 $expected，出处 #$src）"
 done
 
 echo "== 部署完成：compose 侧全部服务 healthy =="
