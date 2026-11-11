@@ -55,14 +55,18 @@ print("OK")'
 @test "gateway acl: 反证——口令错时不得拿登录页的 200 冒充放行" {
     # 这条是为上一条兜底的。fetch 会跟随 302，Dex 登录页本身返回 200，所以
     # 「会话没建立、被甩到登录页」在过去看起来和「已放行、拿到文件」一模一样：
-    # 状态码都是 200。上一条改成先登录成功再取真实文件之后，这里显式按住反面——
-    # 故意用错口令，必须拿不到 "POST-LOGIN-FETCH 200"。
+    # 状态码都是 200。
+    #
+    # 判定用正向断言而不是只 refute：只断言「没有 200」的话，流程提前报错
+    # （FLOW-ERROR）也能满足它，那条反证就是空的。必须看到「取到了登录页」这个
+    # 事实，才算证明兜底真的生效。
     local target=/network/arch.md
     run python3 "$M0_REPO/tests/bats/helpers/oidc_flow.py" \
         "docs.${GW_DOMAIN}" "${GW_HTTPS_PORT}" svc-platform-dev \
         'not-the-real-password' "$target"
     echo "flow: $output" >&2
     refute_contains "$output" "POST-LOGIN-FETCH 200"
+    assert_contains "$output" "POST-LOGIN-FETCH-LOGIN-PAGE"
 }
 
 @test "gateway acl: 非组成员(svc-jira-dev)完成 OIDC 后必须被拒" {
