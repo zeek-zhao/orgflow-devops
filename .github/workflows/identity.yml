@@ -45,7 +45,13 @@ jobs:
           else
             before="${{ github.event.before }}"
             after="${{ github.event.after }}"
-            if [[ "$before" == "$zero" ]]; then
+            # force-push / 历史重写之后，`before` 指向的提交在新历史里已经不存在，
+            # `git rev-list before..after` 会直接 `fatal: Invalid revision range` 并退出 128。
+            # 那不是身份问题，却会把 job 打红 —— 2026-11-11 的「Identity 间歇红」就是这个：
+            # 同一天两次重写历史，08:06 与 08:14 各红一次，前后都是绿的。
+            # 所以先确认 before 可达；不可达就只查 after 这一个提交。
+            if [[ "$before" == "$zero" ]] || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+              echo "::warning::before=$before 在当前历史中不可达（force-push？），改为校验全部可达历史（after=$after）"
               range="$after"
             else
               range="$before..$after"
