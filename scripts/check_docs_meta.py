@@ -37,7 +37,9 @@ EXCLUDE_FILES = {"文档登记册.md"}
 
 LAYERS = {"入口", "规程", "参考", "记录"}
 STATUSES = {"draft", "review", "approved", "superseded", "archived"}
-ID_PATTERN = re.compile(r"^(DOC-[EPRL]-\d{3}|ADR-\d{2,3}|TC-[A-Z0-9-]{2,20})$")
+# 任务卡（TC-）已从编号体系摘掉：卡就是 GitHub Issue，仓库里不再存卡文件。
+# 留着一个没有使用者的编号格式，只会让下一个人以为「该建卡文件了」。
+ID_PATTERN = re.compile(r"^(DOC-[EPRL]-\d{3}|ADR-\d{2,3})$")
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 COLUMNS = ["DOC-ID", "标题", "路径", "层级", "状态", "负责人", "评审日期", "复审(月)", "关联"]
@@ -166,7 +168,7 @@ def main():
         status = row.get("状态", "")
 
         if not ID_PATTERN.match(doc_id):
-            errors.append(f"{tag}：DOC-ID 不合规（应形如 DOC-E-001 / ADR-13 / TC-N-01）")
+            errors.append(f"{tag}：DOC-ID 不合规（应形如 DOC-E-001 / ADR-13）")
         if doc_id in seen_ids:
             errors.append(f"DOC-ID 重复：{doc_id}（{seen_ids[doc_id]} 与 {path}）")
         seen_ids[doc_id] = path
