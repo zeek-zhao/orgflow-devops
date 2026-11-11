@@ -9,6 +9,8 @@ RUN mkdir -p /etc/docker \
  && printf '%s\n' '{"features":{"containerd-snapshotter":false},"storage-driver":"overlay2"}' > /etc/docker/daemon.json
 LABEL org.opencontainers.image.base.name="ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852"
 LABEL org.opencontainers.image.title="orgflow-devops m0-test harness"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+LABEL org.opencontainers.image.licenses.note="Test-only image; project code is Apache-2.0"
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 WORKDIR /repo
