@@ -119,7 +119,13 @@ try:
     if len(sys.argv) > 5:
         # 会话建立后再取一个真实文件:成员应 200(放行证明),与内容生成(C2)解耦
         s2, u2, b2 = fetch(f"https://{host}:{port}{sys.argv[5]}")
-        print("POST-LOGIN-FETCH", s2)
+        # 反假绿:fetch 会跟随 302,而 Dex 登录页本身就是 200。会话没建立时
+        # 请求被甩到登录页,状态码仍是 200 —— 只看码会把「没登录」判成「已放行」。
+        # 命中登录页时打印一个不含 "POST-LOGIN-FETCH 200" 的标记,让断言必然失败。
+        if s2 == 200 and ("/dex/auth" in u2 or 'name="login"' in b2):
+            print("POST-LOGIN-FETCH-LOGIN-PAGE", u2[:120])
+        else:
+            print("POST-LOGIN-FETCH", s2)
 except Exception as exc:
     print("FLOW-ERROR")
     print(repr(exc)[:400])

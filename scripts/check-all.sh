@@ -39,7 +39,7 @@ fi
 
 echo "③ 全栈行为（DinD）"
 if [[ "${SKIP_BATS:-0}" == 1 ]]; then
-    echo "  · SKIP_BATS=1：已显式跳过 bats —— CI 上 Test 工作流仍会跑 58 条断言"
+    echo "  · SKIP_BATS=1：已显式跳过 bats —— CI 上 Test 工作流仍会跑全部 bats 断言"
 elif ! command -v docker >/dev/null 2>&1; then
     echo "  · 本机没有 docker，跳过 bats —— CI 上 Test 工作流会跑"
 else
