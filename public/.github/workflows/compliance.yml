@@ -1,6 +1,7 @@
 name: Compliance
 
-# 公开仓 CI 免费额度充足:这里跑发布合规门禁与密钥扫描。
+# 公开仓 CI：发布物可发布性 + 密钥扫描 + SBOM。
+# 公开仓 Actions 额度免费，所以把「这份发布物能不能发」的判定放在这里跑。
 on:
   push:
     branches: [main]
@@ -10,14 +11,51 @@ permissions:
   contents: read
 
 jobs:
-  redaction-gate:
-    name: 发布合规门禁(内网信息/凭据扫描)
+  publishable:
+    name: 发布物可发布性（必需文件 / 脱敏 / 链接自洽）
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: 扫描内网 IP / 内部主机名 / 真实用户名
+
+      - name: 必需文件在位（P0-1 防回归）
+        run: |
+          # 踩过：导出脚本只吃第一个参数，compose 与 .env.example 被静默丢弃，
+          # 公开仓克隆后第一步 `cp .env.example .env` 就失败，而当时没有任何作业会发现。
+          missing=0
+          for f in .env.example docker-compose.yml docker-compose.ghcr.yml Makefile \
+                   LICENSE THIRD_PARTY_NOTICES.md; do
+            [ -e "$f" ] || { echo "缺文件: $f"; missing=1; }
+          done
+          [ -d licenses ] || { echo "缺目录: licenses/"; missing=1; }
+          [ "$missing" -eq 0 ] || exit 1
+
+      - name: 敏感字段门禁
         run: bash scripts/check-public-redaction.sh .
-      - name: gitleaks(密钥泄漏扫描)
+
+      - name: 文档链接自洽（发布物无 404）
+        run: python3 scripts/check_export_links.py .
+
+  secret-scan:
+    name: 密钥泄漏扫描（含历史）
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # 必须全历史，否则只能扫到最新一次提交
+      - name: gitleaks
         uses: gacts/gitleaks@v1
         with:
-          args: --no-git --redact .
+          # 原参数是 `--no-git`（只扫工作区），等于放弃历史。
+          args: --redact --verbose --log-opts=--all
+
+  sbom:
+    name: SBOM（SPDX 2.3）
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: 生成声明式 SBOM
+        run: python3 scripts/gen-sbom.py out/sbom.spdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-spdx
+          path: out/sbom.spdx.json
