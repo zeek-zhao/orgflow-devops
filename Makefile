@@ -285,8 +285,15 @@ test-groovy:
 		echo "groovy 未安装，跳过（Ubuntu: apt install groovy）"; \
 	fi
 
+# #117 真机事故：绝不 `rm -rf out`。
+# router 与 caddy 都把 ./out 作为 bind mount 挂进容器；删掉目录再重建会换 inode，
+# 容器仍持有被删除的旧 inode（nlink=0），watch 每轮报 ENOENT 却永远不恢复，
+# 而当时的 /healthz 只看「读到几条路由」，照样报绿 —— 配置改了、Caddy 没更新。
+# 另外 out/ca/ 里是网关根证书，删了整条 TLS 链就断了。
+# 只删渲染产物，保留目录本身与 CA。
 clean:
-	rm -rf out
+	@rm -f out/Caddyfile out/Caddyfile.probe out/*.tmp
+	@echo "已清理渲染产物（保留 out/ 目录与 out/ca/）"
 
 # 新克隆必做：core.hooksPath 是本地配置，不会随 clone 生效
 hooks:

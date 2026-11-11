@@ -21,6 +21,23 @@ SCRIPT = ROOT / "services/router/render.py"
 RELOAD = ROOT / "services/router/reload.sh"
 
 
+def declared_sites():
+    """站点子域与数量从 config/routes.yaml 现算，不写死。
+
+    原先这个文件里四处硬编码 8。加一条路由就要改四处断言，而改的人多半是把 8 改成 10、
+    跑绿了事 —— 不会去想「渲染器到底有没有把这条渲出来」。改成从配置推导之后，断言变成
+    「输出里有的 == 配置里声明的」，测的是渲染器本身，而不是一个会随配置漂的常量。
+    """
+    _, routes = parse_routes(ROUTES)
+    return [r["subdomain"] for r in routes]
+
+
+def declared_names():
+    """路由名清单，同样从配置推导 —— 写死一份名字等于给「加路由」设了个改测试的坎。"""
+    _, routes = parse_routes(ROUTES)
+    return [r.get("name", r["subdomain"]) for r in routes]
+
+
 @contextlib.contextmanager
 def admin_server():
     class Handler(BaseHTTPRequestHandler):
@@ -86,13 +103,15 @@ class RouterTests(unittest.TestCase):
             process.terminate()
             process.communicate(timeout=5)
 
-    def test_eight_domain_sites_and_unchanged_output(self):
+    def test_domain_sites_match_config_and_output_is_stable(self):
         self.assertEqual(self.run_render().returncode, 0)
         content = self.out.read_text()
         self.assertIn("\tlocal_certs", content)
-        for sub in ("jenkins", "nexus", "ldapadmin", "dex", "auth", "home", "ca", "docs"):
+        sites = declared_sites()
+        self.assertGreaterEqual(len(sites), 8, "路由数突然变少，先确认是不是删错了")
+        for sub in sites:
             self.assertIn(f"https://{sub}.org-devops.com {{", content)
-        self.assertEqual(content.count("reverse_proxy "), 8)
+        self.assertEqual(content.count("reverse_proxy "), len(sites))
         # #86 后唯一受网关保护的是 docs 站点
         self.assertEqual(content.count("forward_auth "), 1)
         # 域名路由后不应再有路径匹配块(ADR-13);
@@ -321,7 +340,7 @@ class RouterTests(unittest.TestCase):
             with urllib.request.urlopen(url, timeout=2) as response:
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.headers.get_content_type(), "application/json")
-                self.assertEqual(json.load(response), {"ok": True, "routes": 8})
+                self.assertEqual(json.load(response), {"ok": True, "routes": len(declared_sites())})
             # 换成一份只有两个站点的配置：auth 路由必须留着，否则渲染会直接报错
             self.routes.write_text(
                 'routes:\n'
@@ -351,7 +370,51 @@ class RouterTests(unittest.TestCase):
                 self.wait_for(lambda: len(server.requests) >= 2)
                 with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz",
                                             timeout=2) as response:
-                    self.assertEqual(json.load(response), {"ok": True, "routes": 8})
+                    self.assertEqual(json.load(response), {"ok": True, "routes": len(declared_sites())})
+
+    def test_healthz_rejects_stale_artifact(self):
+        """#117：产物被外部改坏/删掉时 /healthz 必须 503，不能拿缓存状态报绿。
+
+        真机事故：`make clean` 删掉 out/ 再重建，容器内 bind mount 指向被删的旧
+        inode，watch 因为 routes.yaml 的 mtime 没变而不重渲染；旧的 healthz 只看
+        「读到过几条配置」，于是配置改了、Caddy 没更新，健康检查照样全绿。
+        """
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        with self.watch("", port):
+            self.wait_for(self.out.exists)
+            url = f"http://127.0.0.1:{port}/healthz"
+            expected_ok = {"ok": True, "routes": len(declared_sites())}
+            expected_bad = {"ok": False, "routes": len(declared_sites())}
+
+            with urllib.request.urlopen(url, timeout=2) as response:
+                self.assertEqual(json.load(response), expected_ok)
+
+            original = self.out.read_text()
+
+            def expect_503():
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    urllib.request.urlopen(url, timeout=2)
+                self.assertEqual(error.exception.code, 503)
+                self.assertEqual(json.load(error.exception), expected_bad)
+
+            self.out.write_text("# 故意改坏：模拟外部覆盖了产物\n")
+            expect_503()
+
+            self.out.unlink()  # 模拟 rm -rf out 之后产物不存在
+            expect_503()
+
+            self.out.write_text(original)  # 恢复后必须重新变绿
+            with urllib.request.urlopen(url, timeout=2) as response:
+                self.assertEqual(json.load(response), expected_ok)
+
+    def test_clean_target_never_removes_out_dir(self):
+        """Makefile 的命令行（不含注释）不得出现 rm -rf out —— 见 #117。"""
+        lines = (ROOT / "Makefile").read_text(encoding="utf-8").splitlines()
+        for line in lines:
+            if line.startswith("\t"):
+                self.assertNotIn("rm -rf out", line)
 
     def test_healthz_missing_routes_recovers_in_watch_mode(self):
         with socket.socket() as sock:
@@ -376,7 +439,7 @@ class RouterTests(unittest.TestCase):
             self.routes.write_bytes(ROUTES.read_bytes())
             self.wait_for(self.out.exists)
             with urllib.request.urlopen(url, timeout=2) as response:
-                self.assertEqual(json.load(response), {"ok": True, "routes": 8})
+                self.assertEqual(json.load(response), {"ok": True, "routes": len(declared_sites())})
 
 
 class RouteApiTests(unittest.TestCase):
@@ -436,8 +499,7 @@ class RouteApiTests(unittest.TestCase):
             status, body = api.request("GET", "/routes")
             self.assertEqual(status, 200)
             self.assertEqual(body["gateway_domain"], GATEWAY_DOMAIN)
-            self.assertEqual([r["name"] for r in body["routes"]],
-                             ["jenkins", "nexus", "ldapadmin", "dex", "auth", "homepage", "ca", "docs"])
+            self.assertEqual([r["name"] for r in body["routes"]], declared_names())
 
     def test_delete_removes_entry_and_keeps_rest(self):
         with RouterAPIServer(self.routes, self.out) as api:

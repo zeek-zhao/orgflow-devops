@@ -1,14 +1,15 @@
 ﻿<#
 .SYNOPSIS
-    在 Windows hosts 里增删指向网关的 6 条域名记录。
+    在 Windows hosts 里增删指向网关的 8 条域名记录。
 
 .DESCRIPTION
     用标记块包裹，删除时只删标记块内的行，绝不碰用户自己的记录。
     必须管理员运行（hosts 在 System32 下），acceptance.bat 会自动提权。
 
 .NOTES
-    ★ 是 6 条不是 5 条。少了 auth 那条，jenkins / ldapadmin 未登录跳
-      auth.<domain> 时浏览器会 DNS 断，表现成「一点登录就白屏」。
+    ★ 是 8 条不是 6 条（#117 之后）。少了 auth 那条，jenkins / ldapadmin 未登录跳
+      auth.<domain> 时浏览器会 DNS 断，表现成「一点登录就白屏」；
+      docker / pypi 少了则对应仓库客户端连不上，而 Nexus 本身其实是好的。
 #>
 [CmdletBinding()]
 param(
@@ -25,7 +26,10 @@ $ErrorActionPreference = 'Stop'
 $HostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
 $Begin = '# >>> orgflow-devops >>>'
 $End = '# <<< orgflow-devops <<<'
-$Subdomains = @('jenkins', 'nexus', 'ldapadmin', 'dex', 'auth', 'home')
+# 6 条基础站点 + #117 的两个仓库站点 = 8 条。docs 刻意不在这里：
+# 它走网关认证，但标准契约不含 docs（老机器不一定加了那条），
+# 少了它只会让文档站不可达，不会让下面 8 条判错。
+$Subdomains = @('jenkins', 'nexus', 'ldapadmin', 'dex', 'auth', 'home', 'docker', 'pypi')
 
 function Assert-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
