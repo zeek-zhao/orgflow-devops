@@ -13,6 +13,7 @@
 """
 import io
 import os
+import pathlib
 import re
 import sys
 
@@ -46,7 +47,9 @@ REF_FILES = [
     'tests/bats/10_ldap.bats',
 ]
 
-# 历史/规格类：旧 uid 是「映射记录」或「历史事实」，必须保留
+# 历史/规格类：旧 uid 是「映射记录」或「历史事实」，必须保留。
+# 其中三份（命名规范 / task-cards / 会话交接）已按最小披露移出仓库；条目留着无害 ——
+# 文件不存在就永远匹配不上。真回来了，先拦的是 check-public-redaction.sh 的「内部文档」判据。
 ALLOW_OLD = [
     'docs/身份命名规范.md',        # §3 映射表本身
     'docs/早期内部需求表（已不随仓库分发）',     # 需求取证记录
@@ -218,12 +221,18 @@ def verify():
     oldpat = re.compile('|'.join(re.escape(k) for k in MAPPING if MAPPING[k][0] != k))
     hits = 0
     for dirpath, _d, files in os.walk('.'):
-        if any(x in dirpath for x in ('/.git', '/out', '/.jjb', '/node_modules')):
+        # 路径一律转成 POSIX 形式再比对：`os.path.normpath` 在 Windows 上产出反斜杠，
+        # 而下面的 '/' 前缀与 ALLOW_OLD 的正斜杠永远匹配不上 —— 表现为「allowlist 失效 +
+        # out/ 没被排除」，本机 `make test` 恒红，而 Linux CI 全绿。这类假红最误导人。
+        rel_dir = pathlib.PurePath(dirpath).as_posix()
+        if any(x in rel_dir for x in ('/.git', '/out', '/.jjb', '/node_modules')):
             continue
         for fn in files:
             if not fn.endswith(('.md', '.bats', '.py', '.sh', '.yaml', '.yml', '.ldif')):
                 continue
-            p = os.path.normpath(os.path.join(dirpath, fn))
+            p = pathlib.PurePath(dirpath, fn).as_posix()
+            if p.startswith('./'):
+                p = p[2:]
             if p in ALLOW_OLD:
                 continue
             for i, ln in enumerate(read(p).split('\n'), 1):

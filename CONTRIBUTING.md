@@ -68,11 +68,14 @@ git push -u origin HEAD
 ### Before opening a PR
 
 ```bash
-make test                      # static + behavioral checks
+make check                     # fast gates: docs registry / links / redaction / labels (seconds)
+make check-all                 # the above + make test + lint + bats (SKIP_BATS=1 to skip bats)
 make test-bats                 # full stack in DinD (when touching runtime behavior)
-make docs-check                # documentation registry gate
-bash scripts/check-public-redaction.sh .   # compliance gate, must exit 0
 ```
+
+`make hooks` installs the same two layers locally: `pre-commit` runs the fast gates,
+`pre-push` runs the heavy ones. They are deliberately split — a slow pre-commit hook
+gets `--no-verify`'d, and a bypassed hook is worse than no hook.
 
 ### Changing an image
 

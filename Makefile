@@ -28,7 +28,7 @@ else
 COMPOSE_LOCAL = $(COMPOSE)
 endif
 
-.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock images-pin images-guard build-local hooks identity-check hosts ca clean check-jenkins-image check-pins docs-check sbom cve links ldap-passwords ldap-apply labels-sync redaction
+.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint check check-all test test-groovy test-bats images-lock images-pin images-guard build-local hooks identity-check hosts ca clean check-jenkins-image check-pins docs-check sbom cve links ldap-passwords ldap-apply labels-sync redaction
 
 help:
 	@echo "make render   渲染 routes.yaml -> out/Caddyfile"
@@ -131,6 +131,15 @@ restore backup-verify: export BACKUP_FILE := $(BACKUP_FILE)
 lint:
 	@command -v shellcheck >/dev/null && shellcheck scripts/*.sh .github/scripts/*.sh || echo "shellcheck 未安装，跳过"
 	@command -v yamllint >/dev/null && yamllint config services docker-compose.yml || echo "yamllint 未安装，跳过"
+
+# 门禁分层：check 是 pre-commit 那一层（几秒、无 docker），check-all 是 pre-push 那一层。
+# 定义在 scripts/ 里而不是这里，因为这台开发机上没有 make —— 钩子不能依赖 make。
+# 具体跑什么、为什么这么分层，见两个脚本的抬头注释。
+check:
+	@bash scripts/check-fast.sh
+
+check-all:
+	@bash scripts/check-all.sh
 
 test: check-jenkins-image
 	@python3 -m py_compile services/router/render.py
