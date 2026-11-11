@@ -77,7 +77,7 @@ Set-Content -LiteralPath $HostsPath -Value $kept -Encoding ASCII
 & ipconfig /flushdns | Out-Null
 
 if ($Action -eq 'Add') {
-    Write-Host "已写入 6 条记录（指向 $GatewayIp）：" -ForegroundColor Green
+    Write-Host ("已写入 {0} 条记录（指向 {1}）：" -f $Subdomains.Count, $GatewayIp) -ForegroundColor Green
     foreach ($sub in $Subdomains) {
         Write-Host ("  {0,-12} {1}.{2}" -f $sub, $sub, $Domain)
     }
