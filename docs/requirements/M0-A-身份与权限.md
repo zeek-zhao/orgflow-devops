@@ -10,7 +10,7 @@
 |---|---|---|---|---|
 | **REQ-M0-A0** | 提供 LDAP 目录 + 管理界面 + 网关前置认证，未登录不得进入受保护站点 | `bats tests/bats/10_ldap.bats tests/bats/11_ldapadmin.bats tests/bats/13_oauth2_proxy.bats` → 退出码 0 | 已实现 | [#2](https://github.com/zeek-zhao/orgflow-devops/issues/2) · PR #7 #74 #109 |
 | **REQ-M0-A1** | 身份命名规范转正为决策真本；LDIF 硬缺陷清零（uidNumber 唯一、口令换 SSHA、注释与组归属正确）；**uid 字符串不变** | `grep -c '{MD5}' services/auth/ldif/users.ldif` → `0`；`grep -c '{SSHA}' services/auth/ldif/users.ldif` → `10`；`awk '/^uidnumber:/{print $2}' services/auth/ldif/users.ldif \| sort \| uniq -d` → 空；反证：把两个 uidNumber 改回相同 → `10_ldap.bats` 必须红 | 已实现 | [#84](https://github.com/zeek-zhao/orgflow-devops/issues/84) · PR #97 #100 #101 #102 |
-| **REQ-M0-A2** | 全部用户 DN 统一为 `uid=<uid>,ou=users,dc=devops,dc=com`，全库旧 uid 引用归零，登录链路可回归 | ⚠ 原判据「uid 与命名规范 §5 映射表逐字一致」依赖已归档文档。替代：`python3 scripts/migrate_identity.py --verify` → 退出码 0（⚠ 仅 POSIX 路径下成立，Windows 上必然误报，见 §2）；`bats tests/bats/10_ldap.bats` 绿 | 已实现 | [#85](https://github.com/zeek-zhao/orgflow-devops/issues/85) · PR #107 #112 #113 |
+| **REQ-M0-A2** | 全部用户 DN 统一为 `uid=<uid>,ou=users,dc=devops,dc=com`，全库旧 uid 引用归零，登录链路可回归 | ⚠ 原判据「uid 与命名规范 §5 映射表逐字一致」依赖已归档文档。替代：`python3 scripts/migrate_identity.py --verify` → 退出码 0（Windows 上的假红已于 2026-11-11 修复，见 §2）；`bats tests/bats/10_ldap.bats` 绿 | 已实现 | [#85](https://github.com/zeek-zhao/orgflow-devops/issues/85) · PR #107 #112 #113 |
 | **REQ-M0-A3** | 网关按组授权，只守无原生认证能力的静态内容；伪造 `X-Forwarded-*` 不可行；权限一律由 `posixGroup.memberUid` 决定 | `bats tests/bats/36_gateway_acl.bats` 绿；`docker compose config \| grep -c trusted-proxy-ip` ≥ `1`；反证：临时去掉 `--allowed-group` → 非组成员用例必须红 | 已实现 | [#86](https://github.com/zeek-zhao/orgflow-devops/issues/86) · PR #118 #123 #124 |
 | **REQ-M0-A4** | Jenkins 只有一道 LDAP 登录，权限由组决定，不再有 `loggedInUsersCanDoAnything`，不再经网关 OIDC | `grep -c loggedInUsersCanDoAnything config/jenkins.yaml` → `0`；`bats tests/bats/16_jenkins.bats` 绿；反证：把 `java.naming.referral` 改成 `follow` → 静态检查必须红 | 部分 | [#87](https://github.com/zeek-zhao/orgflow-devops/issues/87) · PR #125 |
 | **REQ-M0-A5** | Nexus / phpLDAPadmin 直连 LDAP；文档站成为唯一走网关的受保护路由 | `bats tests/bats/36_gateway_acl.bats` 绿（首条断言：`forward_auth` 只剩 1 处且不属于 jenkins）；`bats tests/bats/17_nexus.bats` 绿 | 已实现 | [#88](https://github.com/zeek-zhao/orgflow-devops/issues/88) · PR #125 |
@@ -24,7 +24,7 @@
 
 代价写在需求里，不被「已完成」掩盖：旧备份包没有随之更新，`verify-*` 系列 Job 有静默回滚到旧 uid 的风险 —— 这条风险没有在本轮复核，属于未关闭项。
 
-### A2：判据脚本在 Windows 上必然误报（已复现，未修）
+### A2：判据脚本在 Windows 上必然误报（2026-11-11 已修）
 
 `scripts/migrate_identity.py --verify` 的旧 uid 残留扫描有两个平台缺陷：
 
@@ -38,6 +38,10 @@ if p in ALLOW_OLD:                                 # ALLOW_OLD 里是 scripts/mi
 2. 跳过目录的判据是 `'/out' in dirpath`，Windows 上目录是 `.\out` → **`out/` 不被跳过**。
 
 2026-11-11 实测：Windows 上 `--verify` 报 25 处命中、rc=1，其中 17 处来自 `out/` 与脚本自身的 `MAPPING`，**在 POSIX 路径下均不会命中**。所以这条判据目前只能在 Linux / CI 上作为闸门，不能作为本地门禁 —— 属于「假红」，与过去「门禁超时被杀」是同一类问题。
+
+**已修（同日）**：路径一律经 `pathlib.PurePath(...).as_posix()` 归一后再比对，反斜杠与正斜杠不再混用。
+反证：在 `docs/_probe/leak.md` 写一行旧 uid → `--verify` 报 1 处并给出 POSIX 路径；删除后复绿。
+影响不止「一条测试红」：本机 `make test` 之前恒红，门禁因此被当成噪音 —— 那是假红最贵的代价。
 
 ### A2 补充：映射表的真源已经不在仓库里
 
