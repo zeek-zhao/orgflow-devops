@@ -10,7 +10,9 @@
 # pinned-at = 产出下面这批 digest 的那次提交。scripts/check-image-source.sh 拿它
 # 比对「镜像上下文自那以后有没有改过」，改过就拒绝部署（否则会静默部署旧镜像）。
 # 这一行由 make images-pin 维护，不要手改。
-# pinned-at: 2b885a0b73068bbbfe694d2d7cd784e94dddfeea
+# 注意：值是一个提交 SHA，**历史重写会让它失效**（SHA 全变）。遇到「找不到该提交」
+# 时报错是真报错，不是误报 —— 指向新历史里最后一次改动镜像上下文的提交即可。
+# pinned-at: a8e48165430d3d1537050d17cc9b87e872b602d4
 services:
   caddy:
     image: ghcr.io/zeek-zhao/orgflow-devops/mirror-caddy:2@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
