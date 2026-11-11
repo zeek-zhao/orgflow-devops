@@ -155,11 +155,63 @@ docker exec of-nexus curl -sS -o /dev/null -w '%{http_code}\n' \
 make backup
 ```
 
+## 仓库三件套（#117，2026-11-11 实测）
+
+`scripts/nexus-setup-repos.py` 幂等创建 6 个仓库；配置存在 `nexus_data` 卷里，
+**容器重建不丢、卷删了要重跑脚本**。建仓前 7 个（maven2 / nuget），建仓后 13 个。
+
+| 仓库 | 类型 | connector / 上游 | 用途 |
+|---|---|---|---|
+| `docker-hosted` | hosted | `:8082` | **唯一能 push 的入口** |
+| `docker-proxy` | proxy | `registry-1.docker.io` | 上游镜像缓存 |
+| `docker-group` | group | `:8083`，成员 hosted + proxy | 容器网络内聚合 pull |
+| `pypi-hosted` | hosted | `…/repository/pypi-hosted/` | 私有包上传 |
+| `pypi-proxy` | proxy | `https://pypi.org` | 上游包缓存 |
+| `pypi-group` | group | 成员 hosted + proxy | `pip --index-url …/pypi-group/simple/` |
+
+**OSS 许可证边界**：向 `docker-group` push 会被拒，原文
+
+```
+denied: Deploying to groups is a PRO-licensed feature.
+```
+
+所以 `config/routes.yaml` 的 `docker.<domain>` 指向 **8082(hosted)** 而不是
+8083(group) —— 同一个域名要同时满足 push 和 pull，只能落 hosted；group 保留为
+容器网络内的聚合入口，不另开子域（避免再多一条 hosts）。这不是配错，是版本能力边界。
+
+**入口与 hosts**：新增 `docker.<domain>` / `pypi.<domain>` 两条子域，
+`tools/win-acceptance/Set-OrgflowHosts.ps1` 的标准契约从 6 条变 **8 条**。
+验收脚本打的是正面判据：`docker` → `/v2/` = 401（registry 活着且要求认证），
+`pypi` → `/repository/pypi-hosted/simple/` = 200；根路径分别是 400 和 Nexus
+欢迎页 200，都证明不了仓库可用。
+
+**实测结论**（213，2026-11-11）：
+
+- `docker login` 成功；`FROM scratch` 造的镜像 push → `docker rmi` → `docker pull`，
+  manifest digest 与 image id 前后一致（`sha256:89f1fdf9…`）。
+- 反证三种：错口令 login 401、无凭据 push `no basic auth credentials`、
+  错 Basic 的 `POST /v2/…/blobs/uploads/` = 401。
+- `twine upload` 到 `pypi-hosted` → 经 `pypi-group` 用 `pip install` 装回，
+  `import` 能读到标记常量。
+- **缓存反证要分清两种「停上游」**：把 proxy 整个设为 `online=false`，group 连已缓存的
+  包也不给（member 被整体跳过）；把 `remoteUrl` 改成不可达地址而**仓库保持 online**，
+  group / proxy 都能给出已缓存包，未缓存包失败。后者才是「上游断连」的语义。
+  验证时必须加 `--no-cache-dir`，否则 pip 自己的本地缓存会冒充 Nexus 缓存（假绿）。
+
+复现命令（在部署机上）：
+
+```bash
+python3 scripts/nexus-setup-repos.py     # 幂等，已存在则跳过
+curl -u "$NEXUS_ADMIN_ID:$NEXUS_ADMIN_PASSWORD" \
+  http://172.31.0.21:8081/service/rest/v1/repositories | python3 -m json.tool
+```
+
 ## 已知边界
 
 - 没有配 `auth: true`：Nexus 自己的账号体系没接 LDAP，谁都能打开界面。M1 再接
 - 备份只含 `orgflow-devops_nexus_data`，不含镜像本身的配置（那是镜像的一部分，可重建）
-- **job 只做「建容器 + 改密 + 删初始密码」**，不建仓库、不建角色。要加仓库得手工或用 REST
+- **job 只做「建容器 + 改密 + 删初始密码」**，不建仓库、不建角色；#117 的六个仓库由
+  `scripts/nexus-setup-repos.py` 单独建（已入仓，卷重建后重跑即可）
 
 ## 使用指南
 

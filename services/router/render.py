@@ -189,10 +189,40 @@ def content_matches(path, content):
         return False
 
 
+def artifact_is_current(routes_path, out_path):
+    """产物 Caddyfile 是否等于「当前配置」渲染出来的内容。
+
+    /healthz 每次都现场算，不读缓存状态。原因（#117 真机复现）：
+    `make clean` 删掉 out/ 再重建时，容器内 bind mount 仍指向被删除的旧
+    inode（nlink=0），watch 因为 routes.yaml 的 mtime 没变而不会重渲染，
+    health_state 里那份「上次成功」的状态就会永远显示绿 —— 而 Caddy 手里
+    其实是旧配置。只有把「文件里到底是什么」和「配置要求什么」当场比一次，
+    这种失效才藏不住。
+    """
+    try:
+        settings, routes = parse_routes(routes_path)
+        return content_matches(out_path, render(apply_env(settings), routes))
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
 def write_if_changed(path, content):
     if content_matches(path, content):
         return False
     directory = os.path.dirname(path) or "."
+    # bind mount 悬空的典型特征：目录还在、但 nlink 已归零（宿主侧被删后重建）。
+    # 这时 tempfile 会抛 ENOENT，watch 每轮打印一行却永远不恢复；把原因说清楚，
+    # 让人一眼知道要重建容器，而不是误判成「网络抖动、等等就好」。
+    if os.path.isdir(directory):
+        try:
+            if os.stat(directory).st_nlink == 0:
+                raise RuntimeError(
+                    f"输出目录 {directory} 的 bind mount 已失效（nlink=0）：宿主目录被"
+                    "删除并重建过，容器仍持有旧 inode。需重建 router 与 caddy 容器；"
+                    "不要用 rm -rf out 清理，见 Makefile clean"
+                )
+        except FileNotFoundError:
+            pass
     os.makedirs(directory, exist_ok=True)
     temporary = None
     try:
@@ -348,9 +378,13 @@ class RouterHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/healthz":
-            ready = self.server.health_state["routes_count"] is not None
+            count = self.server.health_state.get("routes_count")
+            # 光是「读到过配置」不够：Caddy 真正加载的是产物文件。
+            # 响应体形状保持不变（ok / routes），只把 ok 的判据补严。
+            ready = count is not None and artifact_is_current(
+                self.server.routes_path, self.server.out_path)
             self._json(200 if ready else 503,
-                       {"ok": ready, "routes": self.server.health_state["routes_count"] or 0})
+                       {"ok": ready, "routes": count or 0})
         elif self.path == "/routes":
             settings, routes = parse_routes(self.server.routes_path)
             self._json(200, {"gateway_domain": settings["gateway_domain"], "routes": routes})

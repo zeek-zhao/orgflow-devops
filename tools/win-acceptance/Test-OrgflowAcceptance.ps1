@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    验收自检：hosts 记录、根证书、6 个站点状态码与证书链。
+    验收自检：hosts 记录、根证书、8 个站点状态码与证书链。
 
 .DESCRIPTION
     只读，不改任何东西。三项全过才算通过，退出码 0；否则 1。
@@ -43,15 +43,24 @@ $Expectations = [ordered]@{
     'dex'       = @(200)        # initial
     'auth'      = @(302)        # 86
     'home'      = @(200)        # initial
+    # #117：两个仓库站点打的是「服务真的活着」的路径，不是根路径。
+    # docker 根路径是 400、pypi 根路径是 Nexus 欢迎页 200 —— 后者证明不了仓库可用，
+    # 所以各自在 $ProbePaths 里指定一个正面判据（2026-11-11 213 实测）。
+    'docker'    = @(401)        # 117
+    'pypi'      = @(200)        # 117
 }
 
 # 只验状态、不要求本机 hosts 的站点：docs 是唯一走网关认证的站点，
-# 但它不在上面那 6 条标准 hosts 记录里（老机器不一定加了 docs 那条），
+# 但它不在上面那 8 条标准 hosts 记录里（老机器不一定加了 docs 那条），
 # 所以单独列，避免把「没加 hosts」误报成「站点挂了」。
 $ExtraSites = [ordered]@{ 'docs' = @(302) }   # 86
 
 # 子域 -> 探测路径（缺省是 /）
-$ProbePaths = @{ 'dex' = '/dex/healthz' }
+$ProbePaths = @{
+    'dex'   = '/dex/healthz'                        # dex 根路径本来就 404
+    'docker' = '/v2/'                              # 117：registry 活着且要求认证
+    'pypi'  = '/repository/pypi-hosted/simple/'    # 117：私有 PyPI 索引可用
+}
 
 # 附加的「正面判据」：光看状态码只能证明「没给内容」，证明不了「应用活着且能登录」。
 # 这几条必须是 200。
@@ -297,7 +306,7 @@ foreach ($sub in $Expectations.Keys) {
 }
 foreach ($sub in $ExtraSites.Keys) {
     # 本机解析不到就先判「未配置」，不要报成站点故障：
-    # 标准契约是 6 条 hosts，docs 不在其中，没加就必然解析失败。
+    # 标准契约是 8 条 hosts，docs 不在其中，没加就必然解析失败。
     # 报 FAIL 会把人引向「网关坏了」的错误结论。
     if (-not (Test-DnsResolvable -HostName "$sub.$Domain")) {
         Write-Host ("  [SKIP] {0,-10}    -  本机未配置该域名解析（非故障；需要时在 hosts 补一条）" -f $sub) -ForegroundColor Yellow

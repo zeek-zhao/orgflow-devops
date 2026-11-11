@@ -22,6 +22,27 @@ routes:
     subdomain: nexus
     upstream: nexus:8081
 
+  # 容器镜像仓库（#117）：反代 Nexus 的 docker connector，不是 8081。
+  # 8081 没映射到宿主，这里走的是**同网络内的容器端口**，重建 Nexus 不会丢配置。
+  #
+  # 为什么指 8082(hosted) 而不是 8083(group)：实测 Nexus OSS 3.92.2 向 group push 会被拒
+  #   denied: Deploying to groups is a PRO-licensed feature.
+  # group 只能 pull。所以用一个域名同时满足 push 和 pull，只能落到 hosted；
+  # docker-group(8083) 保留为容器网络内的聚合入口（含 docker-proxy 的上游缓存），
+  # 不单独开公网子域 —— 免得再增加一条 hosts 记录。
+  # 客户端：docker login docker.<domain> → push / pull 都落在 docker-hosted。
+  - name: docker
+    subdomain: docker
+    upstream: nexus:8082
+
+  # PyPI（#117）：没有独立端口，走 Nexus 8081 的路径前缀。
+  # 客户端：pip --index-url https://pypi.<domain>/repository/pypi-group/simple/
+  # 不做路径改写 —— 改写得动 render.py，而 Nexus 的标准用法本来就是这个长路径，
+  # 多一层重写只会增加一处可能对不上的地方。
+  - name: pypi
+    subdomain: pypi
+    upstream: nexus:8081
+
   # phpLDAPadmin 自带 LDAP 登录(#86:摘网关 auth)
   - name: ldapadmin
     subdomain: ldapadmin
