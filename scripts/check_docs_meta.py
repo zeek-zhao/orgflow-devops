@@ -11,6 +11,8 @@
 4. **状态与见证匹配** —— `approved` 必须有评审日期；`superseded` 必须写明被谁替代。
    状态是自我声明，没有见证字段就等于没有状态。
 5. **复审超期提醒** —— 不是错误（WARN）：文档不会因为到期就变错，但需要有人看一眼。
+6. **期望值溯源（WARN）** —— `deploy.sh` 与 Windows 验收脚本里的每个状态码期望，
+   必须标明它出自哪个 issue。见 `check_expected_values()` 的说明。
 
 刻意不做：判内容是否过期、判外部 URL 是否可达（网络抖动会造成假红，
 假红会训练人忽略红灯 —— 这条教训写在 scripts/test_docs.py 的模块注释里）。
@@ -41,6 +43,9 @@ STATUSES = {"draft", "review", "approved", "superseded", "archived"}
 # 留着一个没有使用者的编号格式，只会让下一个人以为「该建卡文件了」。
 ID_PATTERN = re.compile(r"^(DOC-[EPRL]-\d{3}|ADR-\d{2,3})$")
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+# 期望值出处标记：`#86` / `# 86` / `#initial`。两种都收，不然格式之争会变成 WARN 噪音。
+TRACE_RE = re.compile(r"#\s*(\d+|initial)\b")
 
 COLUMNS = ["DOC-ID", "标题", "路径", "层级", "状态", "负责人", "评审日期", "复审(月)", "关联"]
 
@@ -111,6 +116,58 @@ def emit(registered):
     for path, rel in pending:
         title = wait_for(rel, path).replace("|", "/")
         print(f"| DOC-X-000 | {title} | {rel} | 参考 | draft | - | - | 12 | - |")
+
+
+def check_expected_values():
+    """期望值必须有出处（WARN，不阻断）。
+
+    反面教材是真实发生过的两次：`deploy.sh` 写死 `jenkins / 302`，而 #86 之后 Jenkins
+    自己回 403 —— 于是这个脚本在任何**正确**的环境上都必然失败；类似的还有根证书判据
+    只查「存在任一 Caddy 根证书」，旧证书骗过检查、验收显示通过。
+
+    共同根因不是「写错了」，而是期望值和架构变更没绑在一起：改架构的人不知道脚本里
+    埋着期望值，写期望值的人不知道架构改了。
+
+    这里只认已经落地的两种形态，**不试图通用地识别「任何数字」** —— 那会把超时、
+    端口、行号全当成期望值，刷出一屏 WARN，然后没人再看（假红训练人忽略红灯）。
+
+    为什么是 WARN 而不是 error：存量里还有没溯源的值（标 `#initial` 的那些），
+    一次红一片的结果是被人整体关掉，而不是被修好。
+    """
+    warnings = []
+    targets = [
+        (ROOT / "scripts/deploy.sh", "sh"),
+        (ROOT / "tools/win-acceptance/Test-OrgflowAcceptance.ps1", "ps1"),
+    ]
+    for path, kind in targets:
+        if not path.exists():
+            warnings.append(f"{path.name} 不存在，期望值溯源检查未执行（改名了？）")
+            continue
+        lines = path.read_text(encoding="utf-8").splitlines()
+
+        if kind == "sh":
+            for idx, line in enumerate(lines):
+                if "for check in" not in line:
+                    continue
+                block = line
+                probe = idx
+                while "; do" not in block and probe + 1 < len(lines):
+                    probe += 1
+                    block += " " + lines[probe]
+                for spec in re.findall(r'"([^"]*)"', block):
+                    parts = spec.split()
+                    if not parts or not TRACE_RE.search(parts[-1]):
+                        warnings.append(
+                            f"{path.name}:{idx + 1} 期望值「{spec}」缺少出处（行尾应写 #NN 或 #initial）")
+        else:
+            for idx, line in enumerate(lines, 1):
+                if not re.search(r"'[\w.-]+'\s*=\s*@\([^)]*\)", line):
+                    continue
+                if not TRACE_RE.search(line):
+                    warnings.append(
+                        f"{path.name}:{idx} 期望值缺少出处：{line.strip()}")
+
+    return warnings
 
 
 def main():
@@ -194,6 +251,8 @@ def main():
             due = dt.date.fromisoformat(review) + dt.timedelta(days=30 * int(months))
             if due < today:
                 warnings.append(f"{tag}：评审已超期（{review} + {months} 月 = {due}）")
+
+    warnings.extend(check_expected_values())
 
     for w in warnings:
         print(f"  [WARN] {w}")

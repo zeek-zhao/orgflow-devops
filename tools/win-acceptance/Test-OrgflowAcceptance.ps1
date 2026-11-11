@@ -32,19 +32,23 @@ $ErrorActionPreference = 'Stop'
 #     ldapadmin 根路径 200，因为返回的就是自己的 LDAP 登录页
 #   仍在网关侧的只有 docs（302 跳 oauth2）。
 # 旧口径（jenkins/ldapadmin 一律 302）是 #86 之前的值，照它判会在正确环境上必红。
+#
+# 每行末尾的 `# NN` 是该期望值的**出处**（哪个 issue 定下的），规则见
+# docs/文档规范.md §7.1「期望值与架构变更的绑定」。#initial = 建仓时就有的值、尚未溯源；
+# 标它而不是编一个号，因为错的溯源会让下一个人去读一个不相干的 issue。
 $Expectations = [ordered]@{
-    'jenkins'   = @(302, 403)
-    'nexus'     = @(200)
-    'ldapadmin' = @(200)
-    'dex'       = @(200)
-    'auth'      = @(302)
-    'home'      = @(200)
+    'jenkins'   = @(302, 403)   # 86
+    'nexus'     = @(200)        # 46
+    'ldapadmin' = @(200)        # 86
+    'dex'       = @(200)        # initial
+    'auth'      = @(302)        # 86
+    'home'      = @(200)        # initial
 }
 
 # 只验状态、不要求本机 hosts 的站点：docs 是唯一走网关认证的站点，
 # 但它不在上面那 6 条标准 hosts 记录里（老机器不一定加了 docs 那条），
 # 所以单独列，避免把「没加 hosts」误报成「站点挂了」。
-$ExtraSites = [ordered]@{ 'docs' = @(302) }
+$ExtraSites = [ordered]@{ 'docs' = @(302) }   # 86
 
 # 子域 -> 探测路径（缺省是 /）
 $ProbePaths = @{ 'dex' = '/dex/healthz' }
