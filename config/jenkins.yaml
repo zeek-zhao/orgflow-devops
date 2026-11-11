@@ -45,6 +45,37 @@ jenkins:
   #   症状是 agent 侧 `Connection closed ... [preauth]`，完全看不出是 host key。
   #   正解：host key 本身做成受管产物（secrets/agent_host_key，挂进容器覆盖
   #   /etc/ssh/ssh_host_ed25519_key），这里显式声明期望值，跨重建稳定。
+  # 双维度视图（#116）。用 ListView + includePattern 归类，**不移动 Job** ——
+  # 换成 Folder 会改 Job 路径，既有构建历史会失效。
+  # 每个视图的正则都对着当前 16 个 Job 名核过，至少命中 2 条；
+  # 加 Job 时记得回头看 includePattern，否则新 Job 只会出现在总览里。
+  views:
+    - all:
+        name: "all"                       # 总览 = 默认 AllView
+    - list:
+        name: "动作·部署"
+        includeRegex: ".*deploy.*"       # deploy-service, nexus-deploy
+    - list:
+        name: "动作·备份与恢复"
+        includeRegex: ".*(backup|restore).*"  # backup-service, nexus-backup, restore-service
+    - list:
+        name: "动作·验证"
+        includeRegex: "verify-.*"        # 10 个 verify-*
+    - list:
+        name: "动作·Nexus"
+        includeRegex: ".*nexus.*"        # nexus-backup, nexus-deploy, verify-nexus
+    - list:
+        name: "服务·jenkins"
+        includeRegex: ".*jenkins.*"      # verify-jenkins, verify-jenkins-agent
+    - list:
+        name: "服务·ldap-auth"
+        includeRegex: ".*(ldap|dex|oauth2).*"  # verify-ldap, verify-ldapadmin, verify-dex, verify-oauth2-proxy
+    - list:
+        name: "服务·nexus"
+        includeRegex: "^nexus-.*"        # nexus-backup, nexus-deploy（与动作·Nexus 视角不同）
+  primaryView:
+    all:
+      name: "all"                         # 总览；判据要求显式声明，不靠默认
   nodes:
     - permanent:
         name: "orgflow-docker"
@@ -63,6 +94,43 @@ jenkins:
               manuallyProvidedKeyVerificationStrategy:
                 # 格式必须是 `算法 base64`（不带注释），由 deploy.sh / harness
                 # 从 secrets/agent_host_key.pub 切前两列后 export
+                key: "${JENKINS_AGENT_HOST_KEY}"
+    # #116：两种 SSH 接入方式，都复用现有 secrets/agent_ssh_key 与
+    # of-jenkins-agent 容器，不新增账号、不新增容器。
+    #   orgflow-ssh-pre   「SSH 预接入」：静态节点，密钥与 host key 都是预置的
+    #   orgflow-single    「单核」：同 launcher，numExecutors=1，独立 label
+    # remoteFS 必须各不相同，否则三个节点会抢同一份 workspace。
+    - permanent:
+        name: "orgflow-ssh-pre"
+        remoteFS: "/home/jenkins/agent-ssh-pre"
+        numExecutors: 1
+        labelString: "ssh-pre"
+        mode: NORMAL
+        retentionStrategy: "always"
+        launcher:
+          ssh:
+            host: "jenkins-agent"
+            port: 22
+            credentialsId: "jenkins-agent-ssh"
+            javaPath: "/opt/java/openjdk/bin/java"
+            sshHostKeyVerificationStrategy:
+              manuallyProvidedKeyVerificationStrategy:
+                key: "${JENKINS_AGENT_HOST_KEY}"
+    - permanent:
+        name: "orgflow-single"
+        remoteFS: "/home/jenkins/agent-single"
+        numExecutors: 1
+        labelString: "single-core"
+        mode: NORMAL
+        retentionStrategy: "always"
+        launcher:
+          ssh:
+            host: "jenkins-agent"
+            port: 22
+            credentialsId: "jenkins-agent-ssh"
+            javaPath: "/opt/java/openjdk/bin/java"
+            sshHostKeyVerificationStrategy:
+              manuallyProvidedKeyVerificationStrategy:
                 key: "${JENKINS_AGENT_HOST_KEY}"
 unclassified:
   globalLibraries:

@@ -1,0 +1,33 @@
+---
+# 远程部署主链路的**占位骨架**（#116）。
+# 当前只对 loopback 占位主机跑 --check；不接真实目标、不虚构部署成功。
+# 所有任务都是幂等的，且 check 模式下不会写任何文件。
+- name: Orgflow 部署占位（dry-run 用）
+  hosts: orgflow_targets
+  gather_facts: false
+  vars:
+    deploy_root: /srv/orgflow-devops
+    release_tag: "placeholder-0.0.0"
+  tasks:
+    - name: 声明目标（占位说明，不是真实主机）
+      ansible.builtin.debug:
+        msg: >-
+          target={{ inventory_hostname }}
+          connection={{ ansible_connection }}
+          NOTE=未接真实远程主机，本 playbook 仅用于验证语法与任务展开
+
+    - name: 部署根目录应存在
+      ansible.builtin.file:
+        path: "{{ deploy_root }}"
+        state: directory
+        mode: "0755"
+
+    - name: 部署标记文件应为期望版本
+      ansible.builtin.copy:
+        dest: "{{ deploy_root }}/RELEASE"
+        content: "{{ release_tag }}\n"
+        mode: "0644"
+
+    - name: 列出期望的发布物（真实部署时由 Jenkins job 提供）
+      ansible.builtin.debug:
+        msg: "expected artifacts: docker-compose.yml, .env, config/, secrets/"
