@@ -76,6 +76,8 @@ def main() -> int:
                 for line in USERS.read_text(encoding="utf-8").splitlines()
                 if re.match(r"(?i)^dn: uid=[^,]+,ou=users,", line)]
 
+    # 全新克隆里没有 out/（gitignore），临时目录的父目录要先建出来
+    (ROOT / "out").mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(dir=ROOT / "out", prefix="ldap-pw-") as tmp:
         # 临时目录放在 out/ 下，才能用相对路径传给 bash
         rel = pathlib.Path(tmp).relative_to(ROOT).as_posix()

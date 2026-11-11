@@ -1,11 +1,15 @@
 # 任务卡（Issue 模板）
 #
+# 任务卡就是 Issue：仓库里不再存 task-cards/*.md。
+# 理由：卡是记录层，Issue 天生带状态、时间线、关闭原因；文件形态要把这些手工抄两遍，
+# 历史上 27 张卡的结局就是「卡与 issue 说法不一致」。卡的可追溯性靠 Issue URL，不靠文件。
+#
 # 字段刻意收敛到「可验收的最小集」：验收判据写不清的 Issue 不该开工。
 # 验收与禁止事项是必填——这两项空着的 Issue，说明需求还没想清楚，不该开工。
 name: 任务卡
-description: 一个可验收的工作单元。Issue 是需求真本，实现走 CONTRIBUTING 里的 PR 流程。
-title: "[M0] "
-labels: ["task"]
+description: 一个可验收的工作单元。要求写在 docs/requirements/，执行状态写在 Issue。
+title: ""
+labels: []
 body:
   - type: markdown
     attributes:
@@ -13,7 +17,23 @@ body:
         填之前先想清楚一件事：**做完之后，怎么证明它做完了？**
         写不出可执行命令的验收，就是还没想清楚。
 
+        分工：**要求**（要求什么、怎么算做到）在 `docs/requirements/`，冻结、可 diff；
+        **状态**（谁在做、卡在哪）在这里。两边用需求号互指。
+
         实现走 CONTRIBUTING.md 里的 PR 流程（rebase 合并、禁 AI 尾注）。
+        标签只用 `type/` `prio/` `area/` `state/` 四类，清单见 `.github/labels.json`。
+
+  - type: input
+    id: requirement
+    attributes:
+      label: 需求号
+      description: |
+        对应 `docs/requirements/` 里的 `REQ-M0-xx`；也可以是 `REQ-M1-xx`（下一批）、
+        `BUG-xxx`（实现错，需求没错）或 `N/A: <理由>`（纯杂务，比如清分支）。
+        **填不出来通常说明这张卡还没想清要满足什么。**
+      placeholder: "REQ-M0-A4"
+    validations:
+      required: true
 
   - type: textarea
     id: goal

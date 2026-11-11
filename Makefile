@@ -28,7 +28,7 @@ else
 COMPOSE_LOCAL = $(COMPOSE)
 endif
 
-.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock images-pin images-guard build-local hooks identity-check hosts ca clean check-jenkins-image check-pins docs-check sbom cve links ldap-passwords ldap-apply redaction
+.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock images-pin images-guard build-local hooks identity-check hosts ca clean check-jenkins-image check-pins docs-check sbom cve links ldap-passwords ldap-apply labels-sync redaction
 
 help:
 	@echo "make render   渲染 routes.yaml -> out/Caddyfile"
@@ -149,6 +149,7 @@ test: check-jenkins-image
 	@python3 scripts/migrate_identity.py --verify
 	@python3 scripts/test_ldif_passwords.py
 	@python3 scripts/test_ldap_set_passwords.py
+	@python3 scripts/test_labels.py
 	@$(MAKE) --no-print-directory docs-check
 	@echo "python syntax ok"
 
@@ -197,6 +198,12 @@ ldap-passwords:
 # bootstrap 当警告吞掉），而「改 LDIF 就算改了口令」是这套栈最容易踩的误解。
 ldap-apply:
 	@bash scripts/ldap-set-passwords.sh
+
+# 标签真本在 .github/labels.json；这条把差异推到 GitHub（幂等，只增改不删）。
+# 为什么需要人工触发而不是 CI：标签属于仓库外部状态，改它要写权限，
+# 不该让每次 PR 都有权改 issue 台账。
+labels-sync:
+	@python3 scripts/sync-labels.py
 
 # #90 / REQ-M0-B1：Jenkins 镜像静态自检。本轮不构建镜像，容器内插件清单无法实测，
 # 用「清单必含项 + Dockerfile 用 jenkins-plugin-cli 安装」替代（见 docs/M0-镜像与CI.md）。

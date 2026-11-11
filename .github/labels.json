@@ -1,0 +1,32 @@
+{
+  "_comment": [
+    "标签真本。新标签必须先进这里，再由 scripts/sync-labels.py 推到 GitHub（make labels-sync）。",
+    "四类前缀固定：type/ 做什么、prio/ 多急、area/ 哪块、state/ 卡在哪。",
+    "不使用无前缀标签（task / ci / documentation 这类历史标签不再新增）。",
+    "scripts/test_labels.py 做离线校验：前缀、颜色、描述、以及 Issue 模板里引用的标签必须存在。"
+  ],
+  "labels": [
+    { "name": "type/feat", "color": "0e8a16", "description": "新增能力：交付后系统能做以前做不到的事" },
+    { "name": "type/fix", "color": "d73a4a", "description": "修缺陷：需求没错，实现做错了" },
+    { "name": "type/docs", "color": "0075ca", "description": "文档：新增、修正、重构，不改运行时行为" },
+    { "name": "type/ci", "color": "5319e7", "description": "流水线与门禁：工作流、脚本、检查项" },
+    { "name": "type/refactor", "color": "fbca04", "description": "重构：行为不变，结构变好" },
+    { "name": "type/test", "color": "1d76db", "description": "测试：补断言、补反证、修假红" },
+    { "name": "type/chore", "color": "c5def5", "description": "杂务：依赖升级、清理、一次性维护" },
+    { "name": "type/decision", "color": "bfd4f2", "description": "待决策：需要拍板才能开工，结论回写 ADR 或需求基线" },
+    { "name": "type/manual", "color": "f9d0c4", "description": "人工动作：只能在 GitHub / 真机上做，无 API 可自动化" },
+
+    { "name": "prio/P0", "color": "b60205", "description": "P0 阻塞：main 红、口径错、宣称与事实不符" },
+    { "name": "prio/P1", "color": "d93f0b", "description": "P1 本轮必备：不做会让已有承诺打折" },
+    { "name": "prio/P2", "color": "fef2c0", "description": "P2 可延后：不做不影响当前声明成立" },
+
+    { "name": "area/identity", "color": "006b75", "description": "身份与权限：LDAP / Dex / oauth2-proxy / 路由授权（需求 A 域）" },
+    { "name": "area/pipeline", "color": "1d76db", "description": "流水线与交付：Jenkins / Nexus / Job DSL（需求 B 域）" },
+    { "name": "area/presentation", "color": "c2e0c6", "description": "呈现与文档：homepage / 文档站 / 渲染（需求 C 域）" },
+    { "name": "area/ops", "color": "8b6f47", "description": "底座与运维：网关 / DNS / 证书 / 备份恢复（需求 D 域）" },
+    { "name": "area/compliance", "color": "e99695", "description": "合规与开源：许可证、SBOM、密钥扫描、发布物" },
+
+    { "name": "state/blocked", "color": "000000", "description": "被外部条件卡住：写清卡在谁、卡在什么上" },
+    { "name": "state/icebox", "color": "ededed", "description": "冻结：明确不做，写清复活条件" }
+  ]
+}
