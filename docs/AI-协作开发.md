@@ -8,8 +8,8 @@
 
 ## 1. 为什么单独写一份
 
-这个仓库有 58 条 bats 断言、`make test` 的 18 项自检（16 个自检脚本 + 语法编译 + docs-check）、
-3 个 CI 工作流。AI 参与之后，风险不再是
+这个仓库有全栈行为断言（数量以 `bats --count tests/bats/*.bats` 为准，不写死在这里）、
+`make test` 的一串自检（清单在 `Makefile` 的 `test` 目标里）、3 个 CI 工作流。AI 参与之后，风险不再是
 「写不出代码」，而是三件事：
 
 | 风险 | 具体长什么样 | 代价 |
@@ -95,6 +95,6 @@
 | 无内网标识 / 无凭据形态 | `make redaction` |
 | 无死链 | `make links` |
 | 全历史无密钥 | `Compliance` / `Secret Scan` 的 gitleaks |
-| 行为没退化 | `make test-bats`（58 例） |
+| 行为没退化 | `make test-bats`（用例数见 `bats --count`） |
 
 AI 产出的东西过不了这些检查，就不该进 `main` —— 这条没有例外，也没有「就这一次」。

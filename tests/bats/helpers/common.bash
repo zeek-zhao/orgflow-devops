@@ -123,6 +123,14 @@ assert_contains() {
     fi
 }
 
+# 反证用：断言某段文本里「不该出现」的东西确实没出现。
+refute_contains() {
+    if [[ $1 == *"$2"* ]]; then
+        printf 'expected %q NOT to contain %q\n' "$1" "$2" >&2
+        return 1
+    fi
+}
+
 assert_healthy() {
     local id
     id=$(compose_cmd ps -q "$1") || return
