@@ -35,6 +35,8 @@ run "文档索引" "$PY" scripts/test_docs.py
 run "死链" "$PY" scripts/check_export_links.py .
 run "脱敏" bash scripts/check-public-redaction.sh .
 run "标签清单" "$PY" scripts/test_labels.py
+run "Action 钉死" "$PY" scripts/check-actions-pinned.py .
+run "插件许可证" "$PY" scripts/test_plugin_licenses.py
 
 if (( failed )); then
     echo

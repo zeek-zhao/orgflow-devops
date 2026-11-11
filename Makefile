@@ -159,6 +159,8 @@ test: check-jenkins-image
 	@python3 scripts/test_ldif_passwords.py
 	@python3 scripts/test_ldap_set_passwords.py
 	@python3 scripts/test_labels.py
+	@python3 scripts/check-actions-pinned.py .
+	@python3 scripts/test_plugin_licenses.py
 	@$(MAKE) --no-print-directory docs-check
 	@echo "python syntax ok"
 
