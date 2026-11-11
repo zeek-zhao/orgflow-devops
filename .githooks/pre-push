@@ -7,9 +7,10 @@
 #   绕过身份校验：GIT_IDENTITY_ALLOW=1 git push    （仅历史迁移）
 #
 #   为什么要它：私有库 + GitHub 免费计划下，branch protection / rulesets
-#   接口一律 403 Upgrade to GitHub Pro，本地钩子是唯一防线。
+#   接口一律 403 Upgrade to GitHub Pro，本地钩子是唯一防线（公开后 ruleset 是第二道，
+#   见 #129；本地钩子仍保留，因为 ruleset 拦不住误推错的仓库配置）。
 #
-#   身份规则（与 docs/提交规范.md 一致）：
+#   身份规则（与 CONTRIBUTING.md 一致）：
 #     - author    必须恒为 zeek.zhao <zeek.zhao@foxmail.com>
 #     - committer 在非主干分支上必须同上；主干允许 GitHub squash 机器人
 #     - 检查范围：本次推送真正新增的提交（新分支 = 主干..HEAD，不扫全量历史），
@@ -77,5 +78,16 @@ while read -r _local_ref local_sha remote_ref remote_sha; do
     fi
   done < <(git log --no-merges --format='%H %ae %ce' "$range" 2>/dev/null)
 done
+
+# ---- ③ 重检查 ---------------------------------------------------------------
+# 身份与主干都过了才跑：检查本身要几分钟，先挡能秒判的问题。
+#   跳过 bats：SKIP_BATS=1 git push   （会打印「CI 会跑」，不静默）
+#   整体跳过：  CHECK_ALL_ALLOW=1 git push（仅紧急）
+if [[ "$rc" -eq 0 && "${CHECK_ALL_ALLOW:-0}" != 1 ]]; then
+  if ! bash "$(git rev-parse --show-toplevel)/scripts/check-all.sh"; then
+    printf '\n[pre-push] 重检查未通过。绕过（不推荐）：CHECK_ALL_ALLOW=1 git push\n\n' >&2
+    rc=1
+  fi
+fi
 
 exit "$rc"

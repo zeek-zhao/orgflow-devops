@@ -19,15 +19,17 @@
 ## 常跑命令
 
 ```bash
+make check         # 快检查：文档配置 / 死链 / 脱敏 / 标签清单（几秒，无 docker；pre-commit 同款）
+make check-all     # 快检查 + make test + lint + bats（pre-push 同款；SKIP_BATS=1 可跳 bats）
 make test          # 静态 + 行为自检（python，无需 docker）
+make test-bats     # 全栈行为（DinD，需要 docker，几分钟）
 make docs-check    # 文档登记册双向一致
 make links         # 仓内链接 0 死链
 make redaction     # 公开面门禁：内网标识 / 凭据形态 / 内部文档
-make test-bats     # 全栈行为（DinD，需要 docker，几分钟）
 make lint          # shellcheck + yamllint（未安装会跳过）
 ```
 
-提交前**至少**跑前四条；动了运行时行为再跑 `make test-bats`。
+提交前**至少**跑 `make check`；推之前跑 `make check-all`（或直接让钩子跑 —— `make hooks` 装一次即可）。
 CI 上 `Compliance` / `Test` / `Identity` 三个工作流是必需检查，红着不合。
 
 ## 硬约束（违反会被门禁挡下，别试图绕过）
