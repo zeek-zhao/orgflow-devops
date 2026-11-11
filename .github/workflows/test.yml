@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # 必须全量：浅克隆下 PR 合成合并提交会被 git 视为"无父提交"，
-          # identity-check 的 --no-merges 就过滤不掉它（详见 docs/提交规范.md）
+          # identity-check 的 --no-merges 就过滤不掉它（详见 CONTRIBUTING.md）
           fetch-depth: 0
       - name: 提交身份校验
         run: make identity-check

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LDIF 口令真值自检（纳入 make test）。
+"""LDIF 口令自检（纳入 make test）。
 
 背景（2026-11-06 线上切换前预演实测）：
   `services/auth/ldif/users.ldif` 里 `{SSHA}` 的 base64 值含 `+` 时，曾被写成
@@ -12,12 +12,19 @@
   2. 每个 posixAccount 必须有 `userPassword: {SSHA}<base64>`
   3. base64 严格可解码，且解码后 > 20 字节（前 20 字节是 SHA1 摘要，其余是 salt；
      OpenLDAP `slappasswd -h {SSHA}` 默认 salt 8 字节，总共 28 字节，不是 40）
-  4. SHA1(b'123456' + salt) 必须等于存下的摘要 —— 即口令真值确实是 123456
+  4. 每条哈希都**不能**是常见弱口令的哈希 —— 判据从「必须等于 123456」翻转而来：
+     公开仓库里挂着一份人人可用的目录口令，本身就是把 LDAP 入口一起公开
+  5. 各账号 salt 互不相同 —— 否则一眼看出谁和谁同口令，等于免费的弱口令地图
+
+第 4 条为什么用字典而不是「等于某个值」：原先的写法要求所有账号都是 123456，
+于是这条测试反而在**保护**一个弱口令。改成黑名单后，它能挡住「换了个别的弱口令」
+这种更常见的退化。
 
 反证用法：
-  - 把任一 `+` 改回 `\\+`                    -> 第 1、3 条红
-  - 改动哈希里的一个字符                      -> 第 4 条红
-  - 删掉某条目的 userPassword                 -> 第 2 条红
+  - 把任一 `+` 改回 `\\+`                          -> 第 1、3 条红
+  - 把某条哈希换成 123456 的 {SSHA}                 -> 第 4 条红
+  - 复制某账号的 userPassword 到另一个账号            -> 第 5 条红
+  - 删掉某条目的 userPassword                       -> 第 2 条红
 
 本脚本只做静态检查；导入后的实际 bind 由部署侧逐账号 `ldapwhoami` 验收。
 """
@@ -29,8 +36,22 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 USERS = ROOT / 'services' / 'auth' / 'ldif' / 'users.ldif'
-PASSWORD = b'123456'
 EXPECTED_USERS = 10
+
+# 仓库存量文档里也不该再出现这个口令真值（README 曾经直接把它写成初始密码）。
+DOCS_TO_SCAN = [
+    ROOT / 'services' / 'auth' / 'README.md',
+    ROOT / 'docs' / 'services' / 'ldap.md',
+]
+
+# 常见弱口令黑名单：这些值出现在目录里，等于没有口令。
+# 只放最高频的一小撮 —— 目的是拦住退化，不是做完整的口令审计。
+WEAK_PASSWORDS = (
+    b'123456', b'1234567', b'12345678', b'123456789', b'1234567890',
+    b'password', b'password1', b'passw0rd', b'changeme', b'change-me',
+    b'admin', b'admin123', b'root', b'secret', b'qwerty', b'letmein',
+    b'orgflow', b'devops', b'test', b'test123', b'abc123', b'111111',
+)
 
 
 def main():
@@ -55,6 +76,7 @@ def main():
                      % (EXPECTED_USERS, len(users)))
 
     checked = 0
+    seen_salts = {}
     for blk in users:
         dn = re.search(r'^dn: (.+)$', blk, re.M)
         label = dn.group(1) if dn else '<无 DN>'
@@ -74,9 +96,27 @@ def main():
                          % (label, len(raw)))
             continue
         digest, salt = raw[:20], raw[20:]
-        if hashlib.sha1(PASSWORD + salt).digest() != digest:
-            fails.append('%s: {SSHA} 摘要与口令 123456 不匹配' % label)
+
+        weak = [p.decode('ascii', 'replace') for p in WEAK_PASSWORDS
+                if hashlib.sha1(p + salt).digest() == digest]
+        if weak:
+            fails.append('%s: 口令是常见弱口令之一（%s）；用 '
+                         'scripts/gen-ldif-passwords.py 重算' % (label, ', '.join(weak)))
+
+        if salt in seen_salts:
+            fails.append('%s: salt 与 %s 相同（同口令会暴露成相同哈希）'
+                         % (label, seen_salts[salt]))
+        else:
+            seen_salts[salt] = label
         checked += 1
+
+    for doc in DOCS_TO_SCAN:
+        if not doc.is_file():
+            continue
+        body = doc.read_text(encoding='utf-8')
+        if re.search(r'123456', body):
+            fails.append('%s: 仍写着口令真值 123456；改口径为「口令由操作者掌握、'
+                         '仓库只存哈希」' % doc.relative_to(ROOT))
 
     if fails:
         print('✗ LDIF 口令自检失败：', file=sys.stderr)
@@ -84,8 +124,8 @@ def main():
             print('  - %s' % f, file=sys.stderr)
         return 1
 
-    print('✓ LDIF 口令自检通过：%d 个账号的 {SSHA} 均对应 123456，无 \\+ 转义，'
-          'base64 与 SSHA 结构合规' % checked)
+    print('✓ LDIF 口令自检通过：%d 个账号的 {SSHA} 结构合规、salt 互不相同、'
+          '且都不是常见弱口令' % checked)
     return 0
 
 

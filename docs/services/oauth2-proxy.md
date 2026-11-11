@@ -159,12 +159,12 @@ docker compose logs --tail=50 oauth2-proxy | grep -iE 'error|fatal|cookie'
 
 ## 注意事项
 
-- `--reverse-proxy=true` 且未配 `--trusted-proxy-ip` 时，官方警告默认信任 `0.0.0.0/0`、`::/0`，**可伪造 `X-Forwarded-*`**；213 现状是零 `--trusted-proxy-ip`（`M0-增量需求总表.md` §1 第 3 条、§2 现状取证），属 A3 收口对象。
-- `--allowed-group` 是**登录级**组限制，不是按服务 ACL；按服务授权要靠 `--set-xauthrequest=true` 输出的 `X-Auth-Request-Groups` 交给 `forward_auth` 判定（`M0-增量需求总表.md` §1 第 2 条）。
-- 现状 `--email-domain=*` + 全域 cookie + 无组限制 = 一个账号登录后通吃所有服务（`M0-增量需求总表.md` §2）；这是已知设计缺口，不是配置漏填。
+- `--reverse-proxy=true` 且未配 `--trusted-proxy-ip` 时，官方警告默认信任 `0.0.0.0/0`、`::/0`，**可伪造 `X-Forwarded-*`**；213 现状是零 `--trusted-proxy-ip`（早期内部需求表（已不随仓库分发） §1 第 3 条、§2 现状取证），属 A3 收口对象。
+- `--allowed-group` 是**登录级**组限制，不是按服务 ACL；按服务授权要靠 `--set-xauthrequest=true` 输出的 `X-Auth-Request-Groups` 交给 `forward_auth` 判定（早期内部需求表（已不随仓库分发） §1 第 2 条）。
+- 现状 `--email-domain=*` + 全域 cookie + 无组限制 = 一个账号登录后通吃所有服务（早期内部需求表（已不随仓库分发） §2）；这是已知设计缺口，不是配置漏填。
 - `OAUTH2_COOKIE_SECRET` 必须正好 **16 / 24 / 32 字节**，20 字符旧默认值启动即报错。
-- **没有** `--skip-jwt-bearer-tokens`、**没有** `--skip-auth-route`；想给 API 开旁路是找不到的（`会话交接.md` §4.5）。
-- 认证域名只由 `config/routes.yaml` 里 `name: auth` 那条路由的 `subdomain` 决定，**没有 `AUTH_SUBDOMAIN` 变量**（`会话交接.md` §1.3）；client secret 两端不一致表现为登录后跳回登录页。
+- **没有** `--skip-jwt-bearer-tokens`、**没有** `--skip-auth-route`；想给 API 开旁路是找不到的。
+- 认证域名只由 `config/routes.yaml` 里 `name: auth` 那条路由的 `subdomain` 决定，**没有 `AUTH_SUBDOMAIN` 变量**；client secret 两端不一致表现为登录后跳回登录页。
 
 ## 设置
 

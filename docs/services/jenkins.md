@@ -215,7 +215,7 @@ bash scripts/jenkins-cli.sh log nexus-deploy last
 
 `run` 的参数是 `KEY=VAL`（可多个）；`log` 的 `last` 等价于 `lastBuild`。
 
-**连接地址**：默认直连容器固定 IP `http://172.31.0.20:8080`，可用 `JENKINS_CLI_URL` 覆盖。不要设成 `.env` 里的 `JENKINS_URL`（那是 `https://jenkins.<domain>/` 对外地址）：站点被网关 `forward_auth` 包住，带 Basic auth 打域名只会拿到 302，请求到不了 Jenkins，见 [会话交接 §4.5](../会话交接.md)。
+**连接地址**：默认直连容器固定 IP `http://172.31.0.20:8080`，可用 `JENKINS_CLI_URL` 覆盖。不要设成 `.env` 里的 `JENKINS_URL`（那是 `https://jenkins.<domain>/` 对外地址）：站点被网关 `forward_auth` 包住，带 Basic auth 打域名只会拿到 302，请求到不了 Jenkins。
 
 **凭据**：`JENKINS_ADMIN_ID` / `JENKINS_ADMIN_PASSWORD`，优先环境变量，其次 `~/workbuddy/orgflow-devops/.env`（可用 `JENKINS_CLI_ENV_FILE` 改路径）。脚本用 python 解析 dotenv、不 `source`；凭据只经 stdin 注入 curl 的 `Authorization: Basic`，不进脚本、日志、argv 回显或文档；显式 `set +x` 防调试回显。用 HTTP Basic + API token，**不用 crumb**。
 
@@ -390,9 +390,9 @@ make backup                              # 备份 jenkins_home（会先停服）
 - 改了 `tools/jenkins/plugins.txt` 或 Dockerfile，要等 main 的 Images 工作流跑完 → `make images-pin` 回写 digest → 再 deploy；**跳过这步 213 跑的还是旧镜像**，`make deploy` 不报错。
 - `302` **不是就绪信号**：`deploy.sh` 曾用 `curl -f` 轮询登录端点误判 ready（`-f` 对 3xx 不失败），现在判 `docker inspect` 的 `Health.Status`。
 - Job 跑在 `jenkins-agent` 容器，不在 Jenkins 容器里；Jenkins 容器内 `docker` 不可用（见 [jenkins-agent](jenkins-agent.md)）。
-- `JENKINS_AGENT_HOST_KEY` 必须切成「算法 base64」两列（`.pub` 第三列是注释），**空值会让 JCasC 整份失败、Jenkins 起不来**（`会话交接.md` §4.1）。
-- `GITHUB_TOKEN` 留空表现为 `Invalid username or token` + `Maximum checkout retry attempts reached`，像网络问题其实是配置漏填（`会话交接.md` §2.2）。
-- `.env` 真值不要写进 Job 定义 / 文档 / 日志；Job 侧一律走 Credentials（最小披露，`M0-增量需求总表.md` §5）。
+- `JENKINS_AGENT_HOST_KEY` 必须切成「算法 base64」两列（`.pub` 第三列是注释），**空值会让 JCasC 整份失败、Jenkins 起不来**。
+- `GITHUB_TOKEN` 留空表现为 `Invalid username or token` + `Maximum checkout retry attempts reached`，像网络问题其实是配置漏填。
+- `.env` 真值不要写进 Job 定义 / 文档 / 日志；Job 侧一律走 Credentials（最小披露，早期内部需求表（已不随仓库分发） §5）。
 
 ## 设置
 

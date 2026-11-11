@@ -7,7 +7,7 @@ Jenkins 的构建节点。**所有 pipeline job 实际跑在这个容器里，�
 
 > **这是全仓最容易出问题的组件。** M0 关闭时暴露的三个真机缺陷全部在它身上，
 > 而且三个的报错文案都指向别处（「找不到网络」「节点 offline」「证书没导入」）。
-> 完整复盘见 [M0 验收记录 §12](../M0-验收记录.md#十二验收过程暴露的缺陷核心复盘)。
+> 判据与取证口径见 [M0-测试体系](../M0-测试体系.md)。
 
 ## 用途与端口
 
@@ -184,12 +184,12 @@ docker exec of-jenkins-agent getent group docker      # 期望 docker:x:<gid>:je
 
 ## 注意事项
 
-- 执行用户是 `jenkins`(uid 1000) **不是 root**；上游镜像 `PermitRootLogin no`（`会话交接.md` §4.1）。
-- `group_add` 到不了 SSH 会话：sshd 登录会 `initgroups()` 按 `/etc/group` 重置附加组，必须由 `tools/jenkins-agent/agent-entrypoint.sh` 改 `/etc/group` 本身；`docker exec -u` 会继承 `AdditionalGids` 造成**假阳性**（`会话交接.md` §4.1）。
-- docker 组**只能用数字 gid**（`DOCKER_GID`），容器内 `/etc/group` 与宿主对不上，按组名 `usermod -aG docker` 会找不到组（`会话交接.md` §4.1）。
-- agent 的 sshd host key 每次重建都变会让节点 offline：host key 必须是 `secrets/` 里的受管产物，并配 `manuallyProvidedKeyVerificationStrategy`；该类构造时就 `parseKey`，**空串会让 JCasC 整份失败**（`会话交接.md` §4.1）。
-- 容器 `healthy ≠ 服务可用`：10 容器全 healthy 但 job 全 pending 的坑就在这里，必须有一条打穿全链路的真实 job（`会话交接.md` §4.1）。
-- 打 `jenkins.<domain>` 带 basic auth 只得到 302（整站被 oauth2 包住），API 走容器内 `127.0.0.1:8080`；URL 里有 `[...]` 要 `curl -g`（`会话交接.md` §4.3/§4.5）。
+- 执行用户是 `jenkins`(uid 1000) **不是 root**；上游镜像 `PermitRootLogin no`。
+- `group_add` 到不了 SSH 会话：sshd 登录会 `initgroups()` 按 `/etc/group` 重置附加组，必须由 `tools/jenkins-agent/agent-entrypoint.sh` 改 `/etc/group` 本身；`docker exec -u` 会继承 `AdditionalGids` 造成**假阳性**。
+- docker 组**只能用数字 gid**（`DOCKER_GID`），容器内 `/etc/group` 与宿主对不上，按组名 `usermod -aG docker` 会找不到组。
+- agent 的 sshd host key 每次重建都变会让节点 offline：host key 必须是 `secrets/` 里的受管产物，并配 `manuallyProvidedKeyVerificationStrategy`；该类构造时就 `parseKey`，**空串会让 JCasC 整份失败**。
+- 容器 `healthy ≠ 服务可用`：10 容器全 healthy 但 job 全 pending 的坑就在这里，必须有一条打穿全链路的真实 job。
+- 打 `jenkins.<domain>` 带 basic auth 只得到 302（整站被 oauth2 包住），API 走容器内 `127.0.0.1:8080`；URL 里有 `[...]` 要 `curl -g`。
 
 ## 设置
 

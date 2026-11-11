@@ -154,10 +154,10 @@ docker compose exec -T router sh /app/reload.sh    # 手动触发一次 reload
 
 ## 注意事项
 
-- **宿主跑 `make render` 不会热加载**：真机制是 `router` 容器轮询 mtime + `POST /load` 到 Caddy admin；Caddy admin 只在容器网络 `caddy:2019`，宿主够不到（`会话交接.md` §4.4）。
-- `config/routes.yaml` 是**路由唯一真源**，没有第二处配路由；`out/Caddyfile` 是渲染产物，别手改（`会话交接.md` §1.2）。
+- **宿主跑 `make render` 不会热加载**：真机制是 `router` 容器轮询 mtime + `POST /load` 到 Caddy admin；Caddy admin 只在容器网络 `caddy:2019`，宿主够不到。
+- `config/routes.yaml` 是**路由唯一真源**，没有第二处配路由；`out/Caddyfile` 是渲染产物，别手改。
 - 渲染是原子的：校验失败**不落盘**，上一版继续生效，日志里会有 `previous Caddyfile preserved`；`/healthz` 的 `ok:false` 是「从没成功渲染过一版」，不是「渲染出错」。
-- `USE_GHCR=1` 时对有 `build:` 的服务加 `--build` 会报 `refusing to create a tag with a digest reference`（`会话交接.md` §4.4）。
+- `USE_GHCR=1` 时对有 `build:` 的服务加 `--build` 会报 `refusing to create a tag with a digest reference`。
 - 删除 `name: auth` 路由会让受保护站点的登录跳转没地方去，渲染会直接报 `缺少 name: auth 的路由`。
 
 ## 设置

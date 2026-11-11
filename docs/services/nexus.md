@@ -111,7 +111,7 @@ curl -sS -k -o /dev/null -w '%{http_code}\n' \
 | `200` | 正常 |
 | `502` | 上游没起（回到第 2 步）→ 说明 **job 还没跑过**，这是 `make deploy` 之后的**预期状态** |
 | `404` | Caddy 没这个站点，查 `config/routes.yaml` |
-| `000` | 宿主的 `/etc/hosts` 缺这条（见 [待办](../待办.md)），用 `--resolve` 绕过 |
+| `000` | 宿主的 `/etc/hosts` 缺这条，用 `--resolve` 绕过（或先跑 `make hosts`）|
 
 **4. 为什么起不来**
 
@@ -181,8 +181,8 @@ make backup                             # 备份 nexus_data
 - 卷名必须写全 `orgflow-devops_nexus_data`；写成 `nexus_data` 会落到匿名卷，表现为「数据看起来没了」。动手前 `docker volume ls | grep nexus_data` 记全名。
 - 改密 API 要 `Content-Type: text/plain`、body 就是新密码本身，**写 JSON 会 415**；job 改密后删 `/nexus-data/admin.password`。
 - `docker run` 没有 healthcheck，`Up N minutes` 属正常；状态 API 空 body 会被 `curl -f` 误判为失败。
-- Nexus **CE 支持 LDAP，Pro-only 的是 SAML SSO**（`M0-增量需求总表.md` §1 第 1 条、§3 A5）；别把 SAML 写进需求或文档。
-- 备份要求**数据库与 blob store 尽量同一时刻**；H2 部署有内置 `Admin - Backup H2 Database` 任务（`M0-增量需求总表.md` §1 第 7 条），不要只备其一。
+- Nexus **CE 支持 LDAP，Pro-only 的是 SAML SSO**（早期内部需求表（已不随仓库分发） §1 第 1 条、§3 A5）；别把 SAML 写进需求或文档。
+- 备份要求**数据库与 blob store 尽量同一时刻**；H2 部署有内置 `Admin - Backup H2 Database` 任务（早期内部需求表（已不随仓库分发） §1 第 7 条），不要只备其一。
 
 ## 设置
 

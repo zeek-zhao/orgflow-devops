@@ -1,9 +1,9 @@
 # 任务卡（Issue 模板）
 #
-# 字段与 docs/task-cards/TEMPLATE.md 一一对应：Issue 填完，派单时把内容搬进卡片即可。
+# 字段刻意收敛到「可验收的最小集」：验收判据写不清的 Issue 不该开工。
 # 验收与禁止事项是必填——这两项空着的 Issue，说明需求还没想清楚，不该开工。
 name: 任务卡
-description: 一个可验收的工作单元。Issue 是需求真本，派单时按 docs/task-cards/TEMPLATE.md 展开成卡片。
+description: 一个可验收的工作单元。Issue 是需求真本，实现走 CONTRIBUTING 里的 PR 流程。
 title: "[M0] "
 labels: ["task"]
 body:
@@ -13,7 +13,7 @@ body:
         填之前先想清楚一件事：**做完之后，怎么证明它做完了？**
         写不出可执行命令的验收，就是还没想清楚。
 
-        派单前会按 `docs/task-cards/TEMPLATE.md` 展开成卡片，见 `docs/派单流程.md`。
+        实现走 CONTRIBUTING.md 里的 PR 流程（rebase 合并、禁 AI 尾注）。
 
   - type: textarea
     id: goal

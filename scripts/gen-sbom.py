@@ -7,7 +7,7 @@ syft / trivy 这类工具要先把镜像拉到本地再逐文件解析，代价�
 放进 CI 不现实（本项目 CI 额度本就紧张）。这里改为**声明式**：
 
     镜像清单 ← docker-compose.ghcr.yml + scripts/nexus-deploy.sh（唯一真源，带 digest）
-    许可证   ← 人工核对后固定在 DECLARED（依据见 public/THIRD_PARTY_NOTICES.md）
+    许可证   ← 人工核对后固定在 DECLARED（依据见 THIRD_PARTY_NOTICES.md）
 
 所以本文件回答的是「我们对外分发了什么、每个东西声明什么许可证」，
 而不是「镜像里每一个文件的许可证」。前者是合规义务，后者是取证深度，两者不混。

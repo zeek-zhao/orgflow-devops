@@ -1,126 +1,107 @@
-# orgflow-devops
+# OrgFlow DevOps
 
-企业级 DevOps 平台单仓（**M0 最小核心**）。以 Jenkins 为唯一编排入口，自举「权限管理服务 + 路由注册服务 + Caddy 代理 + Nexus 制品 + 备份」底座；各服务的部署/备份由 **参数化 Jenkins Job** 驱动。
+An enterprise-grade DevOps platform bootstrap in a single repository: **Jenkins as the
+sole orchestration entry point**, self-bootstrapping an authentication stack
+(OpenLDAP + Dex + OAuth2 Proxy), a Caddy gateway with domain-based routing, LDAP-direct
+authentication for every service, a Nexus artifact registry, and backup/restore — all
+driven by parameterized Jenkins jobs and Configuration-as-Code.
 
-**M0 已关闭**（2026-11-01，三段验收全过）。现在什么状态、下一步做什么，看
-[会话交接](docs/会话交接.md) 与 [待办](docs/待办.md)。
+> 中文完整文档：[README.zh-CN.md](README.zh-CN.md)
 
-> 需求真本在 vault：`40-项目/orgflow-devops/orgflow-devops-需求方案.md`（v0.2.0）。
-> 除需求外，本仓库的文档是**自洽**的 —— 接手不需要任何外部资料。
+## What you get
 
-## M0 组件
-
-| 组件 | 说明 |
+| Component | Role |
 |---|---|
-| Jenkins | CI 主控 / 参数化 Job 入口（`https://jenkins.<domain>/`，受保护） |
-| 权限管理服务 | OpenLDAP + LDAP Admin + Dex + OAuth2 Proxy（统一认证网关） |
-| 路由注册服务 | `config/routes.yaml` → 渲染 Caddyfile → Caddy admin reload |
-| Caddy | 唯一对外入口，按域名分站点（`:80` 跳转 / `:443` 站点，内部 CA 自签） |
-| dnsmasq | 容器内 DNS：`*.<domain>` → Caddy 固定 IP |
-| Homepage | 统一入口面板（`https://home.<domain>/`），一屏看到所有服务 |
-| Nexus | 制品库 / 备份目标 |
-| 备份 Job | 各服务数据卷/配置备份 |
+| Jenkins | Pipeline CI/CD; LDAP security realm, group-based matrix authorization |
+| OpenLDAP + Dex + OAuth2 Proxy | Identity, OIDC, group-authorized gateway |
+| Caddy | TLS gateway, domain routing, internal CA, static docs site |
+| Nexus | Artifact registry with Docker/PyPI repositories, LDAP auth |
+| Router service | `routes.yaml` → Caddyfile render → hot reload + registration API |
+| dnsmasq | In-network DNS: `*.<domain>` → Caddy |
+| Homepage | Single landing page for every service |
+| Backup / Restore | Parameterized jobs, sha256-verified archives, restore drills |
 
-域名路由的来由、固定 IP 表与排查手法见 [ADR-13](docs/ADR-13-域名路由.md)。
+Everything is driven by configuration files in `config/`; nothing is configured by
+clicking through a web UI.
 
-## 快速开始
+## Quick start
 
 ```bash
-cp .env.example .env        # 填域名/端口/账号；镜像 digest 由 tests/images.lock 锁定
-make deploy                 # 起 M0 底座（镜像从 GHCR 拉，域名与端口取自 .env）
-make hosts                  # 生成 /etc/hosts 片段：域名 → 本机（局域网用 --write <IP>）
-make ca                     # 安装 Caddy 内部 CA 根证书（自签 TLS 必需）
-make jobs                   # 推送参数化 deploy/backup Job 到 Jenkins
+make hooks                    # install git hooks (commit identity + main-branch guard)
+cp .env.example .env          # fill in domain/ports/accounts
+make deploy                   # bootstrap the stack (pulls images from GHCR)
+make hosts                    # generate an /etc/hosts snippet for the gateway domains
+make ca                       # install the internal CA root (self-signed TLS)
+make jobs                     # push parameterized jobs to Jenkins
 ```
 
-**镜像只有一个来源：GitHub Actions 构建并推到 GHCR，本地只拉不建。**
-12 个包全部 public，拉取不需要 `docker login`，也不需要任何凭据。
-`make deploy` 前会过一道闸门（`scripts/check-image-source.sh`）：若镜像上下文
-（Dockerfile / JCasC / 路由渲染器等）自上次构建以来改过，就直接拒绝部署 ——
-否则会拉到上一版镜像、健康检查全绿、跑的却是旧代码。
+**Images come from exactly one place: GitHub Actions builds them, GHCR stores them,
+and the host only pulls.** All packages are public — no `docker login`, no credentials.
+Before deploying, `make deploy` runs `scripts/check-image-source.sh`, which refuses to
+deploy when the image contexts (Dockerfile / JCasC / router renderer) have changed since
+the pinned build. Without that gate you get a deployment that pulls successfully, passes
+every health check, and runs the previous version of your code.
 
-改了镜像相关内容要本地立刻验证时：
+To iterate on an image locally without waiting for CI:
 
 ```bash
-make build-local            # 显式本地构建，产物不推 GHCR，只供本地验证
-USE_GHCR=0 make deploy      # 用本地这套镜像起来
+make build-local              # explicit local build; never pushed to GHCR
+USE_GHCR=0 make deploy        # deploy those locally built images
 ```
 
-**从 `https://home.org-devops.com/` 进**——一屏看到所有服务，点进去直达。
-其它入口：`https://jenkins.org-devops.com/`（需登录）、`https://nexus.org-devops.com/`、
-`https://ldapadmin.org-devops.com/`（需登录）、`https://auth.org-devops.com/ping`。
-旧路径入口（`http://localhost:8080/jenkins`）已删除。
+This is not an equivalent option — it exists so you can test a Dockerfile change before
+committing it. Shared environments deploy from GHCR.
 
-## 目录
+## Repository layout
 
 ```
-config/         JCasC / routes.yaml / JJB job 定义
-services/auth   权限管理服务编排（含 dex 配置模板）
-services/dnsmasq 容器内 DNS（*.<domain> → Caddy）
-services/router 路由注册服务（渲染 + reload）
-shared-library  deployService / backupService 步骤
-scripts/        deploy / hosts / ca / backup / lint / gen-docs-site / test-*
-docs/           方案、ADR 与运维
-tests/          镜像锁定 / bats 服务测试 / DinD harness
+services/        per-service build & config (jenkins, router, auth stack, dnsmasq)
+config/          JCasC, routes.yaml, JJB job definitions
+scripts/         deploy / doctor / backup / restore / gates / generators
+shared-library/  deployService / backupService pipeline steps
+tests/           image pinning + bats integration suite (DinD harness)
+tools/           jenkins CLI, Windows acceptance scripts, JJB
+docs/            architecture, ADRs, per-service runbooks, usage guide
 ```
 
-## 测试
+## Tests
 
-`make test` 跑逻辑检查（含**文档相对链接**、**服务文档覆盖**、**服务文档四段覆盖**与**IP 表一致性**），
-`make test-bats` 在独立 DinD 栈内跑 `tests/bats/` 全部用例
-（每服务冒烟 + stack/dns/tls/public + 备份恢复链路 + verify job 一致性 + 自举脚本幂等）。
-bats 断言一律用
-`curl --resolve <sub>.<domain>:<port>:127.0.0.1`，测的是 Caddy 的站点匹配而不是某个
-`IP:端口`。运行要求、`KEEP=1` 调试和镜像升级步骤见
-[M0 测试体系](docs/M0-测试体系.md)。
+```bash
+make test         # static + behavioral checks (routing, jobs, docs registry, gates)
+make test-bats    # full stack in Docker-in-Docker: 10 services + nexus deployment
+make docs-check   # documentation registry gate (IEEE 828 lightweight)
+make doctor       # read-only environment diagnostics
+```
 
-## 文档索引
+`make test-bats` always builds from source: it verifies that *this commit* comes up, so
+it never uses pre-built GHCR images (that would be testing an older commit).
 
-| 想知道 | 去哪看 |
+## Documentation
+
+Start at [docs/文档地图.md](docs/文档地图.md) (reading paths by role, in Chinese), or go
+straight to:
+
+| Question | Where |
 |---|---|
-| **不知道从哪读起 / 该读哪几份** | [文档地图](docs/文档地图.md)（按角色给阅读顺序，先看这个） |
-| **每篇文档什么状态、谁负责、何时该重看** | [文档登记册](docs/文档登记册.md)（DOC-ID / 状态 / 评审日期，`make docs-check` 校验） |
-| **文档该怎么写、怎么评审、怎么退役** | [文档规范](docs/文档规范.md)（IEEE 828/1016 轻量落地） |
-| **某个 issue 改哪份文档、哪段代码** | [问题索引](docs/问题索引.md)（Issue ⇄ 文档 ⇄ 代码，唯一映射表） |
-| **开源合规：我们在分发什么、欠谁什么** | [开源合规](docs/开源合规.md) + [第三方声明](public/THIRD_PARTY_NOTICES.md) |
-| **刚接手这个仓库，先读这一份** | [会话交接](docs/会话交接.md)（现状 + 下一步 + 陷阱速查） |
-| **AI 会话开工 SOP（读什么、跑什么、不能碰什么）** | [AI 会话清单](docs/AI会话清单.md) |
-| **平台日常怎么用（入口/登录/部署/备份/加路由）** | [使用说明](docs/使用说明.md) |
-| **每个账号是什么、密码在哪、怎么登** | [账号与登录](docs/账号与登录.md) |
-| **现在还有哪些事没做** | [待办](docs/待办.md)（Issue 索引，需求真本在 Issue 里） |
-| **这一批优化需求的取证、编号与依赖链** | [M0 增量需求总表](docs/M0-增量需求总表.md) |
-| **账号/组怎么命名、权限由谁决定** | [身份命名规范](docs/身份命名规范.md) |
-| **M0 是怎么验的、验出了什么** | [M0 验收记录](docs/M0-验收记录.md)（三个真机缺陷复盘在 §12） |
-| M0 设计：是什么、怎么跑、Job 怎么定义 | [M0 最小核心](docs/M0-最小核心.md) |
-| 测试怎么跑、三层验证怎么分、怎么升 digest | [M0 测试体系](docs/M0-测试体系.md) |
-| 某个服务怎么用、怎么部署、坏了怎么查 | [`docs/services/`](docs/services/)（11 份，统一六段 + [使用指南](docs/services/jenkins.md#使用指南) / [注意事项](docs/services/jenkins.md#注意事项) / [设置](docs/services/jenkins.md#设置) / [备份](docs/services/jenkins.md#备份) 四段，各份锚点同构） |
-| 网络拓扑、固定 IP 表、分层排查决策树、局域网访问 | [网络架构](docs/network/arch.md) |
-| 域名路由为什么这么做 | [ADR-13](docs/ADR-13-域名路由.md) |
-| 镜像与 CI 流水线 | [M0 镜像与 CI](docs/M0-镜像与CI.md) |
-| 备份怎么做、怎么演练恢复 | [备份与恢复](docs/备份与恢复.md)（11 份服务文档的「备份」段统一指向本文，卷口径与恢复步骤以本文为准） |
-| 任务怎么派、验收怎么写 | [派单流程](docs/派单流程.md) |
-| 提交身份与分支规则 | [提交规范](docs/提交规范.md) |
-| Windows 侧验收脚本怎么用 | [win-acceptance](tools/win-acceptance/README.md) |
+| What is this thing and how does it run | [M0 最小核心](docs/M0-最小核心.md) |
+| How do I use it day to day | [使用说明](docs/使用说明.md) |
+| How is it verified | [M0 测试体系](docs/M0-测试体系.md) |
+| Images and CI pipeline | [M0 镜像与 CI](docs/M0-镜像与CI.md) |
+| One service is broken | [docs/services/](docs/services/) (11 runbooks) |
+| Network topology and fixed IPs | [network/arch](docs/network/arch.md) |
+| Why domain-based routing | [ADR-13](docs/ADR-13-域名路由.md) |
+| Backup and restore drills | [备份与恢复](docs/备份与恢复.md) |
+| What we redistribute and under which terms | [开源合规](docs/开源合规.md) + [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md) |
+| Which docs exist, and how they're governed | [文档地图](docs/文档地图.md) · [文档登记册](docs/文档登记册.md) · [文档规范](docs/文档规范.md) |
+| Known gaps and open findings | [问题索引](docs/问题索引.md) |
 
-固定 IP 表会被脚本核对：`bash scripts/check-arch-ips.sh` 逐行比对真实容器地址，
-改完 compose 记得跑一次。
+## Contributing
 
-## 文档站（静态 HTML，离线生成）
+See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues must **not** be filed as public
+issues — see [SECURITY.md](SECURITY.md).
 
-`python3 scripts/gen_docs_site.py` 把 `docs/**/*.md` 编成同构 `.html`：
-`docs/services/jenkins.md` → `out/docs-site/services/jenkins.html`，并生成 `index.html`。
-纯标准库、不联网、可重复跑（重跑先清旧 `.html` 再生成）；Markdown 里的 `.md` 链接会改写成
-`.html`，`##` 标题生成锚点，索引页按目录分组。
+## License
 
-按最小披露，**含明文口令 / 内部派工 / 验收结论的文档不编入公开站点**（清单见脚本的
-`EXCLUDE_FILES` / `EXCLUDE_DIRS` 与 `index.html` 的「未编入」段），编入内容另做一次口令兜底脱敏；
-指向未编入文档的链接降级为纯文本，避免死链。
-
-> `https://docs.org-devops.com/services/jenkins.html` 返回 200 依赖 `config/routes.yaml` 的
-> docs 受保护路由（批次 2，依赖 #86）落地。本改动只补文档内容、静态站点脚本与索引，
-> **不改任何路由**；该验收项在 #86 前无法执行，列为未验证项，不伪造通过。
-
-## 约定
-
-- 敏感信息只走 `.env`（不入库）与 Jenkins Credentials（Job 仅引用 ID）。
-- 配置即代码：所有变更经 PR 合入（WF4），禁止控制台手工改生产。
+[Apache-2.0](LICENSE). Third-party components and their licenses are listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); full license texts are under
+[licenses/](licenses/).

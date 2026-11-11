@@ -165,11 +165,11 @@ curl -sS -k -o /dev/null -w '%{http_code}\n' \
 ## 注意事项
 
 - `out/Caddyfile` 是渲染产物，**不要手改**；下一次 `make render` 会覆盖它，真源只有 `config/routes.yaml`。
-- 在宿主跑 `make render` **不会**热加载：真机制是 `router` 容器的 `--watch`（轮询 + `POST /load`），Caddy admin 只在容器网络 `caddy:2019`，宿主够不到（`会话交接.md` §4.4）。
-- `curl --resolve` 按 `host:port` 精确匹配，URL 不带端口时隐式 443，映射必须写 `:443`；端口不一致会得到误导性的 `Could not resolve host`（`会话交接.md` §4.4）。
-- Caddy 叶子证书**无 CN**，域名只在 SAN 里，别拿 CN 断言域名（`会话交接.md` §4.4）。
-- 从 213 直接 curl 域名得到 `000` 多半是宿主 `/etc/hosts` 缺记录，用 `--resolve` 绕过或先 `make hosts`（`会话交接.md` §4.4）。
-- 一次 `down -v` 会删 `caddy_data` 卷、重建内部 CA，之前导出的根证书立即作废，**所有客户端要重装**（`会话交接.md` §4.4）。
+- 在宿主跑 `make render` **不会**热加载：真机制是 `router` 容器的 `--watch`（轮询 + `POST /load`），Caddy admin 只在容器网络 `caddy:2019`，宿主够不到。
+- `curl --resolve` 按 `host:port` 精确匹配，URL 不带端口时隐式 443，映射必须写 `:443`；端口不一致会得到误导性的 `Could not resolve host`。
+- Caddy 叶子证书**无 CN**，域名只在 SAN 里，别拿 CN 断言域名。
+- 从 213 直接 curl 域名得到 `000` 多半是宿主 `/etc/hosts` 缺记录，用 `--resolve` 绕过或先 `make hosts`。
+- 一次 `down -v` 会删 `caddy_data` 卷、重建内部 CA，之前导出的根证书立即作废，**所有客户端要重装**。
 
 ## 设置
 

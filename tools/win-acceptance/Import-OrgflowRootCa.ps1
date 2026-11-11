@@ -17,6 +17,8 @@
 #>
 [CmdletBinding()]
 param(
+    # 192.0.2.10 是 RFC 5737 的文档示例地址，**不可路由**，只是占位。
+    # 真实部署必须显式传 -GatewayIp <网关地址>，否则脚本会连一个不存在的主机。
     [string]$GatewayIp = '192.0.2.10',
     [string]$SshUser = 'jenkins',
     [string]$SshKey = "$HOME\.ssh\id_ed25519",

@@ -164,11 +164,11 @@ curl -sS -k --resolve dex.org-devops.com:443:127.0.0.1 \
 
 ## 注意事项
 
-- **整目录挂载会 `chdir EACCES`**，报出来却是 `gomplate: permission denied`：dex 以 uid `1001` 运行，只能单文件挂载 `out/dex/config.yaml`，渲染后要 `chmod 0644`（`会话交接.md` §4.5）。
-- **`/`、`/dex`、`/dex/` 都是 404**：Dex 没有 Web 首页，端点不剥 `/dex` 前缀；拿 `/` 判活会误判「dex 挂了」（`会话交接.md` §1.3）。
+- **整目录挂载会 `chdir EACCES`**，报出来却是 `gomplate: permission denied`：dex 以 uid `1001` 运行，只能单文件挂载 `out/dex/config.yaml`，渲染后要 `chmod 0644`。
+- **`/`、`/dex`、`/dex/` 都是 404**：Dex 没有 Web 首页，端点不剥 `/dex` 前缀；拿 `/` 判活会误判「dex 挂了」。
 - 模板用 Dex 原生 `secretEnv`，**不展开** `secret` 里的 `${...}`；写成 `${OAUTH2_CLIENT_SECRET}` 会得到字面量、登录时报 secret 不匹配。
 - `storage: memory`：重启后 refresh token 全丢，已登录用户要重新登录。
-- 链路不能省掉 Dex：`oauth2-proxy` 7.x 已删 LDAP provider，只能 `oauth2-proxy → Dex → LDAP`；A3 收口后 Dex 仍保留为 IdP（`M0-增量需求总表.md` §0 B-架构、§1 第 2 条）。
+- 链路不能省掉 Dex：`oauth2-proxy` 7.x 已删 LDAP provider，只能 `oauth2-proxy → Dex → LDAP`；A3 收口后 Dex 仍保留为 IdP（早期内部需求表（已不随仓库分发） §0 B-架构、§1 第 2 条）。
 
 ## 设置
 

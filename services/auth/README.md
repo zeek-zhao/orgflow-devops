@@ -113,15 +113,35 @@ issuer、redirectURIs、oauth2-proxy 端点和 whitelist。
 **必须用一份真 LDIF 走一遍 `ldapadd` + 逐账号 `ldapwhoami`** 才能验证。
 
 `make test` 里的 `scripts/test_ldif_passwords.py` 是防回归闸门：禁止 `\+`、要求每个
-`posixAccount` 都有 `{SSHA}`、严格 base64 可解码、且 `SHA1(123456 + salt)` 与存下的
-摘要一致。改文档不能让它通过。
+`posixAccount` 都有 `{SSHA}`、严格 base64 可解码、各账号 salt 互不相同，并且**不得是
+常见弱口令的哈希**。改文档不能让它通过。
+
+## 初始口令不由仓库决定
+
+`users.ldif` 只存 `{SSHA}` 哈希，**口令真值不在仓库里**。这样公开仓库不等于公开
+LDAP 入口。重建目录前，用下面任一方式设定口令（口令只打印/读取一次，不写进任何被
+提交的文件）：
+
+```bash
+# 随机生成 32 字符，打印一次 —— 记进部署机 .env 的 ORGFLOW_INITIAL_PASSWORD
+python scripts/gen-ldif-passwords.py
+
+# 自己指定（≥12 字符）
+ORGFLOW_INITIAL_PASSWORD='...' python scripts/gen-ldif-passwords.py
+```
+
+脚本会给每个账号生成独立 salt，所以同一口令在目录里不会出现相同哈希（看哈希无法
+判断谁和谁同口令）。口令真值要自己留住 —— 换机器重建目录时还要用它，丢了只能重算。
+
+> 早期版本这里是「10 个账号共用一个六位数字弱口令」，`make test` 还专门断言哈希必须
+> 对应那个值。那条测试等于在**保护**一个弱口令，已随单仓公开一起翻转成弱口令黑名单。
 
 ## 首次登录与改密
 
 访问 `https://jenkins.<domain>/`，依次跳转 oauth2-proxy（`auth.<domain>`）、Dex 的
 OpenLDAP 登录页。默认导入账号为 `svc-platform-admin`（DN：
-`uid=svc-platform-admin,ou=users,dc=devops,dc=com`），初始密码为 `123456`，
-仅限首次本地验证，**立即改密**。若出现授权确认页，按提示同意。OIDC 回调
+`uid=svc-platform-admin,ou=users,dc=devops,dc=com`），初始口令是
+`scripts/gen-ldif-passwords.py` 设定/打印的那个值（见上节），部署后**立即改密**。若出现授权确认页，按提示同意。OIDC 回调
 `https://auth.<domain>/oauth2/callback` 写入会话 cookie 后返回 Jenkins。
 Jenkins 未启动时，认证成功后的最终上游请求会返回 502，而不是登录失败。
 

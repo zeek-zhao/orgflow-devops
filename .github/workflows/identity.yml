@@ -2,7 +2,7 @@ name: Identity
 
 # 提交身份门禁：author 必须恒为 zeek.zhao <zeek.zhao@foxmail.com>
 # committer 在 PR 分支上必须同上；main 上的 squash 合并由 GitHub 作为
-# committer，属平台行为，不做约束（见 docs/提交规范.md）。
+# committer，属平台行为，不做约束（见 CONTRIBUTING.md）。
 
 on:
   pull_request:
@@ -102,7 +102,7 @@ jobs:
             echo "  git config user.email \"${want_email}\""
             echo "  然后 git commit --amend --reset-author（未推送时）"
             echo "  提交消息里的 Co-authored-by / AI 署名请直接删掉"
-            echo "详见 docs/提交规范.md"
+            echo "详见 CONTRIBUTING.md"
             exit 1
           fi
 

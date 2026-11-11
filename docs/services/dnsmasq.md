@@ -134,7 +134,7 @@ make hosts                                          # 生成宿主/局域网 hos
 
 - **只绑 `172.31.0.2`，不能绑 `0.0.0.0`**：容器内 `127.0.0.11:53` 是 Docker 内嵌 DNS，绑全地址会冲突，表现为起不来或间歇不响应。
 - 挂掉的表现不是「DNS 报错」，而是**所有容器一起变慢或起不来**（启动时要解析域名），排查容易被带到业务服务上。
-- `make deploy SERVICE=xxx` **不重建容器**：compose 认为无变化就跳过，改了 bind mount 配置要 `docker compose --env-file .env restart <svc>`（`会话交接.md` §4.4）。
+- `make deploy SERVICE=xxx` **不重建容器**：compose 认为无变化就跳过，改了 bind mount 配置要 `docker compose --env-file .env restart <svc>`。
 - 服务名解析走上游转发到 `127.0.0.11`；日志里只剩 `forwarded` 没有 `config <域名> is <IP>`，说明域名段没匹配上（排查段第 6 步）。
 
 ## 设置

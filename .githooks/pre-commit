@@ -7,7 +7,7 @@
 #   绕过：GIT_IDENTITY_ALLOW=1 git commit …   （仅自动化 / 历史迁移场景）
 #
 #   为什么要有它：开发机（尤其 214）的 git 全局身份是
-#   Jenkins-SWD <jenkins-swd@example.com.com>，copilot 在那台机器上
+#   Jenkins-SWD <jenkins-swd@example.com>，copilot 在那台机器上
 #   提交就会带错身份。错误身份一旦进历史只能重写补救，代价远高于一次拦截。
 # =============================================================================
 set -uo pipefail

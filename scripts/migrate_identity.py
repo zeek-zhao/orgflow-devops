@@ -49,7 +49,7 @@ REF_FILES = [
 # 历史/规格类：旧 uid 是「映射记录」或「历史事实」，必须保留
 ALLOW_OLD = [
     'docs/身份命名规范.md',        # §3 映射表本身
-    'docs/M0-增量需求总表.md',     # 需求取证记录
+    'docs/早期内部需求表（已不随仓库分发）',     # 需求取证记录
     'docs/task-cards/84-identity-naming.md',
     'docs/task-cards/85-ldap-rename.md',
     'docs/task-cards/02-auth-stack.md',

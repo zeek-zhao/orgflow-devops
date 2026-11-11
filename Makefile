@@ -28,7 +28,7 @@ else
 COMPOSE_LOCAL = $(COMPOSE)
 endif
 
-.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock images-pin images-guard build-local hooks identity-check hosts ca clean check-jenkins-image check-pins docs-check sbom cve links mirror
+.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint test test-groovy test-bats images-lock images-pin images-guard build-local hooks identity-check hosts ca clean check-jenkins-image check-pins docs-check sbom cve links ldap-passwords redaction
 
 help:
 	@echo "make render   渲染 routes.yaml -> out/Caddyfile"
@@ -46,8 +46,9 @@ help:
 	@echo "make docs-check 只跑文档登记册门禁（IEEE 828：双向一致/ID唯一/状态见证）"
 	@echo "make sbom     生成声明式 SBOM（SPDX 2.3，输出 out/sbom.spdx.json）"
 	@echo "make cve      对本项目分发的每个镜像跑 trivy（先出账不阻断；未装 trivy 会明确失败）"
-	@echo "make mirror   导出公开镜像仓内容 + 脱敏门禁（DEST=目录，发布前必跑）"
-	@echo "make links    校验导出目录链接自洽（无 404）"
+	@echo "make links    校验仓库内文档链接自洽（无 404）"
+	@echo "make redaction 公开面门禁：内网标识/凭据形态/内部流程文档（转 public 前必跑）"
+	@echo "make ldap-passwords 按 .env 的 ORGFLOW_INITIAL_PASSWORD 重算 users.ldif 哈希"
 	@echo "make check-jenkins-image 静态校验 plugins.txt 必装项 + Dockerfile 用 jenkins-plugin-cli（#90）"
 	@echo "make images-guard 镜像来源闸门：digest 锁死 / pinned-at 可解析 / 镜像未落后于源码（deploy 前置）"
 	@echo "make test-groovy 跑共享库行为测试（需要 groovy，缺失则跳过）"
@@ -58,7 +59,7 @@ help:
 	@echo "make build-local 显式本地构建（只供本地验证，不推 GHCR）"
 	@echo "USE_GHCR=0 make deploy 使用本地构建的镜像部署"
 	@echo "make hooks    安装 git 钩子（提交身份校验 + 主干保护），新克隆必做"
-	@echo "make identity-check 校验仓库提交身份是否唯一（见 docs/提交规范.md）"
+	@echo "make identity-check 校验仓库提交身份是否唯一（见 CONTRIBUTING.md）"
 	@echo "make down     停止并移除容器"
 
 # 域名取自 $(ENV_FILE)（缺省回落 routes.yaml 的值）；render-dex.sh 自己会读 .env
@@ -157,7 +158,7 @@ docs-check:
 	@python3 scripts/check_docs_meta.py
 
 # 声明式 SBOM（SPDX 2.3）。组件取自 compose/nexus 脚本的 digest，许可证取自
-# scripts/gen-sbom.py 的 DECLARED 表（依据 public/THIRD_PARTY_NOTICES.md）。
+# scripts/gen-sbom.py 的 DECLARED 表（依据 THIRD_PARTY_NOTICES.md）。
 sbom:
 	@python3 scripts/gen-sbom.py out/sbom.spdx.json
 
@@ -165,14 +166,28 @@ sbom:
 cve:
 	@bash scripts/cve-scan.sh
 
-# 发布物链接自洽：导出目录里指向未导出内部文档的链接必须已降级。
+# 文档链接自洽：仓内任何 .md 指向不存在的路径都算错。
+# 单仓化（#131）之前这一步校验的是「导出目录」，因为公开面是另一个仓；
+# 现在公开面就是本仓，DEST 这个参数没有意义了。
 links:
-	@python3 scripts/check_export_links.py "$${DEST:-.mirror-export}"
+	@python3 scripts/check_export_links.py .
 
-# 一条命令做「导出 → 脱敏门禁」，发布前必跑；导出脚本自身会做必需文件冒烟与链接降级。
-mirror:
-	@bash scripts/mirror-public.sh "$${DEST:-.mirror-export}"
-	@bash scripts/check-public-redaction.sh "$${DEST:-.mirror-export}"
+# 公开面门禁：仓库要能被任何人 clone，转 public 前必跑。
+redaction:
+	@bash scripts/check-public-redaction.sh .
+
+# 目录初始口令：仓库只存 {SSHA} 哈希，真值在 .env。
+# 两处不一致的表现是「账号密码明明对，bind 却返回 49」，所以做成一条命令而不是手工 slappasswd。
+ldap-passwords:
+	@set -e; \
+	if [ ! -f "$(ENV_FILE)" ]; then echo "✗ 缺少 $(ENV_FILE)；先跑 make deploy 生成"; exit 1; fi; \
+	pw=$$(sed -n 's/^ORGFLOW_INITIAL_PASSWORD=//p' "$(ENV_FILE)" | tail -1); \
+	if [ -z "$$pw" ]; then \
+		echo "✗ $(ENV_FILE) 里没有 ORGFLOW_INITIAL_PASSWORD；先在 .env 里填一个（≥12 字符）"; \
+		exit 1; \
+	fi; \
+	ORGFLOW_INITIAL_PASSWORD="$$pw" python3 scripts/gen-ldif-passwords.py >/dev/null; \
+	echo "✓ users.ldif 的 {SSHA} 已按 $(ENV_FILE) 的 ORGFLOW_INITIAL_PASSWORD 重算"
 
 # #90 / REQ-M0-B1：Jenkins 镜像静态自检。本轮不构建镜像，容器内插件清单无法实测，
 # 用「清单必含项 + Dockerfile 用 jenkins-plugin-cli 安装」替代（见 docs/M0-镜像与CI.md）。
@@ -260,7 +275,7 @@ hooks:
 # ★ 这条过滤**只管合并提交**。squash 合并的产物只有单父，--no-merges 不生效，
 #   author 会被改写成 noreply 而这里照样红——2026-10-31 就这么红过一次（PR #25）。
 #   而 squash 提交和 rebase 后的提交在脚本层面无法区分（都是单父 + committer 是
-#   noreply），所以补不了：合并一律 rebase，见 docs/提交规范.md 第 1 节。
+#   noreply），所以补不了：合并一律 rebase，见 CONTRIBUTING.md 第 1 节。
 identity-check:
 	@bad=0; \
 	for ae in $$(git log --no-merges --format='%ae' | sort -u); do \

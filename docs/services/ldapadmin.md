@@ -127,7 +127,7 @@ docker compose logs --tail=50 ldapadmin
 - `PHPLDAPADMIN_LDAP_HOSTS=ldap` 让它连容器网络里的 `ldap` 名字，**dnsmasq 挂了它也打不开登录页**，症状是「页面出来了但登录转圈」。
 - #36 起改为网关鉴权，未登录一律 302；直连得到 200 说明站点块没带 `forward_auth`（查 `out/Caddyfile` 与 `config/routes.yaml` 的 `auth: true`）。
 - 界面是 phpLDAPadmin 0.9.0，复杂 schema 编辑容易报错，批量操作建议直接用 `ldapadd` / `ldapmodify`。
-- 认证域名只由 `config/routes.yaml` 里 `name: auth` 那条路由的 `subdomain` 决定，**没有 `AUTH_SUBDOMAIN` 变量**（`会话交接.md` §1.3）。
+- 认证域名只由 `config/routes.yaml` 里 `name: auth` 那条路由的 `subdomain` 决定，**没有 `AUTH_SUBDOMAIN` 变量**。
 
 ## 设置
 

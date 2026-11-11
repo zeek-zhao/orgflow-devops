@@ -365,10 +365,10 @@ curl -sS -k --resolve home.org-devops.com:443:127.0.0.1 \
 
 ## 注意事项
 
-- `config/homepage` **不能挂 `:ro`**：homepage 把运行日志写到 `config/logs/`，只读会起不来（`会话交接.md` §4.5）。
+- `config/homepage` **不能挂 `:ro`**：homepage 把运行日志写到 `config/logs/`，只读会起不来。
 - `HOMEPAGE_ALLOWED_HOSTS` 必须同时列**带端口与不带端口**两种 Host；漏了非 443 端口（CI 用 8443）会 400，而这个 400 和「服务没起来」在浏览器里长得一样。
-- 首页**公开、不做鉴权**，因此不注入任何需要 token / 凭据的 widget；天气用免 key 的 Open-Meteo、活性检测用不需凭据的 HTTP 探测（`M0-增量需求总表.md` §1 第 8/9/10 条、§2「首页公开」约定）。
-- 标「二手」的 widget 结论（`siteMonitor` / `openmeteo`）必须在当前镜像版本容器内实测，不支持就降级为 `customapi`，不要硬写（`M0-增量需求总表.md` §1 判据、§5 风险）。
+- 首页**公开、不做鉴权**，因此不注入任何需要 token / 凭据的 widget；天气用免 key 的 Open-Meteo、活性检测用不需凭据的 HTTP 探测（早期内部需求表（已不随仓库分发） §1 第 8/9/10 条、§2「首页公开」约定）。
+- 标「二手」的 widget 结论（`siteMonitor` / `openmeteo`）必须在当前镜像版本容器内实测，不支持就降级为 `customapi`，不要硬写（早期内部需求表（已不随仓库分发） §1 判据、§5 风险）。
 - `resources` widget 读的是 homepage 容器自身 cgroup 不是宿主；卡片里的 IP 手写，新服务要同步 `docs/network/arch.md`。
 
 ## 设置

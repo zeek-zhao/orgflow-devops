@@ -126,6 +126,14 @@ make backup
 
 ## 使用指南
 
+首次建目录前先确认初始口令：仓库里的 `users.ldif` 只存 `{SSHA}` 哈希，**口令真值不在
+仓库里**（[开源合规 §4](../开源合规.md)）。`.env` 里的 `ORGFLOW_INITIAL_PASSWORD` 是真源，
+两者不一致的表现是「密码看着对，bind 却一直返回 49」：
+
+```bash
+make ldap-passwords                              # 按 .env 的 ORGFLOW_INITIAL_PASSWORD 重算哈希
+```
+
 ```bash
 docker compose up -d ldap
 bash services/auth/bootstrap-ldif.sh            # 幂等，可放心重复跑
@@ -141,8 +149,8 @@ make backup                                      # 只含 ldap_data
 - `departments.ldif` 有**悬空 member 引用**（指向不存在的 `ou=people`），属既有生产数据；导入脚本容忍它，查询会看到指向空 DN 的 member。
 - 改 `LDAP_DOMAIN` 等于换 base DN，**已导入的数据会对不上**；除非重建不要动。
 - `bootstrap-ldif.sh` 把 `ldapadd` 退出码 **68（entry already exists）当成功**——这是幂等的关键；密码走临时 600 文件 / stdin，不进进程表（最小披露）。
-- 初始占位口令只在受控交付物中给出，不写进本仓库文档 / 脚本，首次登录即改（`M0-增量需求总表.md` §0 B-口令、§5 风险）；LDIF 里存哈希不存明文。
-- `users.ldif` / `app.ldif` 历史上有无盐哈希、uidNumber 冲突、注释失真、无组账号等数据缺陷（`M0-增量需求总表.md` §2 现状取证）；改 LDIF 前先核对命名规范并跑 `make test`。
+- 初始占位口令只在受控交付物中给出，不写进本仓库文档 / 脚本，首次登录即改（早期内部需求表（已不随仓库分发） §0 B-口令、§5 风险）；LDIF 里存哈希不存明文。
+- `users.ldif` / `app.ldif` 历史上有无盐哈希、uidNumber 冲突、注释失真、无组账号等数据缺陷（早期内部需求表（已不随仓库分发） §2 现状取证）；改 LDIF 前先核对命名规范并跑 `make test`。
 
 ## 设置
 

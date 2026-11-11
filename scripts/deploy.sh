@@ -71,6 +71,10 @@ values = {key: secrets.token_hex(32) for key in (
     "JENKINS_ADMIN_PASSWORD", "LDAP_ADMIN_PASSWORD", "OAUTH2_CLIENT_SECRET",
     # #46：Nexus 由 job 部署并改密，密码在这里生成，随 .env 落盘。
     "NEXUS_ADMIN_PASSWORD",
+    # 目录 10 个初始账号共用的口令。仓库 LDIF 只存哈希、哈希对应的真值谁都不知道，
+    # 所以必须在这里生成一份并留在 .env —— 否则新建目录后所有账号都登不进去。
+    # 生成完还要跑 `make ldap-passwords` 让 LDIF 哈希与它一致。
+    "ORGFLOW_INITIAL_PASSWORD",
 )}
 # 32 printable ASCII bytes; also a valid oauth2-proxy base64 cookie secret.
 values["OAUTH2_COOKIE_SECRET"] = "".join(

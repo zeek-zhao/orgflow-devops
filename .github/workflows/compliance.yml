@@ -1,0 +1,75 @@
+name: Compliance
+
+# 「这份发布物能不能公开」的机械判定：必需文件 / 敏感字段 / 死链 / 全历史密钥 / SBOM。
+# 以前这些判定放在公开镜像仓的 compliance.yml 里、扫的是导出目录；单仓化之后
+# 公开面就是仓库本身，所以判定对象改成仓根（`.`），不再有"导出"这一步。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compliance-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  publishable:
+    name: 发布物可发布性（必需文件 / 脱敏 / 链接自洽）
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 必需文件在位
+        run: |
+          # 踩过的坑：导出脚本只吃第一个参数，compose 与 .env.example 被静默丢弃，
+          # 克隆后第一步 `cp .env.example .env` 就失败，而当时没有任何作业会发现。
+          # 许可证与社区文件尤其要查：GitHub 只从**仓根**读取，放在子目录等于没有。
+          missing=0
+          for f in .env.example docker-compose.yml docker-compose.ghcr.yml Makefile \
+                   README.md README.zh-CN.md LICENSE THIRD_PARTY_NOTICES.md \
+                   SECURITY.md CONTRIBUTING.md CODE_OF_CONDUCT.md; do
+            [ -e "$f" ] || { echo "缺文件: $f"; missing=1; }
+          done
+          [ -d licenses ] || { echo "缺目录: licenses/"; missing=1; }
+          [ "$missing" -eq 0 ] || exit 1
+
+      - name: 敏感字段门禁
+        run: bash scripts/check-public-redaction.sh .
+
+      - name: 文档链接自洽（无 404）
+        run: python3 scripts/check_export_links.py .
+
+      # 「内部文档不得回流」不在这里单列：清单只有一份，在
+      # scripts/check-public-redaction.sh 的 INTERNAL_DOCS 里，上面那步已经跑过它。
+      # 曾经这里也抄了一份 —— 两份拷贝的代价是「改一处忘另一处」，
+      # 而且其中一处被批量替换误伤成 CONTRIBUTING.md（永远存在），整条 job 必然红。
+
+  secret-scan:
+    name: 密钥泄漏扫描（全历史）
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # 必须全历史，否则 `--log-opts=--all` 也扫不到东西
+      - name: gitleaks
+        uses: gacts/gitleaks@v1
+        with:
+          # 原参数是 `--no-git`（只扫工作区），等于放弃历史。
+          # 历史一旦重写不到位，泄漏就在这里暴露 —— 公开之后这是唯一能挡的时机。
+          args: --redact --verbose --log-opts=--all
+
+  sbom:
+    name: SBOM（SPDX 2.3）
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: 生成声明式 SBOM
+        run: python3 scripts/gen-sbom.py out/sbom.spdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-spdx
+          path: out/sbom.spdx.json
