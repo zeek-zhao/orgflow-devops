@@ -536,8 +536,28 @@ class WinAcceptanceScriptTests(unittest.TestCase):
 
     def test_dex_is_probed_at_healthz(self):
         text = (self.dir / "Test-OrgflowAcceptance.ps1").read_text(encoding="utf-8-sig")
-        self.assertIn("'dex' = '/dex/healthz'", text)
-        self.assertIn("'dex'       = @(200)", text)
+        # 用正则而非精确字面量：#117 把 $ProbePaths 从单行改成多行对齐的 hashtable，
+        # 写死空格数会把「格式调整」误报成「判据丢了」。判据本身没有放宽 —— 键、
+        # 路径、以及 $ProbePaths 真的被 Test-Site 用上，缺任意一项都会红。
+        self.assertRegex(text, r"\$ProbePaths\s*=\s*@\{")
+        self.assertRegex(text, r"'dex'\s*=\s*'/dex/healthz'")
+        self.assertRegex(text, r"'docker'\s*=\s*'/v2/'")
+        self.assertRegex(text, r"'pypi'\s*=\s*'/repository/pypi-hosted/simple/'")
+        self.assertRegex(text, r"\$ProbePaths\.ContainsKey")
+        self.assertRegex(text, r"'dex'\s*=\s*@\(200\)")
+
+    def test_windows_hosts_contract_includes_repo_sites(self):
+        """#117：Windows hosts 契约 6 -> 8，且打印的条数不能再写死。"""
+        text = (self.dir / "Set-OrgflowHosts.ps1").read_text(encoding="utf-8-sig")
+        m = re.search(r"\$Subdomains\s*=\s*@\(([^)]*)\)", text)
+        self.assertIsNotNone(m, "没找到 $Subdomains 契约数组")
+        subs = re.findall(r"'([A-Za-z0-9._-]+)'", m.group(1))
+        self.assertEqual(len(subs), 8)
+        self.assertIn("docker", subs)
+        self.assertIn("pypi", subs)
+        # #134：输出条数由数组推导，不能留一个手写的 6
+        self.assertRegex(text, r"\$Subdomains\.Count")
+        self.assertNotIn("已写入 6 条", text)
 
     def test_scripts_are_utf8_bom_with_crlf(self):
         for path in sorted(self.dir.glob("*.ps1")):
@@ -589,13 +609,21 @@ class HostsSnippetTests(unittest.TestCase):
         result = self.snippet("10.0.0.5")
         self.assertEqual(result.returncode, 0, result.stderr)
         line = next(l for l in result.stdout.splitlines() if l.startswith("10.0.0.5 "))
-        # 回归点：曾用 tr -d '[:space:]' 处理多行，多个域名被粘成一行
-        self.assertEqual(line.split()[1:], [
-            "jenkins.org-devops.com", "nexus.org-devops.com",
-            "ldapadmin.org-devops.com", "dex.org-devops.com",
-            "auth.org-devops.com", "home.org-devops.com",
-            "ca.org-devops.com", "docs.org-devops.com",
-        ])
+        # 回归点：曾用 tr -d '[:space:]' 处理多行，多个域名被粘成一行。
+        # 期望值从 routes.yaml 推导而不是写死清单：#117 加了 docker/pypi 之后，
+        # 写死 8 条让本用例变红，那是断言过期而不是脚本坏了。判据没放宽 ——
+        # 仍逐字段精确比对，任一域名缺失、多出或被粘成一行照样红。
+        routes = (self.root / "config/routes.yaml").read_text(encoding="utf-8")
+        subs = re.findall(
+            r"^\s*subdomain:\s*['\"]?([A-Za-z0-9._-]+)['\"]?\s*$",
+            routes, re.MULTILINE,
+        )
+        self.assertGreater(len(subs), 0, "routes.yaml 没解析出任何 subdomain")
+        expected = [f"{s}.org-devops.com" for s in subs]
+        # #117 的两个仓库站点必须真的进 hosts，否则两条新路由在客户端解析不到
+        self.assertIn("docker.org-devops.com", expected)
+        self.assertIn("pypi.org-devops.com", expected)
+        self.assertEqual(line.split()[1:], expected)
 
     def test_domain_override_changes_the_suffix(self):
         result = self.snippet("10.0.0.6", GATEWAY_DOMAIN="example.test")
