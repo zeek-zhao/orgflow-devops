@@ -90,6 +90,10 @@ bats 断言一律用 `curl --resolve <sub>.<domain>:<port>:127.0.0.1`，
 |---|---|
 | 这东西是什么、怎么跑、Job 怎么定义 | [M0 最小核心](docs/M0-最小核心.md) |
 | 平台日常怎么用（入口/登录/部署/备份/加路由） | [使用说明](docs/使用说明.md) |
+| 要改代码：目录语义、改一条 X 动哪几个文件 | [工程开发说明](docs/工程开发说明.md) |
+| 要求是什么、怎么算做到 | [需求基线](docs/requirements/README.md) |
+| 需求/任务卡/标签/里程碑怎么管 | [项目管理](docs/项目管理.md) |
+| 让 AI 参与：能做什么、怎么验收 | [AGENTS.md](AGENTS.md) · [AI 协作开发](docs/AI-协作开发.md) |
 | 测试怎么跑、三层验证怎么分、怎么升 digest | [M0 测试体系](docs/M0-测试体系.md) |
 | 镜像与 CI 流水线 | [M0 镜像与 CI](docs/M0-镜像与CI.md) |
 | 某个服务怎么用、怎么部署、坏了怎么查 | [`docs/services/`](docs/services/)（11 份统一六段） |
