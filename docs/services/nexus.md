@@ -206,6 +206,15 @@ curl -u "$NEXUS_ADMIN_ID:$NEXUS_ADMIN_PASSWORD" \
   http://172.31.0.21:8081/service/rest/v1/repositories | python3 -m json.tool
 ```
 
+## 2026-11-12 重部署复测与匿名策略
+
+2026-11-12 依维护者决定清空数据卷并按主线（PR #138 之后）重部署，本节记录复测口径：
+
+- `nexus-deploy` Job #1 重建 13 个仓库；CE EULA 经 REST 接受（`GET /service/rest/v1/system/eula` → accepted=true）。
+- **PyPI 方向复测通过**：`twine upload` 到 pypi-hosted 成功；admin REST 认证下载 wheel → `pip install --no-deps` 导入成功；测试组件已按唯一 ID 删除，search 复查 0。
+- **Docker 方向待复测**：宿主 daemon 的 `/etc/docker/certs.d/` 仍指向旧代际 CA，更新需管理员权限；`/v2/` 匿名 401 / admin 200 已验证。push→rmi→pull 的取证见上节（2026-11-11）。
+- **匿名策略（维护者裁决）**：`anonymous` 开启为**全仓只读**——`nx-anonymous` 角色仅含 read/browse 权限，无任何写权限；探针：`pypi` 匿名 200、`docker /v2/` 匿名 401（hosted 强制 Basic）、匿名上传 401。
+
 ## 已知边界
 
 - 没有配 `auth: true`：Nexus 自己的账号体系没接 LDAP，谁都能打开界面。M1 再接

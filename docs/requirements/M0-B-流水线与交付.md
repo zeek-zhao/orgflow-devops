@@ -17,7 +17,7 @@
 | **REQ-M0-B6** | Jenkins 有独立的 docker agent 节点（SSH 接入、挂 docker socket）；`securityRealm` / 凭据 / 全局共享库 / agent cloud **全部由 JCasC 声明**，不写 `init.groovy.d` | `bats tests/bats/23_jenkins_agent.bats` 绿（三条：容器与 docker CLI、JCasC 节点在线且带标签、SSH 私钥进凭据库）；反证：从 `config/jenkins.yaml` 删掉 agent cloud 段 → 「节点在线」用例必须红 | 已实现 | [#45](https://github.com/zeek-zhao/orgflow-devops/issues/45) · PR #50 #51 |
 | **REQ-M0-B7** | Nexus 从 compose 彻底删除，改由 Job 创建容器并改掉初始随机密码；重复执行幂等 | `bats tests/bats/17_nexus.bats` 绿；`grep -c "nexus:" docker-compose.yml` → `0`；⚠ 幂等性需真机重跑 | 已实现 | [#46](https://github.com/zeek-zhao/orgflow-devops/issues/46) · PR #52 #70 #71 #108 |
 | **REQ-M0-B8** | Jenkins 插件集扩充到可用水平、默认 dark 主题、禁止自动更新插件、CI 镜像链路与已发布镜像一致 | `python3 scripts/test_ci.py` → 退出码 0；`bats tests/bats/16_jenkins.bats` 绿；反证：把 `images.lock` 里某个 digest 改成占位串 → `make images-guard` 必须红 | 已实现 | [#115](https://github.com/zeek-zhao/orgflow-devops/issues/115) |
-| **REQ-M0-B9** | Nexus 提供 docker 与 pypi 仓库，并完成**拉、推两个方向**的实测 | ⚠ 判据缺失：M0 关闭时这条仍未开工，没有可执行的验收命令 | 未实现 · 转入 M1 | [#117](https://github.com/zeek-zhao/orgflow-devops/issues/117)（open） |
+| **REQ-M0-B9** | Nexus 提供 docker 与 pypi 仓库，并完成**拉、推两个方向**的实测 | `nexus-deploy` Job 建 6 仓库、全实例 13 仓库；`twine upload` → REST 认证下载 → `pip install` 导入（2026-11-12 真机复测）；docker 侧 EULA 已接受、`/v2/` admin 200 / 匿名 401；push→rmi→pull 2026-11-11 旧实例已取证（`sha256:89f1fdf9…`），2026-11-12 重部署后待复测 | 已实现（Docker 方向重部署后待复测） | [#117](https://github.com/zeek-zhao/orgflow-devops/issues/117) |
 
 ## 2. 要点与坑
 
@@ -49,8 +49,6 @@
 
 这不影响它们标 `已实现` —— 当时都在真机上取过证。但**干净 clone + `make test` 复现不出来**，所以要标 ⚠，避免有人按 `make test` 全绿就宣称 B3/B4 通过。
 
-### B9：为什么是「转入 M1」而不是「M0 未完成」
+### B9：从「转入 M1」回到 M0（2026-11-12 维护者裁决）
 
-M0 已于 2026-11-01 关闭，#117 却仍挂在 M0 里程碑上 —— 这会让里程碑出现「已关闭但还有 open」的矛盾态。处理方式是把 #117（与 #116）移到 M1 里程碑，需求基线里如实写「未实现 · 转入 M1」。
-
-**没有做的事**：没有为了让 M0 看起来完整而把 #117 标成「已降级」。能力缺口真实存在，Nexus 上现在只有 maven2 与 nuget 仓库，没有 docker 也没有 pypi。
+原状态写「未实现 · 转入 M1」时，Nexus 上只有 maven2 与 nuget 仓库，能力缺口真实存在。此后 #117 的仓库三件套随主线落地：`nexus-deploy` Job 幂等建齐 docker/pypi 各 hosted/proxy/group，CE EULA 经 REST 接受。2026-11-12 依维护者裁决 B9 回归 M0：PyPI 方向在重部署后的真机上完成「上传 → 认证下载 → 安装导入」复测；Docker 方向 2026-11-11 已在旧实例完成 push→rmi→pull 取证，重部署后的复测只差宿主 daemon registry CA 的管理员级更新这一项环境前置，状态如实标「待复测」，不宣称已完成。
