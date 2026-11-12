@@ -54,11 +54,14 @@ print(urllib.request.urlopen("http://caddy:2019/config/", timeout=10).read().dec
     # GET：合法 JSON 且包含 demo
     run api GET /routes
     assert_contains "$output" '"demo"'
+    local expected_route_count
+    expected_route_count=$(grep -cE '^[[:space:]]*-[[:space:]]+name:' "$ROUTES") # #117 #62 #86: routes.yaml 基线
     compose_cmd exec -T router python3 -c '
-import json, urllib.request
+import json, sys, urllib.request
+expected_count = int(sys.argv[1]) + 1  # #61: POST 新增 demo
 body = json.load(urllib.request.urlopen("http://localhost:8090/routes"))
-assert isinstance(body["routes"], list) and len(body["routes"]) == 9
-assert any(r["name"] == "demo" for r in body["routes"])'
+assert isinstance(body["routes"], list) and len(body["routes"]) == expected_count
+assert any(r["name"] == "demo" for r in body["routes"])' "$expected_route_count"
 
     # DELETE：恢复现场，文件 sha256 回到原值
     run api DELETE /routes/demo

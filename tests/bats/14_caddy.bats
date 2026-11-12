@@ -4,28 +4,34 @@ setup() {
     setup_gw
 }
 
-@test "caddy: seven domain sites, authentication, per-site 404 and Nexus API" {
+@test "caddy: ten domain sites, authentication, per-site 404 and Nexus API (#117 #62)" {
     assert_gw auth /ping 200
     assert_gw jenkins / 403
     assert_gw dex /dex/keys 200
     assert_gw ldapadmin / 200
     assert_gw nexus / 200
-    [ "$(grep -c reverse_proxy "$M0_REPO/out/Caddyfile")" -eq 8 ]
-    [ "$(grep -c forward_auth "$M0_REPO/out/Caddyfile")" -eq 1 ]
+    local expected_site_count actual_proxy_count
+    expected_site_count=$(grep -cE '^[[:space:]]*subdomain:' "$M0_REPO/config/routes.yaml")
+    actual_proxy_count=$(grep -cE '^[[:space:]]*reverse_proxy ' "$M0_REPO/out/Caddyfile")
+    [ "$actual_proxy_count" -eq "$expected_site_count" ] # #117: docker/pypi；#62: ca；#86: docs/auth
+    [ "$(grep -c forward_auth "$M0_REPO/out/Caddyfile")" -eq 1 ] # #86: 仅 docs 站点需要网关认证
     assert_gw nexus /service/rest/v1/status 200
 }
 
-@test "caddy: 站点地址全部是域名，旧路径入口已删除" {
+@test "caddy: 站点地址全部是域名，旧路径入口已删除 (#117 #62)" {
     local file="$M0_REPO/out/Caddyfile"
-    # 8 个站点块，每块都是 https://<sub>.<domain> { —— 地址里不带任何路径
-    [ "$(grep -cE '^https://' "$file")" -eq 8 ]
-    [ "$(grep -cE '^https://[a-z0-9-]+\.' "$file")" -eq 8 ]
-    [ "$(grep -cE '^https://[^/{]+ \{' "$file")" -eq 8 ]
+    # 路由真源当前有 10 个子域；每个都必须生成独立的 https://<sub>.<domain> 站点。#117 #62
+    local expected_site_count
+    expected_site_count=$(grep -cE '^[[:space:]]*subdomain:' "$M0_REPO/config/routes.yaml") # #117: docker/pypi；#62: ca；#86: docs/auth
+    [ "$(grep -cE '^https://' "$file")" -eq "$expected_site_count" ]
+    [ "$(grep -cE '^https://[a-z0-9-]+\.' "$file")" -eq "$expected_site_count" ]
+    [ "$(grep -cE '^https://[^/{]+ \{' "$file")" -eq "$expected_site_count" ]
     # 反证：若还有路径式站点地址（https://host/jenkins），上面三条会先红
     ! grep -qE '^https://[^ ]+/[a-z]' "$file"
     # 内部 CA：不向公网申请证书
     grep -qx $'\tlocal_certs' "$file"
-    for sub in jenkins nexus ldapadmin dex auth home ca docs; do
+    local sub
+    for sub in jenkins nexus docker pypi ldapadmin dex auth home ca docs; do # #117 #62 #86
         grep -qx "https://${sub}.${GW_DOMAIN} {" "$file"
     done
 }
