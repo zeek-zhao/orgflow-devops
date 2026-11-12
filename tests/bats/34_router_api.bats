@@ -23,8 +23,9 @@ except urllib.error.HTTPError as e:
 }
 
 @test "router api: POST 一条路由 → 文件/Caddyfile/Caddy 三处全生效，不重启任何容器" {
-    local before_sha after_sha
+    local before_sha after_sha baseline_routes
     before_sha=$(sha256sum "$ROUTES" | cut -d' ' -f1)
+    baseline_routes=$(api GET /routes | sed -n '2,$p' | python3 -c 'import json,sys; print("\n".join(r["name"] for r in json.load(sys.stdin)["routes"]))')
     local jenkins_id
     jenkins_id=$(docker inspect -f '{{.Id}}' of-jenkins)
 
@@ -54,18 +55,20 @@ print(urllib.request.urlopen("http://caddy:2019/config/", timeout=10).read().dec
     # GET：合法 JSON 且包含 demo
     run api GET /routes
     assert_contains "$output" '"demo"'
-    local expected_route_count
-    expected_route_count=$(grep -cE '^[[:space:]]*-[[:space:]]+name:' "$ROUTES") # #117 #62 #86: routes.yaml 基线
-    compose_cmd exec -T router python3 -c '
-import json, sys, urllib.request
-expected_count = int(sys.argv[1]) + 1  # #61: POST 新增 demo
-body = json.load(urllib.request.urlopen("http://localhost:8090/routes"))
-assert isinstance(body["routes"], list) and len(body["routes"]) == expected_count
-assert any(r["name"] == "demo" for r in body["routes"])' "$expected_route_count"
+    local posted_route_names posted_route_count
+    posted_route_names=$(sed -n '2,$p' <<< "$output" | python3 -c 'import json,sys; print("\n".join(r["name"] for r in json.load(sys.stdin)["routes"]))')
+    posted_route_count=$(wc -l <<< "$posted_route_names")
+    [ "$posted_route_count" -eq "$(($(wc -l <<< "$baseline_routes") + 1))" ]
+    grep -Fxq demo <<< "$posted_route_names"
+    while IFS= read -r route_name; do grep -Fxq "$route_name" <<< "$posted_route_names"; done <<< "$baseline_routes"
 
     # DELETE：恢复现场，文件 sha256 回到原值
     run api DELETE /routes/demo
     assert_contains "$output" "200"
+    run api GET /routes
+    local restored_routes
+    restored_routes=$(sed -n '2,$p' <<< "$output" | python3 -c 'import json,sys; print("\n".join(r["name"] for r in json.load(sys.stdin)["routes"]))')
+    [ "$restored_routes" = "$baseline_routes" ]
     after_sha=$(sha256sum "$ROUTES" | cut -d' ' -f1)
     [ "$before_sha" = "$after_sha" ]
     # 站点已删：握手必须失败（与 14_caddy 未知域名同口径，TLS alert / 非零退出）
