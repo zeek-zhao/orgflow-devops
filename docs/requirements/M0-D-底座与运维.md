@@ -14,7 +14,7 @@
 | **REQ-M0-D4** | 干净机器上一条命令从零起整套底座，并通过健康检查与端点自检；缺 `.env` 时自动派生并生成密钥，不打印密钥 | `python3 scripts/test_deploy.py` 绿；`bats tests/bats/00_stack.bats tests/bats/32_bootstrap_scripts.bats` 绿 | 已实现 | [#4](https://github.com/zeek-zhao/orgflow-devops/issues/4) · PR #9 #110 #111 |
 | **REQ-M0-D5** | 备份产出可恢复包（`.tgz` + `.sha256` + `.meta`），保留策略生效；卷不存在或备份失败必须非零退出，不产出「成功」的空包 | `python3 scripts/test_backup.py` 绿；`bats tests/bats/30_backup_restore.bats tests/bats/33_restore_guards.bats` 绿；反证：`RETENTION_DAYS=0` 必须被拒绝而非静默不清理 | 已实现 | [#5](https://github.com/zeek-zhao/orgflow-devops/issues/5) · PR #10 #24 #97 #118 |
 | **REQ-M0-D6** | Windows 侧 hosts 增删与根证书安装脚本入库；`.bat` 为 GBK+CRLF、`.ps1` 为 UTF-8 带 BOM+CRLF；删除脚本能干净回滚 | 机械部分：`ls tools/win-acceptance/{Set-OrgflowHosts.ps1,Import-OrgflowRootCa.ps1,Test-OrgflowAcceptance.ps1,acceptance.bat}` 全部在位；⚠ 主判据需人工：干净 Windows 上跑「加 hosts（6 条，含 `auth`）→ 装证书 → 5 站点无警告 → 删 hosts 干净回滚」 | 已实现 | [#47](https://github.com/zeek-zhao/orgflow-devops/issues/47) · PR #49 |
-| **REQ-M0-D7** | Jenkins 视图按用途分类、接入第二台执行节点（SSH 预接入）、Ansible 远程部署占位 | ⚠ 判据缺失：M0 关闭时未开工，没有可执行的验收命令 | 未实现 · 转入 M1 | [#116](https://github.com/zeek-zhao/orgflow-devops/issues/116)（open） |
+| **REQ-M0-D7** | Jenkins 视图按用途分类、接入第二台执行节点（SSH 预接入）、Ansible 远程部署占位 | `bats tests/bats/23_jenkins_agent.bats` 绿；Jenkins 双维度视图随 PR #138 合入并由 CI DinD 全栈覆盖（8 视图） | 已实现 | [#116](https://github.com/zeek-zhao/orgflow-devops/issues/116) · PR #138 |
 
 ## 2. 要点与坑
 
@@ -53,8 +53,8 @@ API 能写 `routes.yaml`，很容易做成「API 自己维护一份内存路由�
 
 这三条在仓库里没有任何自动化断言，属于**只能靠人守的约束**。这是本域最脆的一格。
 
-### D7：为什么和 B9 一样标「转入 M1」
+### D7：从「转入 M1」回到 M0（2026-11-12 维护者裁决）
 
-同 B9：M0 已于 2026-11-01 关闭，但 #116 仍挂在 M0 里程碑上。需求基线如实写「未实现 · 转入 M1」，不为了让里程碑好看而改成「已降级」。
+同 B9：原标「转入 M1」是因 M0 关闭时未开工。其实现内容（视图分类、SSH 预接入、Ansible 占位）已随 PR #138 合入主线，CI DinD 全栈验证绿，状态如实改回「已实现」，证据挂 #116 与 PR #138。
 
 缺口是具体的：Jenkins 只有 1 个视图 `all`；自定义节点只有 `orgflow-docker` 一个（没有单核节点、没有 SSH 预接入节点）；仓库内**没有任何 ansible 文件**。
