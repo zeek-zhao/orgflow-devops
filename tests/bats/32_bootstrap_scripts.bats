@@ -4,7 +4,7 @@
 # 背景：#64 验证的是「从零起来」，这三条验证的是「跑第二遍不炸」——
 #   - nexus-deploy.sh：绝不重建容器（重建换挂载点归属、可能坏 blobstore）
 #   - gen-agent-key.sh：绝不覆盖密钥（覆盖 = agent 全部连不上）
-#   - gen-hosts.sh：片段生成稳定，--write 落地后六条域名可解析
+#   - gen-hosts.sh：片段生成稳定，--write 落地后十条域名可解析 (#117 #62)
 # 这些语义目前只有注释承诺，没有机器断言；谁破坏了幂等，这里立刻红。
 #
 # 编号 32：排在 30（会 stop/start ldap）之后，自身不重启任何服务。
@@ -59,11 +59,19 @@ setup() {
     [ "$(stat -c %a "$dir/agent_host_key")" = 600 ]
 }
 
-@test "gen-hosts: 片段含全部六域名与指定 IP，--write 落地后 getent 可解析" {
+@test "gen-hosts: 片段含全部十域名与指定 IP，--write 落地后 getent 可解析 (#117 #62)" {
     local ip=127.0.0.1
     run bash "$M0_REPO/scripts/gen-hosts.sh" "$ip"
     [ "$status" -eq 0 ]
-    assert_contains "$output" "$ip jenkins.$GW_DOMAIN nexus.$GW_DOMAIN ldapadmin.$GW_DOMAIN dex.$GW_DOMAIN auth.$GW_DOMAIN home.$GW_DOMAIN"
+    local expected_subs=() expected_names=()
+    mapfile -t expected_subs < <(sed -n 's/^[[:space:]]*subdomain:[[:space:]]*//p' "$M0_REPO/config/routes.yaml" | sed -e 's/[[:space:]]*$//' -e "s/^['\"]//" -e "s/['\"]$//" | grep -v '^$')
+    [ "${#expected_subs[@]}" -gt 0 ]
+    local sub
+    for sub in "${expected_subs[@]}"; do expected_names+=("${sub}.$GW_DOMAIN"); done
+    assert_contains "$output" "$ip ${expected_names[*]}" # #117: docker/pypi；#62: ca；#86: docs/auth
+    for sub in jenkins nexus docker pypi ldapadmin dex auth home ca docs; do # #117 #62 #86: required named endpoints
+        [[ " ${expected_subs[*]} " == *" $sub "* ]]
+    done
 
     # 不带 --write 不得改 hosts（片段生成是纯 stdout 动作）
     local hosts_before hosts_after
@@ -72,9 +80,9 @@ setup() {
     hosts_after="$(cat /etc/hosts)"
     [ "$hosts_after" = "$hosts_before" ]
 
-    # --write：DinD 内层容器的 /etc/hosts 是一次性的，随便写
+    # --write：DinD 内层容器的 /etc/hosts 是一次性的，逐条验证全部十个名字均解析
     bash "$M0_REPO/scripts/gen-hosts.sh" "$ip" --write >/dev/null
-    for sub in jenkins nexus ldapadmin dex auth home; do
+    for sub in "${expected_subs[@]}"; do
         getent hosts "$sub.$GW_DOMAIN" | grep -q "^$ip"
     done
 }
