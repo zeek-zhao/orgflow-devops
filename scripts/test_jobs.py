@@ -194,6 +194,44 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
         self.dotenv.unlink()
         self.assertNotEqual(self.run_script("gen-jjb-conf").returncode, 0)
 
+    def test_conf_ldap_service_account_makes_jobs_work_out_of_the_box(self):
+        """#140 / #86：全新部署的 .env 只有 ORGFLOW_INITIAL_PASSWORD，
+        Jenkins 是 LDAP-only realm、本地 admin 不存在。JJB 必须自动改用
+        svc-platform-admin + 初始口令，否则 make jobs 首次必然 401。
+        反证：删掉 gen-jjb-conf.sh 里的 LDAP 回退，这条必须红。"""
+        self.dotenv.write_text(
+            "JENKINS_URL=https://jenkins.org-devops.com/\n"
+            "ORGFLOW_INITIAL_PASSWORD=TESTONLY_INITIAL_PW_140\n"
+        )
+        result = self.run_script("gen-jjb-conf")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        parser = configparser.ConfigParser()
+        parser.read(self.root / ".jjb/jenkins_jobs.ini")
+        self.assertEqual(parser["jenkins"]["user"], "svc-platform-admin")
+        self.assertEqual(parser["jenkins"]["password"], "TESTONLY_INITIAL_PW_140")
+        self.assertEqual(parser["jenkins"]["url"], "http://jenkins:8080/")
+
+    def test_conf_explicit_jjb_credentials_take_precedence(self):
+        """显式 JJB_USER/JJB_PASSWORD 优先于初始口令（运维换专用服务账号）。
+        反证：只给这两个键、去掉归一化到模板键的赋值，必填校验会误报缺变量。"""
+        self.dotenv.write_text(
+            "ORGFLOW_INITIAL_PASSWORD=TESTONLY_INITIAL_PW_140\n"
+            "JJB_USER=custom-admin\n"
+            "JJB_PASSWORD=TESTONLY_CUSTOM_PW_140\n"
+        )
+        result = self.run_script("gen-jjb-conf")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        parser = configparser.ConfigParser()
+        parser.read(self.root / ".jjb/jenkins_jobs.ini")
+        self.assertEqual(parser["jenkins"]["user"], "custom-admin")
+        self.assertEqual(parser["jenkins"]["password"], "TESTONLY_CUSTOM_PW_140")
+
+    def test_conf_without_any_credentials_fails_closed(self):
+        """既没有初始口令也没有 JENKINS_ADMIN_* 时必须失败，不能放行空凭据。"""
+        self.dotenv.write_text("JENKINS_URL=https://jenkins.org-devops.com/\n")
+        result = self.run_script("gen-jjb-conf")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("缺少必填变量", result.stderr)
     def test_deploy_selected_service(self):
         # #46：SERVICE_VERSION 已停用（唯一支持版本覆盖的 nexus 移出了 compose），
         # 单服务部署只按服务名走。

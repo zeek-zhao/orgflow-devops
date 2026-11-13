@@ -37,7 +37,8 @@ import re
 import tempfile
 import sys
 
-keys = ("JJB_JENKINS_URL", "JENKINS_ADMIN_ID", "JENKINS_ADMIN_PASSWORD")
+keys = ("JJB_JENKINS_URL", "JENKINS_ADMIN_ID", "JENKINS_ADMIN_PASSWORD",
+        "JJB_USER", "JJB_PASSWORD", "ORGFLOW_INITIAL_PASSWORD")
 # jjb 容器在 compose 网络内直连 jenkins 服务（#30），不走网关/oauth2/TLS。
 # 旧 .env 里的 JENKINS_URL 是浏览器/JCasC 用的对外地址，与 JJB 连接地址无关，
 # 缺 JJB_JENKINS_URL 时用内网默认值，不再要求单独配置。
@@ -67,7 +68,26 @@ for raw in Path(sys.argv[1]).read_text().splitlines():
 for key, fallback in default_values.items():
     values.setdefault(key, fallback)
 
-missing = [key for key in keys if not values.get(key)]
+# #140 / #86：Jenkins 对外是 LDAP-only realm，没有本地 admin 账号。
+# 全新部署的 .env 只带 ORGFLOW_INITIAL_PASSWORD，旧写法会拿 JENKINS_ADMIN_ID=admin
+# 去连 Jenkins，首次 make jobs 必然 401。这里把「当前部署真正可用的凭据」归一化到
+# ini 模板引用的 JENKINS_ADMIN_ID / JENKINS_ADMIN_PASSWORD 两个键：
+#   1) 显式 JJB_USER / JJB_PASSWORD —— 运维换成专用服务账号；
+#   2) 有 ORGFLOW_INITIAL_PASSWORD —— 用 LDAP bootstrap 建好的 svc-platform-admin
+#      + 初始口令（make jobs 因此开箱即用，不再要求手工覆盖凭据）；
+#   3) 都没有 —— 沿用 JENKINS_ADMIN_ID / JENKINS_ADMIN_PASSWORD（旧部署）。
+# 归一化后才做必填校验，避免「给了 JJB_USER/JJB_PASSWORD 却仍报缺少必填变量」。
+override_user = values.get("JJB_USER")
+override_password = values.get("JJB_PASSWORD")
+if override_user and override_password:
+    values["JENKINS_ADMIN_ID"] = override_user
+    values["JENKINS_ADMIN_PASSWORD"] = override_password
+elif values.get("ORGFLOW_INITIAL_PASSWORD"):
+    values["JENKINS_ADMIN_ID"] = "svc-platform-admin"
+    values["JENKINS_ADMIN_PASSWORD"] = values["ORGFLOW_INITIAL_PASSWORD"]
+
+missing = [key for key in ("JJB_JENKINS_URL", "JENKINS_ADMIN_ID", "JENKINS_ADMIN_PASSWORD")
+           if not values.get(key)]
 if missing:
     sys.exit("缺少必填变量: " + ", ".join(missing))
 if any("\n" in value or "\r" in value or "\0" in value for value in values.values()):

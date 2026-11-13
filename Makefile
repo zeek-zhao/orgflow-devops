@@ -28,7 +28,7 @@ else
 COMPOSE_LOCAL = $(COMPOSE)
 endif
 
-.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint check check-all test test-groovy test-bats images-lock images-pin images-guard build-local hooks identity-check hosts ca clean check-jenkins-image check-pins docs-check sbom cve links ldap-passwords ldap-apply labels-sync redaction
+.PHONY: help render deploy doctor up down jobs jobs-test backup restore backup-verify lint check check-all test test-groovy test-bats images-lock images-pin images-guard build-local hooks identity-check hosts ca clean check-jenkins-image check-pins docs-check sbom cve links ldap-passwords ldap-apply ldap-init init labels-sync redaction
 
 help:
 	@echo "make render   渲染 routes.yaml -> out/Caddyfile"
@@ -49,6 +49,8 @@ help:
 	@echo "make links    校验仓库内文档链接自洽（无 404）"
 	@echo "make redaction 公开面门禁：内网标识/凭据形态/内部流程文档（转 public 前必跑）"
 	@echo "make ldap-passwords 按 .env 的 ORGFLOW_INITIAL_PASSWORD 重算 users.ldif 哈希"
+	@echo "make ldap-init  初始化 LDAP 目录（bootstrap+ldap-apply，幂等；#140）"
+	@echo "make init       deploy 后一键收尾：LDAP 初始化→jobs→Nexus→入口清单（#140）"
 	@echo "make check-jenkins-image 静态校验 plugins.txt 必装项 + Dockerfile 用 jenkins-plugin-cli（#90）"
 	@echo "make images-guard 镜像来源闸门：digest 锁死 / pinned-at 可解析 / 镜像未落后于源码（deploy 前置）"
 	@echo "make test-groovy 跑共享库行为测试（需要 groovy，缺失则跳过）"
@@ -209,6 +211,15 @@ ldap-passwords:
 # bootstrap 当警告吞掉），而「改 LDIF 就算改了口令」是这套栈最容易踩的误解。
 ldap-apply:
 	@bash scripts/ldap-set-passwords.sh
+# #140：全新部署最容易漏的两步（bootstrap 空目录 + 初始口令落运行中的目录）
+# 串成一条命令。两步都幂等：bootstrap 对已存在 DN 只吞警告，ldap-apply 重设口令。
+ldap-init:
+	@$(COMPOSE) --env-file $(ENV_FILE) exec -T ldap bash /opt/orgflow-auth/bootstrap-ldif.sh
+	@$(MAKE) --no-print-directory ldap-apply
+# #140 一键收尾：deploy 之后把「LDAP 初始化 → 推 Job → 起 Nexus」串起来，
+# hosts/CA 只自检提示不代做（root 边界）。实现与每步幂等性见 scripts/init.sh。
+init:
+	@ENV_FILE="$(ENV_FILE)" bash scripts/init.sh
 
 # 标签真本在 .github/labels.json；这条把差异推到 GitHub（幂等，只增改不删）。
 # 为什么需要人工触发而不是 CI：标签属于仓库外部状态，改它要写权限，
