@@ -53,7 +53,11 @@ echo "== 2/2 推送 Jenkins Job（16 个参数化 Job）=="
 ENV_FILE="$ENV_FILE" make --no-print-directory jobs
 
 # 阶段 4：Nexus 由 Jenkins job 部署（#46），这里只检测并给入口。
-if docker ps --format '{{.Names}} {{.Health}}' | grep -q '^of-nexus healthy$'; then
+# docker ps 的 --format 没有 .Health 字段（那是 docker compose ps 的），真机踩到
+# `can't evaluate field Health in type *formatter.ContainerContext`：healthy 的
+# of-nexus 被误判成「尚未运行」。改读 docker inspect 里的真实健康状态。
+nexus_health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' of-nexus 2>/dev/null || true)"
+if [ "$nexus_health" = "healthy" ]; then
   echo "✓ Nexus 已在运行"
 else
   echo "⚠ Nexus 尚未运行：在 Jenkins 跑 job nexus-deploy（#46），或 bash scripts/nexus-deploy.sh"
@@ -65,5 +69,5 @@ printf '  统一入口   https://home.%s/\n' "$GATEWAY_DOMAIN"
 printf '  Jenkins    https://jenkins.%s/\n' "$GATEWAY_DOMAIN"
 printf '  Nexus      https://nexus.%s/\n' "$GATEWAY_DOMAIN"
 printf '  LDAP Admin https://ldapadmin.%s/\n' "$GATEWAY_DOMAIN"
-printf '  账号口令   %s（LDAP 初始口令、各服务管理口令，只在部署机）\n' "$ENV_FILE"
+printf '  口令位置   只在部署机 %s，脚本不打印任何口令\n' "$ENV_FILE"
 echo "下一步验收：Jenkins 跑 verify-service job；Windows 跑 tools/win-acceptance/Test-OrgflowAcceptance.ps1"

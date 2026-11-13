@@ -657,5 +657,42 @@ class ArchIpCheckTests(unittest.TestCase):
         self.assertIn("在文档之间不一致", (ROOT / "scripts/check-arch-ips.sh").read_text())
 
 
+class InitScriptTests(unittest.TestCase):
+    """make init 的回归门禁（#140）。
+
+    真机踩到：docker ps 的 --format 里写 .Health 会报
+    `can't evaluate field Health in type *formatter.ContainerContext`，
+    明明 healthy 的 of-nexus 被判成「尚未运行」。.Health 是
+    docker compose ps 的字段；docker ps 必须走 docker inspect 读真实状态。
+    """
+
+    def _text(self):
+        return (ROOT / "scripts/init.sh").read_text()
+
+    def test_nexus_health_uses_docker_inspect(self):
+        text = self._text()
+        self.assertIn("docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}", text)
+        self.assertIn('"$nexus_health" = "healthy"', text)
+
+    def test_docker_ps_must_not_use_health_field(self):
+        # 反向断言：改回 docker ps .Health 就是把这次修的假红重新打开
+        text = self._text()
+        self.assertNotIn("docker ps --format '{{.Names}} {{.Health}}'", text)
+        for line in text.splitlines():
+            if line.lstrip().startswith("#"):
+                continue  # 注释里说明这个坑的句子不算命令
+            if "docker ps " in line and "--format" in line:
+                self.assertNotIn(".Health", line, line)
+
+    def test_entry_list_never_prints_a_password_value(self):
+        text = self._text()
+        self.assertIn("脚本不打印任何口令", text)
+        # 口令位置这一行只允许展开 $ENV_FILE（文件名），不得展开任何 .env 键
+        for line in text.splitlines():
+            if line.lstrip().startswith("printf") and "口令位置" in line:
+                self.assertIn("$ENV_FILE", line)
+                self.assertNotIn("${", line)
+
+
 if __name__ == "__main__":
     unittest.main()
