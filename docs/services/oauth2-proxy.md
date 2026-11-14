@@ -180,7 +180,7 @@ docker compose logs --tail=50 oauth2-proxy | grep -iE 'error|fatal|cookie'
 oauth2-proxy **无状态、无数据卷**：未配 `--session-store`，会话在内存里，重启后所有人重新登录；
 配置全在 `docker-compose.yml` + `.env` + `config/routes.yaml`（Git / 受控密钥保管），
 容器可随时重建，不在 `make backup` 范围内。见
-[备份与恢复](../备份与恢复.md)「范围与前提」。
+[备份与恢复](../engineering/备份与恢复.md)「范围与前提」。
 
 ## 权限模型（#86 / REQ-M0-A3）
 

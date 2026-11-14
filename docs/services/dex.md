@@ -186,5 +186,5 @@ issuer 为 `https://dex.<domain>/dex`，client id `jenkins` 必须与 oauth2-pro
 
 Dex 是**无状态**服务：`storage: memory`、无数据卷，无需备份；配置全部由
 `services/auth/dex/config.yaml.tmpl` + `.env` 重建（`make render`）。
-只需保证模板与 `.env`（受控密钥保管）可恢复，见 [备份与恢复](../备份与恢复.md)「范围与前提」；
+只需保证模板与 `.env`（受控密钥保管）可恢复，见 [备份与恢复](../engineering/备份与恢复.md)「范围与前提」；
 LDAP 里的用户数据另由 `ldap` 服务备份，不要在这里找。

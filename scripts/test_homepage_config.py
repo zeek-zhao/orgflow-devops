@@ -168,7 +168,8 @@ class BookmarkTests(unittest.TestCase):
         self.assertEqual(bad, [], "书签的值必须是列表且带 href（写成映射前端 new URL(e.href) 会炸）：\n  " + "\n  ".join(bad))
 
     def test_every_service_doc_has_bookmark(self):
-        docs = sorted(p.name for p in (ROOT / "docs" / "services").glob("*.md"))
+        docs = sorted(p.name for p in (ROOT / "docs" / "services").glob("*.md")
+                      if p.name != "README.md")  # 目录索引，已单独登记（DOC-E-007）
         hrefs = " ".join(it["fields"].get("href", "") for g in self.groups for it in g["items"])
         missing = [d for d in docs if d not in hrefs]
         self.assertEqual(missing, [], "这些服务文档没有可点开的直链：\n  " + "\n  ".join(missing))

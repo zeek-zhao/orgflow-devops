@@ -260,7 +260,7 @@ make backup                             # 备份 nexus_data
 **只保 `orgflow-devops_nexus_data`**（`make backup` / `backup-service` Job，备份前停服）。
 注意数据库与 blob store 的同刻一致性（H2 内置备份任务，见上）；镜像本身与仓库定义可重建，
 不含在卷备份里。恢复演练的验证点是「仓库列表与基线一致 + 抽查制品可下载」，
-完整步骤见 [备份与恢复](../备份与恢复.md)。
+完整步骤见 [备份与恢复](../engineering/备份与恢复.md)。
 
 ## LDAP 认证（#88 / REQ-M0-A5）与 SAML 说明
 

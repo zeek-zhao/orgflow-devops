@@ -167,7 +167,7 @@ test: check-jenkins-image
 	@echo "python syntax ok"
 
 # 文档配置管理门禁（IEEE 828 轻量落地）：双向一致性、DOC-ID 唯一、状态与见证匹配，
-# 复审超期只报 WARN。规则见 docs/文档规范.md，清单见 docs/文档登记册.md。
+# 复审超期只报 WARN。规则见 docs/engineering/文档规范.md，清单见 docs/文档登记册.md。
 # 反证：删掉登记册里任意一行，这条必须红；补回去复绿。
 docs-check:
 	@python3 scripts/check_docs_meta.py
@@ -228,7 +228,7 @@ labels-sync:
 	@python3 scripts/sync-labels.py
 
 # #90 / REQ-M0-B1：Jenkins 镜像静态自检。本轮不构建镜像，容器内插件清单无法实测，
-# 用「清单必含项 + Dockerfile 用 jenkins-plugin-cli 安装」替代（见 docs/M0-镜像与CI.md）。
+# 用「清单必含项 + Dockerfile 用 jenkins-plugin-cli 安装」替代（见 docs/engineering/M0-测试体系.md）。
 # 反证：从 plugins.txt 删掉 workflow-aggregator，这条必须红，恢复后复绿。
 check-jenkins-image:
 	@set -e; \

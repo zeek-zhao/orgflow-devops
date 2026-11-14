@@ -99,7 +99,7 @@ committing — those images are never pushed.
 
 `docs/` is governed by a registry: every document has a DOC-ID, an owner, a status and a
 review interval. `make docs-check` enforces bidirectional consistency between the
-registry and the files on disk. Read [docs/文档规范.md](docs/文档规范.md) before adding
+registry and the files on disk. Read [docs/文档规范.md](docs/engineering/文档规范.md) before adding
 or removing a document, and start from [docs/文档地图.md](docs/文档地图.md) when reading.
 
 ## Code of conduct

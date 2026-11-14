@@ -51,7 +51,7 @@ docker compose up -d jenkins
 > ⚠️ #90 本轮把 compose 的构建上下文切到了 `services/jenkins/`，但 CI 裁剪映射
 > （`images.yml` / `.github/scripts/select-images.sh` / `scripts/test_ci.py` /
 > `tests/bats/00_stack.bats`）仍指向旧的 `tools/jenkins/`，**派单方合并时须同步**，
-> 否则改 `services/jenkins/` 不会触发 Images 工作流。详见 [M0 镜像与 CI](../M0-镜像与CI.md) 的「#90」节。
+> 否则改 `services/jenkins/` 不会触发 Images 工作流。详见 [M0 镜像与 CI](../engineering/M0-测试体系.md) 的「#90」节。
 
 **Job 跑在哪**：不在 Jenkins 容器里，在独立的 **`jenkins-agent`** 容器（SSH 接入，
 挂宿主 `/var/run/docker.sock`）。所以 job 里 `docker` 能用，Jenkins 容器里不能。
@@ -417,7 +417,7 @@ make backup                              # 备份 jenkins_home（会先停服）
 ```
 
 日常部署 / 备份走 `jenkins.org-devops.com` 的 `deploy-service` / `backup-service` 参数化 Job；
-命令行等价与「healthy ≠ 可用」判据见 [使用说明](../使用说明.md) §2、§3。
+命令行等价与「healthy ≠ 可用」判据见 [使用说明](../engineering/使用说明.md) §2、§3。
 
 ## 注意事项
 
@@ -444,7 +444,7 @@ make backup                              # 备份 jenkins_home（会先停服）
 **只保 `jenkins_home` 卷**（`make backup` / `backup-service` Job，备份前停服保证一致性）。
 `config/`、Job 定义、共享库都在 Git；`.env` 与 `secrets/` 不入库，走受控密钥保管流程另存。
 恢复演练的验证点是「容器 healthy + 能登录 + 关键 Job / 构建记录存在」，完整步骤与三件套
-（`.tgz` / `.sha256` / `.meta`）见 [备份与恢复](../备份与恢复.md)。
+（`.tgz` / `.sha256` / `.meta`）见 [备份与恢复](../engineering/备份与恢复.md)。
 
 ## LDAP 安全域（#87 / REQ-M0-A4）
 

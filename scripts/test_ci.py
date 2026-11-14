@@ -296,7 +296,7 @@ class SelectImagesTests(unittest.TestCase):
         self.assertEqual(self.selected(result, parsed), ["jenkins", "dnsmasq"])
 
     def test_unrelated_paths_build_nothing(self):
-        result, parsed = self.run_select("docs/使用说明.md\nscripts/test_ci.py\ntests/bats/00_stack.bats\n")
+        result, parsed = self.run_select("docs/engineering/使用说明.md\nscripts/test_ci.py\ntests/bats/00_stack.bats\n")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(parsed["any"], "false")
         self.assertEqual(json.loads(parsed["matrix"])["include"], [])

@@ -1,7 +1,7 @@
 # AGENTS.md
 
 给 AI 编码助手的工作约定。**先读完本文件再动手**；规程层的细节（分工、验收责任、哪些活不能派）
-在 [docs/AI-协作开发.md](docs/AI-协作开发.md)，改代码的路径在 [docs/工程开发说明.md](docs/工程开发说明.md)。
+在 [docs/AI-协作开发.md](docs/engineering/AI-协作开发.md)，改代码的路径在 [docs/工程开发说明.md](docs/engineering/开发生命周期.md)。
 
 一句话：**这个仓库的每个结论都要能被一条命令复现**。写不出复现命令的改动，先别提交。
 
@@ -13,8 +13,8 @@
 ## 改动前必读（按顺序，别跳）
 
 1. [docs/requirements/](docs/requirements/)：要求什么、怎么算做到。**改行为前先找到对应的 `REQ-M0-xx`**。
-2. [docs/工程开发说明.md](docs/工程开发说明.md)：目录语义与改一条 X 要动哪几个文件。
-3. [docs/文档规范.md](docs/文档规范.md)：新增/删除文档必须登记，否则 `make docs-check` 红。
+2. [docs/工程开发说明.md](docs/engineering/开发生命周期.md)：目录语义与改一条 X 要动哪几个文件。
+3. [docs/文档规范.md](docs/engineering/文档规范.md)：新增/删除文档必须登记，否则 `make docs-check` 红。
 
 ## 常跑命令
 

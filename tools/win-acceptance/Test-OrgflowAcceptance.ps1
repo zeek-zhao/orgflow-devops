@@ -34,7 +34,7 @@ $ErrorActionPreference = 'Stop'
 # 旧口径（jenkins/ldapadmin 一律 302）是 #86 之前的值，照它判会在正确环境上必红。
 #
 # 每行末尾的 `# NN` 是该期望值的**出处**（哪个 issue 定下的），规则见
-# docs/文档规范.md §7.1「期望值与架构变更的绑定」。#initial = 建仓时就有的值、尚未溯源；
+# docs/engineering/文档规范.md §7.1「期望值与架构变更的绑定」。#initial = 建仓时就有的值、尚未溯源；
 # 标它而不是编一个号，因为错的溯源会让下一个人去读一个不相干的 issue。
 $Expectations = [ordered]@{
     'jenkins'   = @(302, 403)   # 86

@@ -29,7 +29,7 @@ def section_titles(text):
 
 
 def service_docs():
-    return sorted(SERVICES.glob("*.md"))
+    return sorted(p for p in SERVICES.glob("*.md") if p.name != "README.md")  # 目录索引，已单独登记（DOC-E-007）
 
 
 class ServiceDocSectionTests(unittest.TestCase):
