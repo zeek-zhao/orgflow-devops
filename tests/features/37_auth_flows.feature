@@ -25,7 +25,7 @@ Feature: 认证流——登录之后的真实可用性
   Scenario: auth: 完整 OIDC 登录建立会话——会话内取受保护页放行，伪造会话必须回登录页（反证）
     Given svc-platform-dev 属授权组且靶子文件在 docs/ 里真实存在
     When 走 oauth2→Dex→LDAP→approval 完整登录后取受保护页，再用伪造 Cookie 取同一页
-    Then 会话内拿到 200 内容，伪造会话必须落在登录页
+    Then 会话内拿到 200 内容，伪造会话必须被甩回 /oauth2/start 登录流
 
   @REQ-M0-A4
   Scenario: auth: Jenkins API 用 LDAP 凭据建 Job→触发构建→SUCCESS→删除（专用夹具+清理）
