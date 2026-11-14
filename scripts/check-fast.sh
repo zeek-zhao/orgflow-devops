@@ -37,6 +37,7 @@ run "脱敏" bash scripts/check-public-redaction.sh .
 run "标签清单" "$PY" scripts/test_labels.py
 run "Action 钉死" "$PY" scripts/check-actions-pinned.py .
 run "插件许可证" "$PY" scripts/test_plugin_licenses.py
+run "BDD 对账" "$PY" scripts/check_bdd.py
 
 if (( failed )); then
     echo
