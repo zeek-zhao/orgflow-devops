@@ -97,10 +97,13 @@ teardown() {
     gw_curl jenkins "/job/${job}/doDelete" -u "svc-platform-admin:${pass}" \
         -b "$jar" -H "${field}: ${crumb}" -o /dev/null
     # 建 freestyle 夹具 Job（echo 一步，最小可构建）
-    # 澶瑰叿蹇呴』缁?orgflow-docker 鏍囩锛歝onfig/job_definitions/* 鐨勭湡瀹?Job 鍏ㄧ敤
-    # agent {{ label 'orgflow-docker' }}锛涗笉缁戞爣绛剧殑 Job 鍙兘钀藉湪 0 鎵ц鍣ㄧ殑
-    # built-in 鑺傜偣涓婏紝姘歌繙 pending锛圕I 43576824915 瀹炶瘉锛塡n    printf '%s' "<project><description>#139 auth fixture, deleted after test</description><assignedNode>orgflow-docker</assignedNode><canRoam>false</canRoam><builders><hudson.tasks.Shell><command>echo bdd-auth-fixture</command></hudson.tasks.Shell></builders></project>"
-        > /tmp/bdd-auth-fixture.xml
+    # fixture MUST bind agent label orgflow-docker:
+    # real jobs all use agent {{ label 'orgflow-docker' }};
+    # fixture MUST bind orgflow-docker: all real jobs use agent label
+    # 'orgflow-docker' (config/job_definitions/*); unlabeled jobs queue forever
+    # on the 0-executor built-in node (CI 43576824915)
+    printf '%s' "<project><description>#139 auth fixture, deleted after test</description><assignedNode>orgflow-docker</assignedNode><canRoam>false</canRoam><builders><hudson.tasks.Shell><command>echo bdd-auth-fixture</command></hudson.tasks.Shell></builders></project>" > /tmp/bdd-auth-fixture.xml
+
     code=$(gw_curl jenkins "/createItem?name=${job}" -u "svc-platform-admin:${pass}" \
         -b "$jar" -H "${field}: ${crumb}" -H "Content-Type: text/xml" \
         --data-binary @/tmp/bdd-auth-fixture.xml -o /dev/null -w '%{http_code}')
