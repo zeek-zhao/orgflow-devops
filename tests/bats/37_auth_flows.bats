@@ -111,10 +111,15 @@ teardown() {
     # 轮询构建结果（上限约 120s：入队 + agent 领任务）
     result=""
     for i in $(seq 1 40); do
+        # 入队期间 /lastBuild 尚不存在（404 非 JSON），解析失败必须容错继续轮询，
+        # 不能让 set -e 在此处中止（CI 43574801372 实证）
         result=$(gw_curl jenkins "/job/${job}/lastBuild/api/json" -u "svc-platform-admin:${pass}" \
             | python3 -c 'import json,sys
-d = json.load(sys.stdin)
-print(d.get("result") or "")' 2>/dev/null)
+try:
+    d = json.load(sys.stdin)
+    print(d.get("result") or "")
+except Exception:
+    print("")' 2>/dev/null) || true
         case "$result" in
             SUCCESS|FAILURE|ABORTED) break ;;
         esac
