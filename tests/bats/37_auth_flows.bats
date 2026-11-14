@@ -1,0 +1,112 @@
+#!/usr/bin/env bats
+# #139 PR3 认证流:登录之后各服务真实可用（BDD 场景见 tests/features/37_auth_flows.feature）。
+# 凭据真值只从 .env 读（svc-platform-admin / ORGFLOW_INITIAL_PASSWORD），不硬编码。
+setup() {
+    load 'helpers/common'
+    setup_gw
+}
+
+teardown() {
+    # 专用夹具清理：无论用例成败，Jenkins 里的 fixture Job 必须删除。
+    # 夹具只在 Jenkins API 用例里创建（AUTH_FIXTURE_CREATED=1）。
+    if [ -n "${AUTH_FIXTURE_JOB:-}" ] && [ "${AUTH_FIXTURE_CREATED:-}" = "1" ]; then
+        local pass crumb_json crumb field
+        pass=$(ldap_initial_password) || return 0
+        crumb_json=$(gw_curl jenkins /crumbIssuer/api/json -u "svc-platform-admin:${pass}") || return 0
+        crumb=$(printf '%s' "$crumb_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["crumb"])' 2>/dev/null)
+        field=$(printf '%s' "$crumb_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["crumbRequestField"])' 2>/dev/null)
+        [ -n "$crumb" ] && [ -n "$field" ] && \
+            gw_curl jenkins "/job/${AUTH_FIXTURE_JOB}/doDelete" \
+                -u "svc-platform-admin:${pass}" -H "${field}: ${crumb}" -o /dev/null
+        echo "teardown: 夹具 Job ${AUTH_FIXTURE_JOB} 已删除" >&2
+    fi
+}
+
+@test "auth: LDAP 服务账号 bind 正确口令成功，错误口令必须拒绝（反证）" {
+    local pass
+    pass=$(ldap_initial_password) || return 1
+    run compose_exec ldap sh -c \
+        'exec ldapwhoami -x -H ldap://localhost:389 -D "uid=svc-platform-admin,ou=users,dc=devops,dc=com" -w "$1"' \
+        sh "$pass"
+    echo "whoami: $output" >&2
+    [ "$status" -eq 0 ]
+    # 反证：错误口令必须被 INVALID_CREDENTIALS 拒绝，否则第一条是假绿
+    run compose_exec ldap sh -c \
+        'exec ldapwhoami -x -H ldap://localhost:389 -D "uid=svc-platform-admin,ou=users,dc=devops,dc=com" -w "$1"' \
+        sh "deliberately-wrong-${pass:0:4}"
+    [ "$status" -ne 0 ]
+    assert_contains "$output" "INVALID_CREDENTIALS"
+}
+
+@test "auth: 组授权真源——docs-users 由 posixGroup 决定（svc-platform-dev 在内，svc-jira-dev 不在）" {
+    run compose_exec ldap sh -c \
+        'exec ldapsearch -x -H ldap://localhost:389 -D cn=admin,dc=devops,dc=com -w "$LDAP_ADMIN_PASSWORD" -b ou=groups,dc=devops,dc=com "(cn=docs-users)" memberUid' \
+        sh
+    echo "search: $output" >&2
+    [ "$status" -eq 0 ]
+    assert_contains "$output" "dn: cn=docs-users,ou=groups,dc=devops,dc=com"
+    assert_contains "$output" "memberUid: svc-platform-dev"
+    # 反证面：非组成员账号绝不能出现在授权组里（36 号文件的 403 断言靠它成立）
+    ! grep -q "memberUid: svc-jira-dev" <<< "$output"
+}
+
+@test "auth: 完整 OIDC 登录建立会话——会话内取受保护页放行，伪造会话必须回登录页（反证）" {
+    local pass target
+    pass=$(ldap_initial_password) || return 1
+    target=/network/arch.md
+    [ -f "$M0_REPO/docs${target}" ] || {
+        echo "靶子文件不存在：docs${target}（是它没了，不是权限问题）" >&2
+        return 1
+    }
+    # 正向：oauth2→Dex→LDAP→approval 完整走一遍，同一会话内取受保护页
+    run python3 "$M0_REPO/tests/bats/helpers/oidc_flow.py" \
+        "docs.${GW_DOMAIN}" "${GW_HTTPS_PORT}" svc-platform-dev "$pass" "$target"
+    echo "flow: $output" >&2
+    [ "$status" -eq 0 ]
+    assert_contains "$output" "POST-LOGIN-FETCH 200"
+    # 反证：伪造会话 Cookie 跟随重定向必须落在登录页，而不是拿到受保护内容
+    local body
+    body=$(gw_curl docs "$target" -H "Cookie: _oauth2_proxy=forged-invalid-session" -L)
+    assert_contains "$body" 'name="login"'
+}
+
+@test "auth: Jenkins API 用 LDAP 凭据建 Job→触发构建→SUCCESS→删除（专用夹具+清理）" {
+    local pass crumb_json crumb field code job result i
+    job=bdd-auth-fixture
+    pass=$(ldap_initial_password) || return 1
+    AUTH_FIXTURE_JOB=$job
+    # crumb：口令凭据的写操作必须带 CSRF crumb（API token 属 PR4 的 B4 用例）
+    crumb_json=$(gw_curl jenkins /crumbIssuer/api/json -u "svc-platform-admin:${pass}")
+    assert_contains "$crumb_json" '"crumb"'
+    crumb=$(printf '%s' "$crumb_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["crumb"])')
+    field=$(printf '%s' "$crumb_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["crumbRequestField"])')
+    # 幂等预清理：上次运行残留的夹具先删掉，保证 createItem 一定走新建
+    gw_curl jenkins "/job/${job}/doDelete" -u "svc-platform-admin:${pass}" \
+        -H "${field}: ${crumb}" -o /dev/null
+    # 建 freestyle 夹具 Job（echo 一步，最小可构建）
+    printf '%s' "<project><description>#139 认证流专用夹具，测试后即删</description><builders><hudson.tasks.Shell><command>echo bdd-auth-flow-ok</command></hudson.tasks.Shell></builders><publishers/></project>" \
+        > /tmp/bdd-auth-fixture.xml
+    code=$(gw_curl jenkins "/createItem?name=${job}" -u "svc-platform-admin:${pass}" \
+        -H "${field}: ${crumb}" -H "Content-Type: text/xml" \
+        --data-binary @/tmp/bdd-auth-fixture.xml -o /dev/null -w '%{http_code}')
+    [ "$code" = "200" ] || { echo "createItem: $code" >&2; return 1; }
+    AUTH_FIXTURE_CREATED=1
+    # 触发构建
+    code=$(gw_curl jenkins "/job/${job}/build?delay=0sec" -u "svc-platform-admin:${pass}" \
+        -H "${field}: ${crumb}" -X POST -o /dev/null -w '%{http_code}')
+    [ "$code" = "201" ] || { echo "build trigger: $code" >&2; return 1; }
+    # 轮询构建结果（上限约 120s：入队 + agent 领任务）
+    result=""
+    for i in $(seq 1 40); do
+        result=$(gw_curl jenkins "/job/${job}/lastBuild/api/json" -u "svc-platform-admin:${pass}" \
+            | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+print(d.get("result") or "")' 2>/dev/null)
+        case "$result" in
+            SUCCESS|FAILURE|ABORTED) break ;;
+        esac
+        sleep 3
+    done
+    echo "lastBuild result: ${result:-pending}" >&2
+    [ "$result" = "SUCCESS" ]
+}
