@@ -224,6 +224,21 @@ NEXUS_ADMIN_ID="$(sed -n 's/^NEXUS_ADMIN_ID=//p' "$M0_ENV_FILE" | tail -1)" \
 NEXUS_ADMIN_PASSWORD="$(sed -n 's/^NEXUS_ADMIN_PASSWORD=//p' "$M0_ENV_FILE" | tail -1)" \
     bash /repo/scripts/nexus-deploy.sh
 
+# #117 三件套 + CE EULA + 匿名开启：测试栈等价于「部署机上手动跑 setup 脚本」。
+# 全新 Nexus 不接受 EULA 时所有写路径 403（2026-11-14 CI 实测），匿名默认关闭
+# 会让「未认证可拉」判据变 401。脚本幂等，213 上重跑同样安全。
+# 走 router 容器的 python3（34_router_api.bats 同款先例）；凭据走 sh -c 位置
+# 参数带进容器 —— compose exec 不透传宿主 shell 的环境变量（2026-11-14 CI
+# 二轮实测：不传参则脚本报「NEXUS_ADMIN_PASSWORD 没有来源」）。
+stage="provisioning nexus (eula/anonymous/repos)"
+compose exec -T router sh -c 'cat > /tmp/nexus-setup-repos.py' \
+    < /repo/scripts/nexus-setup-repos.py
+compose exec -T router sh -c \
+    'NEXUS_BASE_URL=http://nexus:8081 NEXUS_ADMIN_ID="$1" NEXUS_ADMIN_PASSWORD="$2" exec python3 /tmp/nexus-setup-repos.py' \
+    nexus-setup \
+    "$(sed -n 's/^NEXUS_ADMIN_ID=//p' "$M0_ENV_FILE" | tail -1)" \
+    "$(sed -n 's/^NEXUS_ADMIN_PASSWORD=//p' "$M0_ENV_FILE" | tail -1)"
+
 stage="bootstrapping isolated LDAP"
 compose exec -T ldap sh -c 'LDAP_URI=ldap://localhost:389 bash /opt/orgflow-auth/bootstrap-ldif.sh'
 

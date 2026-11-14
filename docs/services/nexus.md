@@ -157,8 +157,9 @@ make backup
 
 ## 仓库三件套（#117，2026-11-11 实测）
 
-`scripts/nexus-setup-repos.py` 幂等创建 6 个仓库；配置存在 `nexus_data` 卷里，
-**容器重建不丢、卷删了要重跑脚本**。建仓前 7 个（maven2 / nuget），建仓后 13 个。
+`scripts/nexus-setup-repos.py` 幂等做三件事：接受 CE EULA、开启匿名访问、创建 6 个仓库；
+配置存在 `nexus_data` 卷里，**容器重建不丢、卷删了要重跑脚本**。全新实例不接受 EULA 时
+所有写路径 403（2026-11-14 CI 实测）。建仓前 7 个（maven2 / nuget），建仓后 13 个。
 
 | 仓库 | 类型 | connector / 上游 | 用途 |
 |---|---|---|---|
@@ -201,7 +202,7 @@ denied: Deploying to groups is a PRO-licensed feature.
 复现命令（在部署机上）：
 
 ```bash
-python3 scripts/nexus-setup-repos.py     # 幂等，已存在则跳过
+python3 scripts/nexus-setup-repos.py     # 幂等：EULA/匿名/6 仓库，已就绪的项跳过
 curl -u "$NEXUS_ADMIN_ID:$NEXUS_ADMIN_PASSWORD" \
   http://172.31.0.21:8081/service/rest/v1/repositories | python3 -m json.tool
 ```

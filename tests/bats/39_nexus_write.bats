@@ -23,7 +23,9 @@ nexus_admin_password() {
     npass=$(nexus_admin_password) || return 1
     # 包名按运行时刻唯一：pypi hosted 资产没有 component 对象，REST 删不掉
     # （探针 2026-11-14 实证），唯一命名让每次运行自洽、不依赖上一次残留。
-    pkg="bdd_probe_$(date +%s)"
+    # 连字符而非下划线：Nexus 的 simple 索引路径只认 PEP 503 归一化名，
+    # 下划线名永远 404（探针 2026-11-14 实证）；pip 客户端同样先归一化再请求。
+    pkg="bdd-probe-$(date +%s)"
     ver="0.1"
     whl="/tmp/${pkg}-${ver}-py3-none-any.whl"
     python3 - "$pkg" "$ver" "$whl" <<'PYWH'
@@ -48,7 +50,7 @@ PYWH
     [ -n "$href" ]
     # 索引 href 是相对路径（../../packages/...#sha256=...），urljoin 后才能下载
     url=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.urljoin(sys.argv[1], sys.argv[2].split("#")[0]))' \
-        "https://nexus.${GW_DOMAIN}/repository/pypi-group/simple/${pkg}/" "$href")
+        "https://nexus.${GW_DOMAIN}:${GW_HTTPS_PORT}/repository/pypi-group/simple/${pkg}/" "$href")
     dl=$(curl -sSk --connect-timeout 5 --max-time 30 \
         --resolve "nexus.${GW_DOMAIN}:${GW_HTTPS_PORT}:${GW_HOST}" \
         -o /dev/null -w '%{http_code} %{size_download}' "$url")
