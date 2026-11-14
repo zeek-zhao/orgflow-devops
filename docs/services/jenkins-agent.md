@@ -7,7 +7,7 @@ Jenkins 的构建节点。**所有 pipeline job 实际跑在这个容器里，�
 
 > **这是全仓最容易出问题的组件。** M0 关闭时暴露的三个真机缺陷全部在它身上，
 > 而且三个的报错文案都指向别处（「找不到网络」「节点 offline」「证书没导入」）。
-> 判据与取证口径见 [M0-测试体系](../M0-测试体系.md)。
+> 判据与取证口径见 [M0-测试体系](../engineering/M0-测试体系.md)。
 
 ## 用途与端口
 
@@ -206,4 +206,4 @@ docker exec of-jenkins-agent getent group docker      # 期望 docker:x:<gid>:je
 agent **无状态、无数据卷**，不在 `make backup` 范围内；它的身份材料在 `secrets/`（不进 Git），
 必须走受控密钥保管另存。丢失时用 `scripts/gen-agent-key.sh` 重建两对密钥，并同步
 `config/jenkins.yaml` 的 `manuallyProvidedKeyVerificationStrategy`（重启 jenkins）。
-Jenkins 侧的状态备份只保 `jenkins_home`，见 [备份与恢复](../备份与恢复.md)。
+Jenkins 侧的状态备份只保 `jenkins_home`，见 [备份与恢复](../engineering/备份与恢复.md)。

@@ -83,21 +83,21 @@ straight to:
 
 | Question | Where |
 |---|---|
-| What is this thing and how does it run | [M0 最小核心](docs/M0-最小核心.md) |
-| How do I use it day to day | [使用说明](docs/使用说明.md) |
-| How do I change the code | [工程开发说明](docs/工程开发说明.md) |
+| What is this thing and how does it run | [M0 最小核心](docs/records/M0-最小核心.md) |
+| How do I use it day to day | [使用说明](docs/engineering/使用说明.md) |
+| How do I change the code | [工程开发说明](docs/engineering/开发生命周期.md) |
 | What is required, and how "done" is judged | [requirements/](docs/requirements/README.md) |
-| How requirements, issues and milestones are managed | [项目管理](docs/项目管理.md) |
-| How to work here with an AI assistant | [AGENTS.md](AGENTS.md) · [AI 协作开发](docs/AI-协作开发.md) |
-| How is it verified | [M0 测试体系](docs/M0-测试体系.md) |
-| Images and CI pipeline | [M0 镜像与 CI](docs/M0-镜像与CI.md) |
+| How requirements, issues and milestones are managed | [项目管理](docs/project/项目管理.md) |
+| How to work here with an AI assistant | [AGENTS.md](AGENTS.md) · [AI 协作开发](docs/engineering/AI-协作开发.md) |
+| How is it verified | [M0 测试体系](docs/engineering/M0-测试体系.md) |
+| Images and CI pipeline | [M0 镜像与 CI](docs/engineering/M0-测试体系.md) |
 | One service is broken | [docs/services/](docs/services/) (11 runbooks) |
 | Network topology and fixed IPs | [network/arch](docs/network/arch.md) |
-| Why domain-based routing | [ADR-13](docs/ADR-13-域名路由.md) |
-| Backup and restore drills | [备份与恢复](docs/备份与恢复.md) |
-| What we redistribute and under which terms | [开源合规](docs/开源合规.md) + [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md) |
-| Which docs exist, and how they're governed | [文档地图](docs/文档地图.md) · [文档登记册](docs/文档登记册.md) · [文档规范](docs/文档规范.md) |
-| Known gaps and open findings | [问题索引](docs/问题索引.md) |
+| Why domain-based routing | [ADR-13](docs/records/ADR-13-域名路由.md) |
+| Backup and restore drills | [备份与恢复](docs/engineering/备份与恢复.md) |
+| What we redistribute and under which terms | [开源合规](docs/records/开源合规.md) + [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md) |
+| Which docs exist, and how they're governed | [文档地图](docs/文档地图.md) · [文档登记册](docs/文档登记册.md) · [文档规范](docs/engineering/文档规范.md) |
+| Known gaps and open findings | [问题索引](docs/project/问题索引.md) |
 
 ## Contributing
 

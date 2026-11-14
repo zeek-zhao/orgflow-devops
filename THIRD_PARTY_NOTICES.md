@@ -28,8 +28,8 @@
 | Nexus Repository 3 | `mirror-nexus:3.92.2` | [sonatype/nexus-public](https://github.com/sonatype/nexus-public) | **EPL-1.0** | EPL-1.0.txt |
 | Homepage | `mirror-homepage:v2.7.0` | [gethomepage/homepage](https://github.com/gethomepage/homepage) | **GPL-3.0** | GPL-3.0.txt |
 
-各镜像的精确版本由 digest 锁定，见 [`docker-compose.ghcr.yml`](/docker-compose.ghcr.yml)
-与 [`scripts/nexus-deploy.sh`](/scripts/nexus-deploy.sh)；汇总见 SBOM。
+各镜像的精确版本由 digest 锁定，见 [`docker-compose.ghcr.yml`](docker-compose.ghcr.yml)
+与 [`scripts/nexus-deploy.sh`](scripts/nexus-deploy.sh)；汇总见 SBOM。
 
 ## 2. 本项目构建的镜像
 

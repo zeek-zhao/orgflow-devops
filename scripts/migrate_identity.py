@@ -42,7 +42,7 @@ REF_FILES = [
     'docs/账号与登录.md',
     'docs/services/ldap.md',
     'docs/services/dex.md',
-    'docs/M0-测试体系.md',
+    'docs/engineering/M0-测试体系.md',
     'services/auth/README.md',
     'tests/bats/10_ldap.bats',
 ]

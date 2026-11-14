@@ -98,4 +98,4 @@ docker run --rm -i -v "${vol}:/data" alpine \
 start_service "$SERVICE"
 stopped=0
 echo "恢复完成: service=$SERVICE volume=$vol file=$FILE 原条目数=$entries"
-echo "服务已启回；请按 docs/备份与恢复.md 检查 healthy 与业务数据。"
+echo "服务已启回；请按 docs/engineering/备份与恢复.md 检查 healthy 与业务数据。"

@@ -19,7 +19,7 @@ Caddy 代理 + Nexus 制品 + 备份」底座；各服务的部署/备份由**�
 | Nexus | 制品库 / 备份目标 |
 | 备份 Job | 各服务数据卷/配置备份，sha256 校验 + 恢复演练 |
 
-域名路由的来由、固定 IP 表与排查手法见 [ADR-13](docs/ADR-13-域名路由.md)。
+域名路由的来由、固定 IP 表与排查手法见 [ADR-13](docs/records/ADR-13-域名路由.md)。
 
 ## 快速开始
 
@@ -80,7 +80,7 @@ make doctor       # 只读环境自检
 
 bats 断言一律用 `curl --resolve <sub>.<domain>:<port>:127.0.0.1`，
 测的是 Caddy 的站点匹配而不是某个 `IP:端口`。运行要求、`KEEP=1` 调试与镜像升级步骤见
-[M0 测试体系](docs/M0-测试体系.md)。
+[M0 测试体系](docs/engineering/M0-测试体系.md)。
 
 ## 文档
 
@@ -88,20 +88,20 @@ bats 断言一律用 `curl --resolve <sub>.<domain>:<port>:127.0.0.1`，
 
 | 想知道 | 去哪看 |
 |---|---|
-| 这东西是什么、怎么跑、Job 怎么定义 | [M0 最小核心](docs/M0-最小核心.md) |
-| 平台日常怎么用（入口/登录/部署/备份/加路由） | [使用说明](docs/使用说明.md) |
-| 要改代码：目录语义、改一条 X 动哪几个文件 | [工程开发说明](docs/工程开发说明.md) |
+| 这东西是什么、怎么跑、Job 怎么定义 | [M0 最小核心](docs/records/M0-最小核心.md) |
+| 平台日常怎么用（入口/登录/部署/备份/加路由） | [使用说明](docs/engineering/使用说明.md) |
+| 要改代码：目录语义、改一条 X 动哪几个文件 | [工程开发说明](docs/engineering/开发生命周期.md) |
 | 要求是什么、怎么算做到 | [需求基线](docs/requirements/README.md) |
-| 需求/任务卡/标签/里程碑怎么管 | [项目管理](docs/项目管理.md) |
-| 让 AI 参与：能做什么、怎么验收 | [AGENTS.md](AGENTS.md) · [AI 协作开发](docs/AI-协作开发.md) |
-| 测试怎么跑、三层验证怎么分、怎么升 digest | [M0 测试体系](docs/M0-测试体系.md) |
-| 镜像与 CI 流水线 | [M0 镜像与 CI](docs/M0-镜像与CI.md) |
+| 需求/任务卡/标签/里程碑怎么管 | [项目管理](docs/project/项目管理.md) |
+| 让 AI 参与：能做什么、怎么验收 | [AGENTS.md](AGENTS.md) · [AI 协作开发](docs/engineering/AI-协作开发.md) |
+| 测试怎么跑、三层验证怎么分、怎么升 digest | [M0 测试体系](docs/engineering/M0-测试体系.md) |
+| 镜像与 CI 流水线 | [M0 镜像与 CI](docs/engineering/M0-测试体系.md) |
 | 某个服务怎么用、怎么部署、坏了怎么查 | [`docs/services/`](docs/services/)（11 份统一六段） |
 | 网络拓扑、固定 IP 表、分层排查决策树 | [网络架构](docs/network/arch.md) |
-| 域名路由为什么这么做 | [ADR-13](docs/ADR-13-域名路由.md) |
-| 备份怎么做、怎么演练恢复 | [备份与恢复](docs/备份与恢复.md) |
-| 我们在分发什么、欠谁什么 | [开源合规](docs/开源合规.md) + [第三方声明](THIRD_PARTY_NOTICES.md) |
-| 某个 issue 改哪份文档、哪段代码 | [问题索引](docs/问题索引.md) |
+| 域名路由为什么这么做 | [ADR-13](docs/records/ADR-13-域名路由.md) |
+| 备份怎么做、怎么演练恢复 | [备份与恢复](docs/engineering/备份与恢复.md) |
+| 我们在分发什么、欠谁什么 | [开源合规](docs/records/开源合规.md) + [第三方声明](THIRD_PARTY_NOTICES.md) |
+| 某个 issue 改哪份文档、哪段代码 | [问题索引](docs/project/问题索引.md) |
 | 每篇文档什么状态、谁负责、何时该重看 | [文档登记册](docs/文档登记册.md) |
 | Windows 侧验收脚本怎么用 | [win-acceptance](tools/win-acceptance/README.md) |
 

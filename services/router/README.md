@@ -3,7 +3,7 @@
 职责：集中管理路由（`config/routes.yaml`），渲染 Caddyfile 并通过 Caddy Admin API 热加载。
 数据面仍是 Caddy；本服务只做控制面。
 
-路由模型是**域名站点**（[ADR-13](../../docs/ADR-13-域名路由.md)）：每个 route 生成一个
+路由模型是**域名站点**（[ADR-13](../../docs/records/ADR-13-域名路由.md)）：每个 route 生成一个
 `https://<subdomain>.<gateway_domain>` 站点，路径前缀路由已删除。
 
 ## 本地验证

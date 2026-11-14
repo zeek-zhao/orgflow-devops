@@ -144,4 +144,4 @@ docker compose logs --tail=50 ldapadmin
 
 ldapadmin **无数据卷**，所有目录数据在 `ldap` 容器，随 `ldap_data` / `ldap_config` 一起保管，
 无需单独备份；凭据在 `.env`（不入库）。完整卷映射与恢复步骤见
-[备份与恢复](../备份与恢复.md)。
+[备份与恢复](../engineering/备份与恢复.md)。

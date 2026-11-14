@@ -386,4 +386,4 @@ curl -sS -k --resolve home.org-devops.com:443:127.0.0.1 \
 
 homepage **无业务数据卷**：四个 yaml 都在 Git，`config/logs` 是运行期日志不备；容器重建即可。
 域名 / 卡片链接随 `.env` 的 `GATEWAY_DOMAIN` 驱动，见
-[备份与恢复](../备份与恢复.md)「范围与前提」；本服务无单独恢复演练项。
+[备份与恢复](../engineering/备份与恢复.md)「范围与前提」；本服务无单独恢复演练项。

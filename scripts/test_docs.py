@@ -97,6 +97,8 @@ class ServiceDocCoverageTests(unittest.TestCase):
         known = set(compose_service_names()) | set(self.EXTRA_SERVICES)
         orphans = []
         for doc in sorted((ROOT / "docs" / "services").glob("*.md")):
+            if doc.name == "README.md":  # 目录索引，已单独登记（DOC-E-007）
+                continue
             if doc.stem not in known:
                 orphans.append(doc.name)
         self.assertEqual(

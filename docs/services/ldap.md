@@ -127,7 +127,7 @@ make backup
 ## 使用指南
 
 首次建目录前先确认初始口令：仓库里的 `users.ldif` 只存 `{SSHA}` 哈希，**口令真值不在
-仓库里**（[开源合规 §4](../开源合规.md)）。`.env` 里的 `ORGFLOW_INITIAL_PASSWORD` 是真源，
+仓库里**（[开源合规 §4](../records/开源合规.md)）。`.env` 里的 `ORGFLOW_INITIAL_PASSWORD` 是真源，
 两者不一致的表现是「密码看着对，bind 却一直返回 49」。
 
 改 LDIF **不等于**改口令，这一点最容易踩：目录建好之后 `ldapadd` 对已存在的 DN 只报
@@ -156,7 +156,7 @@ make backup                                      # 只含 ldap_data
 
 ## 注意事项
 
-- `make backup` **只备 `ldap_data`，不含 `ldap_config`**（schema / `cn=config`）：全机丢失时必须另有同一停服时点的 `ldap_config` 副本，不能把数据包当完整灾备（[备份与恢复](../备份与恢复.md)「范围与前提」）。
+- `make backup` **只备 `ldap_data`，不含 `ldap_config`**（schema / `cn=config`）：全机丢失时必须另有同一停服时点的 `ldap_config` 副本，不能把数据包当完整灾备（[备份与恢复](../engineering/备份与恢复.md)「范围与前提」）。
 - `departments.ldif` 有**悬空 member 引用**（指向不存在的 `ou=people`），属既有生产数据；导入脚本容忍它，查询会看到指向空 DN 的 member。
 - 改 `LDAP_DOMAIN` 等于换 base DN，**已导入的数据会对不上**；除非重建不要动。
 - `bootstrap-ldif.sh` 把 `ldapadd` 退出码 **68（entry already exists）当成功**——这是幂等的关键；密码走临时 600 文件 / stdin，不进进程表（最小披露）。
@@ -179,4 +179,4 @@ make backup                                      # 只含 ldap_data
 必须另行同刻保管**，恢复期间不要删这两个卷、不要重跑初始化导入。
 恢复演练的验证点是「容器 healthy + 有权限的目录查询成功 + 条目数仍为 33 + 登录链路可用」，
 `ldapsearch` 用 `-y /dev/stdin` 传密码、不输出条目正文。完整步骤见
-[备份与恢复](../备份与恢复.md)。
+[备份与恢复](../engineering/备份与恢复.md)。
