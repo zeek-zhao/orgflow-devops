@@ -15,6 +15,7 @@
 # 幂等：容器已存在就复用，密码已改过就跳过。**绝不重建容器** ——
 # 重建会换掉 /nexus-data 的挂载点归属，也可能把 nexus 的 blobstore 搞坏。
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 CONTAINER="${NEXUS_CONTAINER:-of-nexus}"
 IP="${NEXUS_IP:-172.31.0.21}"
@@ -23,6 +24,14 @@ IP="${NEXUS_IP:-172.31.0.21}"
 IMAGE="${NEXUS_IMAGE:-ghcr.io/zeek-zhao/orgflow-devops/mirror-nexus:3.92.2@sha256:a32ae23e0fdacccc4f2a9cbf3aa613388d11a1495d5dd66c639c8e84ad39b179}"
 ADMIN_ID="${NEXUS_ADMIN_ID:-admin}"
 ADMIN_PASSWORD="${NEXUS_ADMIN_PASSWORD:-}"
+# fallback: doc says the password lives only in the deploy machine's .env,
+# but running `bash scripts/nexus-deploy.sh` by hand has no env var set,
+# so the change-password step was silently skipped and setup-repos got 401.
+# Read it from the repo-root .env when unset (never printed); an explicit
+# env var still wins, so the Jenkins job path is unchanged.
+if [ -z "$ADMIN_PASSWORD" ] && [ -f "$SCRIPT_DIR/../.env" ]; then
+    ADMIN_PASSWORD="$(sed -n 's/^NEXUS_ADMIN_PASSWORD=//p' "$SCRIPT_DIR/../.env" | head -n 1)"
+fi
 READY_TIMEOUT="${NEXUS_READY_TIMEOUT:-300}"
 POLL_INTERVAL="${NEXUS_POLL_INTERVAL:-3}"
 
