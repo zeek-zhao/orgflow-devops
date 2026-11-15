@@ -12,7 +12,7 @@
 # 这一行由 make images-pin 维护，不要手改。
 # 注意：值是一个提交 SHA，**历史重写会让它失效**（SHA 全变）。遇到「找不到该提交」
 # 时报错是真报错，不是误报 —— 指向新历史里最后一次改动镜像上下文的提交即可。
-# pinned-at: a94c707eb32cfc52f0b5b89d6a705324732b4034
+# pinned-at: 29fab5b96ee748c4cf843c31bea212908c024cce
 services:
   caddy:
     image: ghcr.io/zeek-zhao/orgflow-devops/mirror-caddy:2@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
@@ -52,4 +52,4 @@ services:
   dnsmasq:
     image: ghcr.io/zeek-zhao/orgflow-devops/dnsmasq:24.04-v1@sha256:ab8130f132f569f302488ab596169d19d3bfcf81348f419ce6e1f8b18e9d7df5
 
-x-m0-test-image: ghcr.io/zeek-zhao/orgflow-devops/m0-test:24.04-v1@sha256:2d0167f709403bd23a46cc3f623eec09efa09103a82644b727a01e3ac395f598
+x-m0-test-image: ghcr.io/zeek-zhao/orgflow-devops/m0-test:24.04-v1@sha256:083ea5cf9e0f0fd9051007a4ed3ef0c29c6501e3c8f3ff7a14631ac9639813c7
