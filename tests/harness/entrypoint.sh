@@ -62,6 +62,11 @@ cleanup() {
         if (( compose_ready )); then
             compose down -v || { echo "inner compose cleanup failed" >&2; status=1; }
         fi
+        # Nexus 卷也不在 compose 声明里（nexus-deploy.sh 自建）——m0-dind 是持久
+        # 命名卷，不清的话下一次本地重跑会撞上上次已改密的 nexus-data：配置密码
+        # 登录失败且 admin.password 已删，nexus 部署 stage 必红（2026-11-15 213
+        # 实测；CI 是全新 runner 所以永远撞不到）。
+        docker volume rm orgflow-devops_nexus_data >/dev/null 2>&1 || true
         if [[ -n $daemon_pid ]]; then
             kill "$daemon_pid"
             wait "$daemon_pid"
