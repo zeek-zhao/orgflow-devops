@@ -84,7 +84,14 @@ done
 #   跳过 bats：SKIP_BATS=1 git push   （会打印「CI 会跑」，不静默）
 #   整体跳过：  CHECK_ALL_ALLOW=1 git push（仅紧急）
 if [[ "$rc" -eq 0 && "${CHECK_ALL_ALLOW:-0}" != 1 ]]; then
-  if ! bash "$(git rev-parse --show-toplevel)/scripts/check-all.sh"; then
+  # git 给钩子导出 GIT_DIR/GIT_WORK_TREE 等，原样传给 check-all 会让任何
+  # 「建临时仓跑真 git」的测试（test_image_source.py）把 fixture 提交写进
+  # 被推的分支 —— 2026-11-15 因此泄漏过 20 个提交。check-all 按自身路径
+  # 解析仓库，不需要继承这组变量，剥离后再跑。
+  if ! env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX \
+          -u GIT_COMMON_DIR -u GIT_OBJECT_DIRECTORY \
+          -u GIT_ALTERNATE_OBJECT_DIRECTORIES \
+          bash "$(git rev-parse --show-toplevel)/scripts/check-all.sh"; then
     printf '\n[pre-push] 重检查未通过。绕过（不推荐）：CHECK_ALL_ALLOW=1 git push\n\n' >&2
     rc=1
   fi

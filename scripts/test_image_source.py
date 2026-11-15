@@ -30,6 +30,19 @@ CONTEXTS = ("tests/harness", "services/router", "services/dnsmasq", "services/je
 GIT = ["git", "-c", "user.name=guard-test", "-c", "user.email=guard@example.invalid"]
 
 
+def _git_env():
+    """剪掉全部 GIT_* 环境变量，让 `git init -q` 真正建出临时仓。
+
+    git push 以 GIT_DIR=<被推仓库的 gitdir> 启动 pre-push 钩子，这组变量会一路
+    传进 make test → 本文件：GIT_DIR 一旦在，cwd 下的 `git init` 被架空，
+    add/commit 全部落到真仓库（2026-11-15 泄漏 20 个 fixture 提交到分支顶端，
+    再被钩子自己的身份门禁拦下，push 永远红）。临时仓的语义必须自持，
+    不依赖外层环境恰好干净。
+    """
+    return {key: value for key, value in os.environ.items()
+            if not key.startswith("GIT_")}
+
+
 class ImageSourceGuardTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
@@ -47,14 +60,14 @@ class ImageSourceGuardTests(unittest.TestCase):
         shutil.copyfile(ROOT / SCRIPT, self.root / SCRIPT)
         (self.root / "README.md").write_text("# fixture\n")
 
-        self.env = dict(os.environ)
-        for key in ("USE_GHCR", "PINNED_AT_SHA"):
-            self.env.pop(key, None)
+        # 同样从剪过 GIT_* 的环境出发，闸门脚本里的 git 才读到的是临时仓
+        self.env = {key: value for key, value in _git_env().items()
+                    if key not in ("USE_GHCR", "PINNED_AT_SHA")}
 
     # ── 仓库搭建 ────────────────────────────────────────────────────────
     def git(self, *args, check=True):
         return subprocess.run(GIT + list(args), cwd=self.root, capture_output=True,
-                              text=True, check=check)
+                              text=True, check=check, env=_git_env())
 
     def init_repo(self):
         """两次提交：先落源码，再把 pinned-at 指向第一次提交。
