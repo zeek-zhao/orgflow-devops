@@ -96,6 +96,64 @@ print("已生成随机密钥，已写入 .env，请妥善保存（不在终端�
 PY
 fi
 
+# .env 已存在的口令体检：用户的真实路径是 `cp .env.example .env`（使用说明 §0），
+# 示例口令原样进生产栈等于把示例口令挂上门牌（2026-11-15 验收要求）。
+# 这里只动「值 == .env.example 占位值或空」的密钥：重新随机生成并写回；
+# 用户已填的真值一个字节都不碰 —— 「已有 .env 绝不修改」的约定只让位于这一种情况。
+# 占位判据在运行时读 .env.example 的现值，不在代码里硬编码任何示例口令。
+# 限定 dev 默认部署：单服务重启 / staging / prod 不做口令体检，避免悄悄轮换现役凭据。
+if [ -f "$ENV_FILE" ] && [ -z "$SERVICE" ] && [ "$ENV_FILE" = .env ] && [ "${ENV_NAME:-dev}" = dev ]; then
+  python3 - "$ENV_FILE" <<'PY'
+import os
+from pathlib import Path
+import secrets
+import string
+import sys
+
+env_file = Path(sys.argv[1])
+keys = (
+    "JENKINS_ADMIN_PASSWORD", "LDAP_ADMIN_PASSWORD", "OAUTH2_CLIENT_SECRET",
+    "NEXUS_ADMIN_PASSWORD", "ORGFLOW_INITIAL_PASSWORD", "OAUTH2_COOKIE_SECRET",
+)
+placeholders = {}
+for line in Path(".env.example").read_text().splitlines():
+    key, sep, value = line.partition("=")
+    if sep and key in keys:
+        placeholders[key] = value
+
+def new_value(key):
+    if key == "OAUTH2_COOKIE_SECRET":
+        return "".join(secrets.choice(string.ascii_letters + string.digits + "-_") for _ in range(32))
+    return secrets.token_hex(32)
+
+lines = env_file.read_text().splitlines(keepends=True)
+regen = set()
+for index, line in enumerate(lines):
+    key, sep, current = line.partition("=")
+    if not sep or key not in placeholders:
+        continue
+    # keepends 保留了行尾换行：比对前必须剥掉，否则 "LDAP_ADMIN_PASSWORD=\n"
+    # 永远不等于 ""，示例值也因为多一个 \n 而永远匹配不上（首轮实测踩到）。
+    stripped = current.rstrip("\r\n")
+    if stripped == placeholders[key] or stripped == "":
+        ending = current[len(stripped):] or "\n"
+        lines[index] = f"{key}={new_value(key)}{ending}"
+        regen.add(key)
+if not regen:
+    sys.exit(0)
+fd = os.open(env_file, os.O_WRONLY | os.O_TRUNC)  # 原地写回，保留文件既有权限
+with os.fdopen(fd, "w") as handle:
+    handle.write("".join(lines))
+print("检测到 .env 仍是示例值或空值的口令：", ", ".join(sorted(regen)),
+      "——已重新随机生成并写回（不在终端显示密码）。")
+if "ORGFLOW_INITIAL_PASSWORD" in regen:
+    print("ORGFLOW_INITIAL_PASSWORD 已更换：之后跑 make ldap-apply 同步目录账号口令。", file=sys.stderr)
+if regen & {"JENKINS_ADMIN_PASSWORD", "LDAP_ADMIN_PASSWORD", "NEXUS_ADMIN_PASSWORD", "OAUTH2_CLIENT_SECRET"}:
+    print("注意：口令只在服务首次建用户时生效。若旧卷已用示例口令建过用户，", file=sys.stderr)
+    print("要么删卷重来，要么把 .env 改回与现役一致 —— 复用旧卷时改 .env 不会同步旧服务。", file=sys.stderr)
+PY
+fi
+
 # agent 的 SSH 密钥（#45）：jenkins 与 jenkins-agent 都 bind 了 secrets/ 下的文件，
 # 文件不存在时 compose 会以「bind source path does not exist」直接失败，
 # 而且这个报错完全看不出是密钥没生成 —— 所以在任何 compose 调用之前先备好。

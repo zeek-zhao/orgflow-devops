@@ -182,6 +182,52 @@ elif "--version" in args or "version" in args:
         # 非 443 时给人看的入口 URL 必须带端口，否则复制出去打不开
         self.assertIn("https://jenkins.org-devops.com:18443/", result.stdout)
 
+    def test_example_placeholder_passwords_are_regenerated(self):
+        """cp .env.example .env 是使用说明 §0 的真实路径 —— 示例口令原样进
+        生产栈等于把示例口令挂上门牌（2026-11-15 验收要求：不要拷贝一下就不管）。
+        deploy 必须把「值 == .env.example 占位值或空」的密钥换成随机值；
+        占位判据在运行时读 .env.example 现值，不在代码里硬编码示例口令。"""
+        shutil.copyfile(ROOT / ".env.example", self.root / ".env")
+        example = dict(line.split("=", 1) for line in (ROOT / ".env.example").read_text().splitlines()
+                       if "=" in line and not line.startswith("#"))
+        result = self.deploy()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        values = dict(line.split("=", 1) for line in (self.root / ".env").read_text().splitlines()
+                      if "=" in line and not line.startswith("#"))
+        hex_keys = ("JENKINS_ADMIN_PASSWORD", "LDAP_ADMIN_PASSWORD", "OAUTH2_CLIENT_SECRET",
+                    "NEXUS_ADMIN_PASSWORD", "ORGFLOW_INITIAL_PASSWORD")
+        for key in hex_keys:
+            self.assertNotEqual(values[key], example[key], f"{key} 仍是示例值")
+            self.assertEqual(len(bytes.fromhex(values[key])), 32)
+        self.assertNotEqual(values["OAUTH2_COOKIE_SECRET"], example["OAUTH2_COOKIE_SECRET"])
+        self.assertEqual(len(values["OAUTH2_COOKIE_SECRET"].encode("ascii")), 32)
+        # cp 来的域名/端口等非密钥行必须原样保留，不能被口令体检顺手改掉
+        for key in ("GATEWAY_DOMAIN", "GATEWAY_HTTP_PORT", "GATEWAY_HTTPS_PORT"):
+            self.assertEqual(values[key], example[key])
+        self.assertIn("已重新随机生成", result.stdout)
+        for key in hex_keys + ("OAUTH2_COOKIE_SECRET",):
+            self.assertNotIn(values[key], result.stdout + result.stderr)
+
+    def test_empty_password_in_existing_env_is_regenerated(self):
+        (self.root / ".env").write_text("GATEWAY_HTTPS_PORT=18443\nLDAP_ADMIN_PASSWORD=\n")
+        result = self.deploy()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        values = dict(line.split("=", 1) for line in (self.root / ".env").read_text().splitlines()
+                      if "=" in line and not line.startswith("#"))
+        self.assertEqual(len(bytes.fromhex(values["LDAP_ADMIN_PASSWORD"])), 32)
+        self.assertEqual(values["GATEWAY_HTTPS_PORT"], "18443")
+
+    def test_real_password_is_never_touched_and_no_regen_noise(self):
+        # 用户真值（非示例值、非空）一个字节都不动；没有替换发生时连提示都不出
+        fixture_pw = "runner-42-fixture"  # 夹具假值（非机密）：非空且不等于示例值即可；不用 secret 形状的名字/值，避免 CodeQL 把测试夹具当敏感数据流
+        path = self.root / ".env"
+        path.write_text(f"LDAP_ADMIN_PASSWORD={fixture_pw}\n")
+        previous = path.read_bytes()
+        result = self.deploy()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(path.read_bytes(), previous)
+        self.assertNotIn("已重新随机生成", result.stdout)
+
     def test_self_check_url_carries_the_same_port_as_resolve(self):
         """--resolve 是按 host:port 精确匹配的，URL 不带端口就退回真实 DNS。
 
