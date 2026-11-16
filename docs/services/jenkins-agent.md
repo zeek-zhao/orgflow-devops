@@ -207,3 +207,10 @@ agent **无状态、无数据卷**，不在 `make backup` 范围内；它的身�
 必须走受控密钥保管另存。丢失时用 `scripts/gen-agent-key.sh` 重建两对密钥，并同步
 `config/jenkins.yaml` 的 `manuallyProvidedKeyVerificationStrategy`（重启 jenkins）。
 Jenkins 侧的状态备份只保 `jenkins_home`，见 [备份与恢复](../engineering/备份与恢复.md)。
+
+## 需求与测试
+
+本服务的职责对应需求 `REQ-M0-B6/D7`（每条判据与反证见
+[requirements](../requirements/README.md) 四域基线）；自动化用例
+`tests/bats/23_jenkins_agent`；对应关系总表见[服务×需求×测试矩阵](../engineering/服务×需求×测试矩阵.md)。
+真机抽检要点：节点在线带 `orgflow-docker` 标签；job 容器真能起

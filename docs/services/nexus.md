@@ -283,3 +283,10 @@ REST 等价：`POST /service/rest/v1/security/ldap`（创建；PUT 是更新）�
 
 **SAML**：Pro-only。CE 不支持 SAML SSO，不支持 Crowd；如需 SSO 只能走 LDAP 或
 RUT（Role/User Token）。本文档按 CE 口径写，避免误导后续运维去 Pro 功能里找 LDAP。
+
+## 需求与测试
+
+本服务的职责对应需求 `REQ-M0-A5/B5/B7/B9`（每条判据与反证见
+[requirements](../requirements/README.md) 四域基线）；自动化用例
+`tests/bats/17_nexus / 39_nexus_write / 31_verify_jobs`；对应关系总表见[服务×需求×测试矩阵](../engineering/服务×需求×测试矩阵.md)。
+真机抽检要点：`twine upload`→`pip install`、docker push→rmi→pull（B9 重部署后待复测）

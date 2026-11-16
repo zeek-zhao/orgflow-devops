@@ -387,3 +387,10 @@ curl -sS -k --resolve home.org-devops.com:443:127.0.0.1 \
 homepage **无业务数据卷**：四个 yaml 都在 Git，`config/logs` 是运行期日志不备；容器重建即可。
 域名 / 卡片链接随 `.env` 的 `GATEWAY_DOMAIN` 驱动，见
 [备份与恢复](../engineering/备份与恢复.md)「范围与前提」；本服务无单独恢复演练项。
+
+## 需求与测试
+
+本服务的职责对应需求 `REQ-M0-C1`（每条判据与反证见
+[requirements](../requirements/README.md) 四域基线）；自动化用例
+`tests/bats/21_homepage / 41_homepage_cards`；对应关系总表见[服务×需求×测试矩阵](../engineering/服务×需求×测试矩阵.md)。
+真机抽检要点：浏览器真开首页：卡片可达、无 JS 报错、无凭据 widget

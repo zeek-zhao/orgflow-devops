@@ -475,3 +475,10 @@ LDAP 配置错误会把 Jenkins 锁死在启动阶段。回退步骤：
 **切换前先跑容器内 JNDI 三步测试**（等价 UI 的 Test LDAP settings；本插件版本无
 服务端测试端点，`docker exec of-jenkins bash /tmp/ldaptest3.jsh`——manager bind →
 搜索用户 → 用户 bind，三步全 OK 才允许切）。
+
+## 需求与测试
+
+本服务的职责对应需求 `REQ-M0-A4/B0~B4/B6/B8/D7`（每条判据与反证见
+[requirements](../requirements/README.md) 四域基线）；自动化用例
+`tests/bats/16_jenkins / 23_jenkins_agent / 31_verify_jobs / 37_auth_flows / 40_jenkins_cli_token`；对应关系总表见[服务×需求×测试矩阵](../engineering/服务×需求×测试矩阵.md)。
+真机抽检要点：B3 警告台账与真机警告数一致；CLI 四件套真机实测；组授权断言（A4 缺口，真机取证）

@@ -180,3 +180,10 @@ make backup                                      # 只含 ldap_data
 恢复演练的验证点是「容器 healthy + 有权限的目录查询成功 + 条目数仍为 33 + 登录链路可用」，
 `ldapsearch` 用 `-y /dev/stdin` 传密码、不输出条目正文。完整步骤见
 [备份与恢复](../engineering/备份与恢复.md)。
+
+## 需求与测试
+
+本服务的职责对应需求 `REQ-M0-A0/A1/A2/A6`（每条判据与反证见
+[requirements](../requirements/README.md) 四域基线）；自动化用例
+`tests/bats/10_ldap / 37_auth_flows / 38_ldap_write / 30_backup_restore（卷）`；对应关系总表见[服务×需求×测试矩阵](../engineering/服务×需求×测试矩阵.md)。
+真机抽检要点：`ldapwhoami` 抽检账号 bind；错口令必须拒绝（err 49）

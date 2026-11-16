@@ -83,7 +83,7 @@ straight to:
 
 | Question | Where |
 |---|---|
-| What is this thing and how does it run | [M0 最小核心](docs/records/M0-最小核心.md) |
+| What is this thing and how does it run | [架构图](docs/network/架构图.md) · [requirements](docs/requirements/README.md) |
 | How do I use it day to day | [使用说明](docs/engineering/使用说明.md) |
 | How do I change the code | [工程开发说明](docs/engineering/开发生命周期.md) |
 | What is required, and how "done" is judged | [requirements/](docs/requirements/README.md) |

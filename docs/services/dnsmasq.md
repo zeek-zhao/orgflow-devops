@@ -153,3 +153,10 @@ make hosts                                          # 生成宿主/局域网 hos
 dnsmasq **无状态、无数据卷**：配置在 `.env` 与 `docker-compose.yml`（Git），容器可随时重建，
 不在 `make backup` 范围内。域名解析规则与固定 IP 表的约定见
 [备份与恢复](../engineering/备份与恢复.md)「范围与前提」；本服务无单独恢复演练项。
+
+## 需求与测试
+
+本服务的职责对应需求 `REQ-M0-D4（配套底座）`（每条判据与反证见
+[requirements](../requirements/README.md) 四域基线）；自动化用例
+`tests/bats/19_dns`；对应关系总表见[服务×需求×测试矩阵](../engineering/服务×需求×测试矩阵.md)。
+真机抽检要点：局域网机器 `nslookup jenkins.<domain>` 解析到网关

@@ -188,3 +188,10 @@ Dex 是**无状态**服务：`storage: memory`、无数据卷，无需备份；�
 `services/auth/dex/config.yaml.tmpl` + `.env` 重建（`make render`）。
 只需保证模板与 `.env`（受控密钥保管）可恢复，见 [备份与恢复](../engineering/备份与恢复.md)「范围与前提」；
 LDAP 里的用户数据另由 `ldap` 服务备份，不要在这里找。
+
+## 需求与测试
+
+本服务的职责对应需求 `REQ-M0-A0`（每条判据与反证见
+[requirements](../requirements/README.md) 四域基线）；自动化用例
+`tests/bats/12_dex`；对应关系总表见[服务×需求×测试矩阵](../engineering/服务×需求×测试矩阵.md)。
+真机抽检要点：`dex.<domain>/dex/healthz` 200；登录页能出
