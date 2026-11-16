@@ -175,3 +175,10 @@ docker compose exec -T router sh /app/reload.sh    # 手动触发一次 reload
 router **无状态、无数据卷**：`config/routes.yaml` 在 Git，`out/` 是可重建的渲染产物（不备），
 容器随时可起，不在 `make backup` 范围内。见
 [备份与恢复](../engineering/备份与恢复.md)「范围与前提」。
+
+## 需求与测试
+
+本服务的职责对应需求 `REQ-M0-D1/D2`（每条判据与反证见
+[requirements](../requirements/README.md) 四域基线）；自动化用例
+`tests/bats/15_router / 34_router_api`；对应关系总表见[服务×需求×测试矩阵](../engineering/服务×需求×测试矩阵.md)。
+真机抽检要点：`POST /routes` 后 `routes.yaml`/Caddyfile/运行配置三处一致

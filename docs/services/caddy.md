@@ -190,3 +190,10 @@ Caddy **没有业务数据卷**：`caddy_data` 只存可重建的证书，不在
 `config/routes.yaml` 在 Git、`.env` 走受控密钥保管（不入库），容器可随时重建。
 证书分发与重建后客户端重装根证书的流程见 [备份与恢复](../engineering/备份与恢复.md)「范围与前提」
 与 [使用说明](../engineering/使用说明.md) §1；本服务无单独恢复演练项。
+
+## 需求与测试
+
+本服务的职责对应需求 `REQ-M0-A0/A3/A5/C2/D1/D2/D3`（每条判据与反证见
+[requirements](../requirements/README.md) 四域基线）；自动化用例
+`tests/bats/14_caddy / 20_tls / 35_ca_distribution / 36_gateway_acl`；对应关系总表见[服务×需求×测试矩阵](../engineering/服务×需求×测试矩阵.md)。
+真机抽检要点：`curl --cacert out/ca/root.crt` 抽各站点无证书警告；热加载窗口期旧路由不中断

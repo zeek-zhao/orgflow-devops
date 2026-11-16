@@ -88,7 +88,7 @@ bats 断言一律用 `curl --resolve <sub>.<domain>:<port>:127.0.0.1`，
 
 | 想知道 | 去哪看 |
 |---|---|
-| 这东西是什么、怎么跑、Job 怎么定义 | [M0 最小核心](docs/records/M0-最小核心.md) |
+| 这东西是什么、怎么跑、Job 怎么定义 | [架构图](docs/network/架构图.md) · [需求基线](docs/requirements/README.md) |
 | 平台日常怎么用（入口/登录/部署/备份/加路由） | [使用说明](docs/engineering/使用说明.md) |
 | 要改代码：目录语义、改一条 X 动哪几个文件 | [工程开发说明](docs/engineering/开发生命周期.md) |
 | 要求是什么、怎么算做到 | [需求基线](docs/requirements/README.md) |

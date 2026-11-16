@@ -194,3 +194,10 @@ oauth2-proxy **无状态、无数据卷**：未配 `--session-store`，会话在
 - **cookie 单域**：`--cookie-domain=docs.<domain>`——登录(`oauth2/start`)与
   回调(`oauth2/callback`)都在 docs 域闭环，其他子域拿不到会话。
 - **回调配额**：Dex 客户端注册了 auth 与 docs 两个回调(`render-dex.sh` 渲染)。
+
+## 需求与测试
+
+本服务的职责对应需求 `REQ-M0-A0/A3/A5`（每条判据与反证见
+[requirements](../requirements/README.md) 四域基线）；自动化用例
+`tests/bats/13_oauth2_proxy / 36_gateway_acl / 37_auth_flows`；对应关系总表见[服务×需求×测试矩阵](../engineering/服务×需求×测试矩阵.md)。
+真机抽检要点：完整 OIDC 登录走通；未认证访问 docs 必须 302 到登录页

@@ -145,3 +145,10 @@ docker compose logs --tail=50 ldapadmin
 ldapadmin **无数据卷**，所有目录数据在 `ldap` 容器，随 `ldap_data` / `ldap_config` 一起保管，
 无需单独备份；凭据在 `.env`（不入库）。完整卷映射与恢复步骤见
 [备份与恢复](../engineering/备份与恢复.md)。
+
+## 需求与测试
+
+本服务的职责对应需求 `REQ-M0-A0/A5`（每条判据与反证见
+[requirements](../requirements/README.md) 四域基线）；自动化用例
+`tests/bats/11_ldapadmin`；对应关系总表见[服务×需求×测试矩阵](../engineering/服务×需求×测试矩阵.md)。
+真机抽检要点：`cn=admin` + `LDAP_ADMIN_PASSWORD` 能登录且能改目录

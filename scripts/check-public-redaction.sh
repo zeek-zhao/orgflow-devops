@@ -86,13 +86,26 @@ if ((${#files[@]})); then
     # 口令明文：只在「明确在说口令」的上下文里判，避免误伤 0123456789 这类占位串。
     # 判据来自一次真事故：README 曾直接写出目录初始口令，而那个值在部署机上真在用。
     password_re='(初始口令|初始密码|initial password|默认口令|默认密码)[^"]{0,20}\b123456\b|password["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"']?123456\b'
+    # 白名单：演示环境口令明文的唯一登记处（docs/network/架构图.md §0 账号口令总表）。
+    # 这些值只是演示模式默认值，deploy.sh 首次部署仍会把它们换成随机值（见使用说明 §0）。
+    # 白名单只豁免「口令明文」这一条规则，其余规则（PAT/私钥/内网网段）照扫不误；
+    # 要登记新文件必须同时满足：a) 该文件是这份信息的唯一真源 b) 评审记录在案。
+    REDACT_PASSWORD_ALLOWLIST=(
+        docs/network/架构图.md
+    )
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue
         # cut 取到的是 "文件:行号"，两种分隔都要剥掉，否则报告里会带绝对路径和行号，
         # 与上面那条规则的「相对路径」格式不一致，看起来像两个不同的东西。
         hit_file="${line%:*}"      # 去掉 "内容"
         hit_file="${hit_file%:*}"  # 再去掉 ":行号"
-        report "口令明文" "${hit_file#"$TARGET/"}"
+        rel="${hit_file#"$TARGET/"}"
+        allowed=false
+        for allow in "${REDACT_PASSWORD_ALLOWLIST[@]}"; do
+            [[ "$rel" == "$allow" ]] && { allowed=true; break; }
+        done
+        $allowed && continue
+        report "口令明文" "$rel"
     done < <(grep -InHE -- "$password_re" "${files[@]}" 2>/dev/null || true)
 fi
 
