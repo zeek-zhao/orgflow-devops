@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """runtime.env 的值怎么写才不会被 compose 解析坏。
 
 单独成模块的唯一理由：渲染脚本（10-render-config.sh 里的内联 python）与门禁

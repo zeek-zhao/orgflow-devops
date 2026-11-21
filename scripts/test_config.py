@@ -292,11 +292,22 @@ class HarnessEnvTest(unittest.TestCase):
         self.assertEqual(pairs["LDAP_ADMIN_DN"], cfgmod.admin_dn(cfg))
         self.assertIn("dc=", pairs["LDAP_BASE_DN"])
 
-    def test_harness_quotes_dn_values(self) -> None:
+    def test_harness_renders_from_the_single_source(self) -> None:
+        """harness 必须走 10-render-config.sh，不能拿 .env.example 当基础。
+
+        2026-11-22 本地 DinD 实测：.env.example 只有配置的一小部分 —— 缺
+        LDAP_BASE_DN / LDAP_ADMIN_DN（ldap healthcheck 拿空 DN bind）与
+        NETWORK_SUBNET / IP_*（compose 插值成空串）。所以这里钉的是
+        「渲染链存在且被调用」，而不是某个键怎么拼。
+        """
         entrypoint = (cfgmod.ROOT / "tests" / "harness" / "entrypoint.sh").read_text(encoding="utf-8")
-        self.assertIn("env-ldap", entrypoint)
+        self.assertIn("scripts/10-render-config.sh", entrypoint)
+        self.assertIn("/repo/out/runtime.env", entrypoint)
+        # 渲染产物必须覆盖 compose 引用的每个变量，否则 compose 静默插值成空串
+        self.assertIn("渲染产物缺少 compose 引用的变量", entrypoint)
         # DN 带逗号：写进 dotenv 必须加引号，否则解析器会丢掉整份载荷
-        self.assertIn('printf \'%s="%s"\\n\'', entrypoint)
+        rendered = (cfgmod.ROOT / "scripts" / "lib" / "rendered_values.py").read_text(encoding="utf-8")
+        self.assertIn("def quote", rendered)
 
     def test_ldap_healthcheck_needs_the_dns(self) -> None:
         fragment = (cfgmod.ROOT / "services" / "ldap" / "compose.yml").read_text(encoding="utf-8")

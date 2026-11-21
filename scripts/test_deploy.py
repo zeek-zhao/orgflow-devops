@@ -25,6 +25,9 @@ DEPLOY_DEPENDENCIES = (
     "scripts/60-verify-endpoints.sh",
     "scripts/lib/config.py",
     "scripts/lib/runtime.sh",
+    # 10-render-config.sh 的内联 python 会 `import rendered_values`（引号转义规则
+    # 的单一真源），沙箱里少了它 20 条用例直接 ModuleNotFoundError。
+    "scripts/lib/rendered_values.py",
     "scripts/16-doctor.py",
     "config/orgflow.yml",
     "config/services.yml",
@@ -755,6 +758,7 @@ class RenderConfigTests(unittest.TestCase):
         self.root = Path(self.directory.name)
         for name in ("scripts/10-render-config.sh", "scripts/12-render-dex.sh",
                      "scripts/lib/config.py", "scripts/lib/runtime.sh",
+                     "scripts/lib/rendered_values.py",
                      "config/orgflow.yml", "config/services.yml",
                      "config/routes.yaml", "services/router/render.py",
                      "services/auth/dex/config.yaml.tmpl"):

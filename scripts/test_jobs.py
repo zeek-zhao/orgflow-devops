@@ -26,6 +26,7 @@ class JobScriptTests(unittest.TestCase):
             "scripts/10-render-config.sh", "scripts/20-gen-ca.sh",
             "scripts/30-up-serial.sh", "scripts/60-verify-endpoints.sh",
             "scripts/lib/config.py", "scripts/lib/runtime.sh",
+            "scripts/lib/rendered_values.py",
             "config/services.yml",
             "scripts/lib/backup-common.sh", "scripts/12-render-dex.sh",
             # backup.sh 对 nexus 包做内容级门禁（#93），临时根里必须也有这个脚本，
