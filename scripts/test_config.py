@@ -23,12 +23,14 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 import config as cfgmod  # noqa: E402
+import rendered_values  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -167,6 +169,27 @@ class NoHardcodedAddressTest(unittest.TestCase):
         for var in ("${NETWORK_SUBNET}", "${NETWORK_IP_RANGE}", "${NETWORK_NAME"):
             self.assertIn(var, text, f"docker-compose.yml 的网络段必须用 {var}")
 
+    def test_fragment_relative_paths_anchor_at_repo_root(self) -> None:
+        """片段里的相对宿主路径必须用 ../.. 锚到仓根，不能写 ./xxx。
+
+        docker compose 的 include 语义把片段当独立项目解析相对路径，片段里写
+        ./out 会变成 services/<x>/out（不存在的目录）——bind 静默得到空目录，
+        症状是「配置读不到 / 容器 unhealthy」。2026-11-22 实测 router 就是
+        因为 ./config 变成 services/router/config 而一直起不来。
+        """
+        bad = []
+        for path in _compose_files():
+            if path == ROOT / "docker-compose.yml":
+                continue
+            want = "../" * (len(path.relative_to(ROOT).parts) - 1)
+            for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if line.lstrip().startswith("#"):
+                    continue
+                m = re.match(r"^\s*- \./(\S+):", line)
+                if m:
+                    bad.append(f"{path.relative_to(ROOT)}:{lineno} 应写 {want}{m.group(1)}：{line.strip()}")
+        self.assertEqual(bad, [], "片段的相对宿主路径必须锚到仓根：\n" + "\n".join(bad))
+
     def test_gateway_ports_from_config(self) -> None:
         text = (ROOT / "services/caddy/compose.yml").read_text(encoding="utf-8")
         self.assertIn("${GATEWAY_HTTP_PORT}", text, "caddy 的宿主端口必须来自配置")
@@ -211,6 +234,77 @@ class RenderCoverageTest(unittest.TestCase):
             value = str(cfgmod._dig(self.cfg, dotted) or "")
             if len(value) >= 4:
                 self.assertNotIn(value, out, f"config.py 摘要输出泄漏了 {dotted}")
+
+
+class RuntimeEnvPayloadTest(unittest.TestCase):
+    """渲染出来的 runtime.env 喂给 compose 之后不能悄悄变空。
+
+    背景（2026-11-22 的真缺陷）：compose 的 env 文件解析器把「不带引号且含逗号
+    的值」当错误，而且只在文件里出现第二个键时才暴露 —— 爆掉之后它丢掉**整份
+    载荷**，于是容器里 LDAP_BASE_DN 与 LDAP_ADMIN_DN 一起变成空串，ldap 的
+    healthcheck 拿空 DN 去 bind，永远 `ldap_bind: Invalid credentials (49)`，
+    整栈起不来。这条门禁在纯 python 里钉住「逗号值必须加引号」。
+    """
+
+    def test_values_with_commas_are_quoted(self) -> None:
+        pairs = cfgmod.env_pairs(cfgmod.load(), cfgmod.load_services())
+        for key in ("LDAP_BASE_DN", "LDAP_ADMIN_DN"):
+            self.assertIn(key, pairs)
+            value = rendered_values.quote(pairs[key])
+            self.assertTrue(
+                value.startswith('"') and value.endswith('"'),
+                f"{key} 含逗号必须加引号，实际是 {value}",
+            )
+            self.assertIn(",", value)
+
+    def test_plain_values_stay_unquoted(self) -> None:
+        self.assertEqual(rendered_values.quote("dc=devops,dc=com").strip('"'), "dc=devops,dc=com")
+        self.assertEqual(rendered_values.quote("org-devops.com"), "org-devops.com")
+        self.assertEqual(rendered_values.quote("443"), "443")
+        self.assertEqual(rendered_values.quote(""), "")
+
+    def test_quote_escapes_shell_signs(self) -> None:
+        self.assertEqual(rendered_values.quote('a b'), '"a b"')
+        self.assertEqual(rendered_values.quote('pa"ss'), '"pa\\"ss"')
+        self.assertEqual(rendered_values.quote("pa$$word"), '"pa$$word"')
+
+
+class HarnessEnvTest(unittest.TestCase):
+    """测试栈的 env 文件要补出 ldap healthcheck 依赖的 DN 键。
+
+    2026-11-22 实测：harness 的 m0.env 是 .env.example 的拷贝，里面没有
+    LDAP_BASE_DN / LDAP_ADMIN_DN，ldap 容器拿空 DN 去 bind，整栈卡在
+    ldap unhealthy（日志 `op=0 BIND dn=""` + err 49）。修法是让 harness
+    按配置补齐这两个键，因此这里守住「配置能给出它们」。
+    """
+
+    def test_config_cli_exposes_ldap_dns(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(cfgmod.__file__), "env-ldap"],
+            capture_output=True, text=True, cwd=str(cfgmod.ROOT), timeout=60,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        pairs = dict(
+            line.split("\t", 1) for line in result.stdout.splitlines() if "\t" in line
+        )
+        cfg = cfgmod.load()
+        self.assertEqual(pairs["LDAP_BASE_DN"], cfgmod.base_dn(cfg))
+        self.assertEqual(pairs["LDAP_ADMIN_DN"], cfgmod.admin_dn(cfg))
+        self.assertIn("dc=", pairs["LDAP_BASE_DN"])
+
+    def test_harness_quotes_dn_values(self) -> None:
+        entrypoint = (cfgmod.ROOT / "tests" / "harness" / "entrypoint.sh").read_text(encoding="utf-8")
+        self.assertIn("env-ldap", entrypoint)
+        # DN 带逗号：写进 dotenv 必须加引号，否则解析器会丢掉整份载荷
+        self.assertIn('printf \'%s="%s"\\n\'', entrypoint)
+
+    def test_ldap_healthcheck_needs_the_dns(self) -> None:
+        fragment = (cfgmod.ROOT / "services" / "ldap" / "compose.yml").read_text(encoding="utf-8")
+        self.assertIn("$$LDAP_BASE_DN", fragment)
+        self.assertIn("$$LDAP_ADMIN_DN", fragment)
+        # 口令只能经管道喂给 ldapsearch：-w 会把口令写进 docker inspect
+        self.assertIn('-y /dev/stdin', fragment)
+        self.assertNotIn("-w ", fragment)
 
 
 if __name__ == "__main__":

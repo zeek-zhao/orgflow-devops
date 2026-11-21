@@ -268,6 +268,16 @@ def main() -> int:
 
     cfg = load()
     services = load_services()
+    if len(sys.argv) > 1 and sys.argv[1] == "env-ldap":
+        # 给 harness 用：ldap 的 healthcheck 需要这三个键做 bind + base 搜索，
+        # 而测试栈的 env 文件来自 .env.example（没有它们）。一行一个 KEY<TAB>值，
+        # 值不加引号（调用方按需转义），DN 里含逗号对 dotenv 是合法字符。
+        for key, value in (
+            ("LDAP_BASE_DN", base_dn(cfg)),
+            ("LDAP_ADMIN_DN", admin_dn(cfg)),
+        ):
+            print(f"{key}\t{value}")
+        return 0
     if len(sys.argv) > 1 and sys.argv[1] == "--json":
         print(json.dumps({"config": cfg, "services": services}, ensure_ascii=False, indent=2))
         return 0

@@ -21,8 +21,12 @@ services:
       # 不挂 :ro —— homepage 默认把运行日志写到 config/logs 下，只读会起不来。
       # 用户自备的卡片（docker.yaml / kubernetes.yaml 等）放 ./out/dashboard（见 orgflow.yml
       # 的 network.user_data），仓库根只留模板；日志与用户卡片同在这里，故不能整卷 :ro。
-      - ./config/homepage:/app/config
-      - ./out/dashboard:/app/config/userdata
+      - ../../config/homepage:/app/config
+      - ../../out/dashboard:/app/config/userdata
+      # homepage 往 config/logs 写日志；不把 logs 固定到 out/ 时它会落到宿主
+      # config/homepage/logs（git 工作树里凭空多一个目录），跑测试的人会以为
+      # 代码变了。out/ 是运行时产物目录，已经在 .gitignore 里。
+      - ../../out/homepage-logs:/app/config/logs
     expose:
       - "3000"
     depends_on:

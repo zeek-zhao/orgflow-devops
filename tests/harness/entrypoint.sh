@@ -119,6 +119,34 @@ GATEWAY_HTTP_PORT=$GW_HTTP_PORT
 GATEWAY_HTTPS_PORT=$GW_HTTPS_PORT
 EOF
 
+# LDAP_BASE_DN / LDAP_ADMIN_DN 由配置渲染得出（orgflow.yml → out/runtime.env），
+# 而测试栈的 env 文件是 .env.example 的拷贝 —— 里面没有这两个键。ldap 的
+# healthcheck 用它们做 bind + base 搜索，缺键时 DN 是空串，slapd 回
+# `ldap_bind: Invalid credentials (49)`（容器侧日志 `op=0 BIND dn=""`），
+# 整个栈卡在 ldap unhealthy（2026-11-22 本地 DinD 实测）。所以这里按同一
+# 份配置补齐，绝不硬编码 dc=...；配置与 .env.example 不一致时以配置为准。
+stage="completing ldap env"
+if ! python3 /repo/scripts/lib/config.py >/dev/null; then
+  echo "配置校验失败（config/orgflow.yml），无法补齐 ldap 的 DN 环境变量" >&2
+  exit 1
+fi
+while IFS=$'\t' read -r key value; do
+  # 已有值就不覆盖：调用方 .env 自己给了 LDAP_BASE_DN 时以它为准
+  if ! grep -qE "^${key}=.+" "$M0_ENV_FILE"; then
+    # DN 带逗号，必须加引号：compose 的 dotenv 解析器遇到未加引号的逗号值
+    # 会放弃整份 env 载荷（实测裸跑会出现「所有键都变空」的连锁失败）
+    printf '%s="%s"\n' "$key" "$value" >> "$M0_ENV_FILE"
+  fi
+done < <(python3 /repo/scripts/lib/config.py env-ldap)
+# 上面 while 的退出码来自最后一次 grep；set -e 下这里不能靠它判断成败
+: 补齐完成
+for key in LDAP_BASE_DN LDAP_ADMIN_DN; do
+  if ! grep -qE "^${key}=.+" "$M0_ENV_FILE"; then
+    echo "配置渲染没有产出 $key（orgflow.yml 有问题？），ldap healthcheck 会因空 DN 失败" >&2
+    exit 1
+  fi
+done
+
 # agent 的 SSH 密钥必须在 compose up 之前生成：jenkins 与 jenkins-agent 都 bind 了
 # secrets/ 下的文件，文件不存在时 compose 直接报
 # 「bind source path does not exist」，看不出是密钥没生成。

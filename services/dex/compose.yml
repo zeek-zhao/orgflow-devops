@@ -17,7 +17,7 @@ services:
       - LDAP_ADMIN_PASSWORD=${LDAP_ADMIN_PASSWORD}
       - OAUTH2_CLIENT_SECRET=${OAUTH2_CLIENT_SECRET}
     volumes:
-      - ./out/dex/config.yaml:/etc/dex/config.yaml:ro
+      - ../../out/dex/config.yaml:/etc/dex/config.yaml:ro
     expose:
       - "5556"
     depends_on:

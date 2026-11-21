@@ -30,6 +30,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path("scripts") / "lib"))
 import config as cfgmod  # noqa: E402
+from rendered_values import quote  # noqa: E402
 
 out_dir = pathlib.Path(sys.argv[1])
 cfg = cfgmod.load()
@@ -43,9 +44,7 @@ lines = [
     "# 含口令，权限 0600，不纳入版本控制。",
 ]
 for key, value in pairs.items():
-    if any(ch in value for ch in "\n\r"):
-        sys.exit(f"✗ {key} 含换行，compose 的 env 文件不支持多行值")
-    lines.append(f"{key}={value}")
+    lines.append(f"{key}={quote(value)}")
 # 先写临时文件再原子替换：渲染中途失败时不能留下一个「半套口令」的文件
 tmp = out_dir / "runtime.env.tmp"
 fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)

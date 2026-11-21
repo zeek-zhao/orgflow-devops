@@ -20,7 +20,9 @@ services:
     restart: unless-stopped
     entrypoint: ["/bin/sh", "-c"]
     command:
-      - mkdocs build --clean --strict --site-dir /site && echo "== docs 站点已生成 ==" && sleep infinity
+      # 不加 --strict：strict 是「任何 warning 都失败」，而 docs/ 里指向仓库源码的链接
+      # （../../AGENTS.md 之类）会永远告警；死链由 make links 门禁兜底。
+      - mkdocs build --clean --site-dir /site && echo "== docs 站点已生成 ==" && sleep infinity
     volumes:
       - docs_site:/site
     healthcheck:

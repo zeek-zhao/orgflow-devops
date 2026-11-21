@@ -18,12 +18,19 @@ set -euo pipefail
 
 DOMAIN="${GATEWAY_DOMAIN:-org-devops.com}"
 GATEWAY_IP="${GATEWAY_IP:-172.31.0.10}"
-LISTEN_IP="${DNSMASQ_LISTEN_IP:-}"
-if [[ -z "$LISTEN_IP" ]]; then
-    # 兜底：取本容器第一个非回环地址（固定 IP 网络下就是 172.31.0.2）
-    LISTEN_IP="$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -v '^$' | head -1 || true)"
+# 监听地址一律取**本容器自己**的地址，不能用配置里的固定 IP 直接当 bind 地址。
+#
+# 为什么改（2026-11-22 CI/本地 bats 实测）：配置里的 IP_DNSMASQ 是生产网络的固定地址
+# （172.31.0.2），而测试栈与任何改过 subnet 的部署里容器地址不是它 —— dnsmasq 绑一个
+# 自己身上不存在的地址会直接报
+#   「failed to create listening socket for 172.31.0.2: Cannot assign requested address」
+# 然后容器 unhealthy，整栈起不来。配置里的值只当「配置对不对」的一致性检查用。
+CONFIGURED_IP="${DNSMASQ_LISTEN_IP:-}"
+LISTEN_IP="$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -v '^$' | head -1 || true)"
+LISTEN_IP="${LISTEN_IP:-${CONFIGURED_IP:-172.31.0.2}}"
+if [[ -n "$CONFIGURED_IP" && "$CONFIGURED_IP" != "$LISTEN_IP" ]]; then
+    echo "[dnsmasq] 注意：配置里的地址 $CONFIGURED_IP 与本容器地址 $LISTEN_IP 不同，按本容器地址监听" >&2
 fi
-LISTEN_IP="${LISTEN_IP:-172.31.0.2}"
 
 CONF=/etc/dnsmasq.d/orgflow.conf
 
