@@ -38,7 +38,7 @@ setup() {
     local admin pass info deadline
     # #87:本地 admin 已移除,管理权限在 jenkins-admin 组的 LDAP 账号上
     admin="svc-platform-admin"
-    # 口令真值只在 .env（ORGFLOW_INITIAL_PASSWORD）；硬编码过一次 123456，
+    # 口令真值只在 .env（LDAP_USER_PASSWORD）；硬编码过一次 123456，
     # 口令随机化之后这两个用例直接 401 —— 见 helpers/common.bash 的 ldap_initial_password
     pass=$(ldap_initial_password) || return 1
     [ -n "$admin" ]

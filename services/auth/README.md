@@ -123,11 +123,11 @@ LDAP 入口。重建目录前，用下面任一方式设定口令（口令只打
 提交的文件）：
 
 ```bash
-# 随机生成 32 字符，打印一次 —— 记进部署机 .env 的 ORGFLOW_INITIAL_PASSWORD
+# 随机生成 32 字符，打印一次 —— 记进部署机 .env 的 LDAP_USER_PASSWORD
 python scripts/11-gen-ldif-passwords.py
 
 # 自己指定（≥12 字符）
-ORGFLOW_INITIAL_PASSWORD='...' python scripts/11-gen-ldif-passwords.py
+LDAP_USER_PASSWORD='...' python scripts/11-gen-ldif-passwords.py
 ```
 
 脚本会给每个账号生成独立 salt，所以同一口令在目录里不会出现相同哈希（看哈希无法

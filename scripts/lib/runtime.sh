@@ -134,10 +134,17 @@ orgflow_redact() {
   ORGFLOW_SECRETS="$compose_json" python3 -c '
 import os, sys
 secrets = []
+def unquote(raw):
+    # runtime.env 里含逗号/空格的值是带双引号的（见 scripts/lib/rendered_values.py），
+    # 脱敏要拿真值去比，不能拿带引号的字面量 —— 否则日志里的口令不会被替换。
+    if len(raw) >= 2 and raw[0] == raw[-1] == chr(34):
+        return raw[1:-1].replace(chr(92) + chr(34), chr(34)).replace(chr(92) * 2, chr(92))
+    return raw
+
 for line in os.environ.get("ORGFLOW_SECRETS", "").splitlines():
     key, sep, value = line.partition("=")
     if sep and value and key.endswith(("PASSWORD", "SECRET", "TOKEN")):
-        secrets.append(value)
+        secrets.append(unquote(value))
 for line in sys.stdin:
     for secret in sorted(secrets, key=len, reverse=True):
         line = line.replace(secret, "[REDACTED]")

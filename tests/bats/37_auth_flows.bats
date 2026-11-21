@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # #139 PR3 认证流:登录之后各服务真实可用（BDD 场景见 tests/features/37_auth_flows.feature）。
-# 凭据真值只从 .env 读（svc-platform-admin / ORGFLOW_INITIAL_PASSWORD），不硬编码。
+# 凭据真值只从 .env 读（svc-platform-admin / LDAP_USER_PASSWORD），不硬编码。
 setup() {
     load 'helpers/common'
     setup_gw

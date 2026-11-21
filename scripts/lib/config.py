@@ -209,6 +209,22 @@ def mask(value: str) -> str:
     return f"{value[0]}***{value[-1]}（{len(value)} 字符）"
 
 
+# 口令下限（字符数）。M0 的口径是「所有账号一个口令」，而这个口令要同时能过
+# 三道外部校验，取最严的那道：
+#   - Nexus 3.92 的 PasswordValidator（DEFAULT_PASSWORD_REGEX `. {8,}`，写死在 jar 里，
+#     只能靠 Spring 属性覆盖，见 scripts/70-nexus-deploy.sh）；
+#   - Jenkins 的 LDAP 账号由 51-init.sh 走 ldapset 同步，无独立策略；
+#   - LDAP 用户条目由 11-gen-ldif-passwords.py 生成，历史上要求 ≥12（随机路径 32 字符）。
+# 三道取最严 = 12，所以配置里写 6 位会在第 4 步「设置 LDAP 用户口令」被拦下。
+LDAP_PASSWORD_MIN = 12
+NEXUS_PASSWORD_MIN = 8
+
+
+def password_min(key: str) -> int:
+    """按键名给出该口令的长度下限（门禁与脚本共用同一份数字）。"""
+    return LDAP_PASSWORD_MIN if key.startswith("LDAP_") else NEXUS_PASSWORD_MIN
+
+
 def env_pairs(cfg: dict[str, Any], services: dict[str, Any]) -> dict[str, str]:
     """渲染 out/runtime.env 的键值对：compose 的 ${VAR} 全部从这里取值。"""
     domain = cfg["gateway"]["domain"]
@@ -245,10 +261,16 @@ def env_pairs(cfg: dict[str, Any], services: dict[str, Any]) -> dict[str, str]:
         if "ip" in spec:
             pairs[f"IP_{name.upper().replace('-', '_')}"] = fixed_ip(cfg, spec)
     # 口令最后加，保证上面任何一处漏配都不会把口令写进半成品
+    ldap_pw = str(cfg["ldap"]["password"])
+    if len(ldap_pw) < LDAP_PASSWORD_MIN:
+        raise ConfigError(
+            f"ldap.password 至少 {LDAP_PASSWORD_MIN} 字符（当前 {len(ldap_pw)}）——"
+            "它同时要过 LDAP 用户口令生成与 Nexus 密码策略，取三道里最严的 12"
+        )
     pairs.update(
         {
-            "LDAP_ADMIN_PASSWORD": str(cfg["ldap"]["password"]),
-            "LDAP_USER_PASSWORD": str(cfg["ldap"]["password"]),
+            "LDAP_ADMIN_PASSWORD": ldap_pw,
+            "LDAP_USER_PASSWORD": ldap_pw,
             "NEXUS_ADMIN_PASSWORD": str(cfg["nexus"]["password"]),
             "OAUTH2_CLIENT_SECRET": str(cfg["oauth2"]["client_secret"]),
             "OAUTH2_COOKIE_SECRET": str(cfg["oauth2"]["cookie_secret"]),
