@@ -26,3 +26,17 @@ regexes = [
   '''--user USER:TOKEN''',
   '''OAUTH2_COOKIE_SECRET=0123456789abcdef0123456789abcdef''',
 ]
+# 路径豁免只对两处**有明确理由**的私有密钥生效，规则其余部分照扫：
+#
+#   * `config/ca/orgflow-ca.key` —— M0 要求内部 CA「生成后提交入库、仅缺文件时
+#     重新生成、有效期 10 年」（见 docs/services/caddy.md）。它是隔离环境里给
+#     内网域名签证书的自签 CA，换企业 CA / ACME 时整对文件一起替换。
+#   * `scripts/test_deploy.py` —— 测试夹具必须是一对**真实格式**的 ed25519 密钥，
+#     否则 `ssh-keygen -y -f` 会报 `error in libcrypto`，测的就不是真实路径了。
+#     这对夹具只在沙箱里生成 agent 公钥用，与任何线上凭据无关。
+#
+# 口径与上面一致：不豁免整个仓库，只豁免这两个路径上的 private-key 规则。
+paths = [
+  '''(^|/)config/ca/orgflow-ca\.key$''',
+  '''(^|/)scripts/test_deploy\.py$''',
+]
