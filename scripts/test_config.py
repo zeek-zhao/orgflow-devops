@@ -25,6 +25,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -257,6 +258,27 @@ class RuntimeEnvPayloadTest(unittest.TestCase):
             )
             self.assertIn(",", value)
 
+    def test_ldap_password_meets_the_strictest_floor(self) -> None:
+        """配置里的口令必须过长度的下限，否则第 4 步（LDAP 用户口令）才炸。
+
+        2026-11-22 真事故：orgflow.yml 写 6 位口令，make deploy 通过、
+        make init 也在第 4 步前全绿，直到 11-ldap-set-passwords.sh 才报
+        「口令至少 12 字符」—— 部署跑到一半才发现配置不合格。
+        """
+        cfg = cfgmod.load()
+        value = str(cfg["ldap"]["password"])
+        self.assertGreaterEqual(len(value), cfgmod.LDAP_PASSWORD_MIN,
+                                f"ldap.password 至少 {cfgmod.LDAP_PASSWORD_MIN} 字符（当前 {len(value)}）")
+        pairs = cfgmod.env_pairs(cfg, cfgmod.load_services())
+        self.assertEqual(pairs["LDAP_USER_PASSWORD"], value)
+        self.assertEqual(pairs["LDAP_ADMIN_PASSWORD"], value)
+
+    def test_ldif_generator_uses_the_same_floor(self) -> None:
+        """生成脚本不能自己另写一个下限数字（那是第二个真源）。"""
+        source = (cfgmod.ROOT / "scripts" / "11-gen-ldif-passwords.py").read_text(encoding="utf-8")
+        self.assertIn("cfgmod.LDAP_PASSWORD_MIN", source)
+        self.assertNotRegex(source, r"MIN_LENGTH\s*=\s*\d+")
+
     def test_plain_values_stay_unquoted(self) -> None:
         self.assertEqual(rendered_values.quote("dc=devops,dc=com").strip('"'), "dc=devops,dc=com")
         self.assertEqual(rendered_values.quote("org-devops.com"), "org-devops.com")
@@ -316,6 +338,43 @@ class HarnessEnvTest(unittest.TestCase):
         # 口令只能经管道喂给 ldapsearch：-w 会把口令写进 docker inspect
         self.assertIn('-y /dev/stdin', fragment)
         self.assertNotIn("-w ", fragment)
+
+
+class RedactionTest(unittest.TestCase):
+    """日志脱敏必须按「真值」比，不能按 runtime.env 里的字面量比。
+
+    背景（2026-11-22）：runtime.env 里含逗号/空格的值是带双引号的，脱敏脚本却
+    原样拿 `"abc123"`（带引号）去 replace 日志 —— 日志里的口令因此没被替换，
+    属于审计事故。
+    """
+
+    def _redact(self, payload: str, runtime_env: str) -> str:
+        runtime = Path(tempfile.mkdtemp()) / "runtime.env"
+        runtime.write_text(runtime_env, encoding="utf-8")
+        # 从 orgflow_redact 里摘出内联 python（脚本里是 python3 -c '...' 单引号片段）
+        source = (cfgmod.ROOT / "scripts" / "lib" / "runtime.sh").read_text(encoding="utf-8")
+        start = source.index("orgflow_redact()")
+        start = source.index("python3 -c '", start) + len("python3 -c '")
+        end = source.index("\n'\n}", start)
+        code = source[start:end].replace("\\'", "'")
+        env = dict(os.environ)
+        env["ORGFLOW_SECRETS"] = "\n".join(
+            line for line in runtime_env.splitlines() if not line.startswith("#"))
+        result = subprocess.run(["python3", "-c", code], input=payload, text=True,
+                                capture_output=True, env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout
+
+    def test_redaction_uses_the_unquoted_value(self) -> None:
+        out = self._redact("口令 abc123 与 zzz999\n",
+                           'LDAP_USER_PASSWORD="abc123"\nOAUTH2_COOKIE_SECRET=zzz999\n')
+        self.assertNotIn("abc123", out)
+        self.assertNotIn("zzz999", out)
+        self.assertIn("[REDACTED]", out)
+
+    def test_redaction_keeps_ordinary_text(self) -> None:
+        out = self._redact("dc=devops,dc=com 不是口令\n", 'LDAP_USER_PASSWORD="abc123"\n')
+        self.assertIn("dc=devops,dc=com", out)
 
 
 if __name__ == "__main__":

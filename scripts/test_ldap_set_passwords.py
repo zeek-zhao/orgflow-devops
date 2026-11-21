@@ -9,7 +9,7 @@
 判据（任一不满足即非 0 退出）：
   1. `--dry-run` 成功，且覆盖 users.ldif 里全部 uid 条目（数量与 DN 逐条对齐）
   2. `--dry-run` 的输出里**不含**口令真值（只出现 ***）
-  3. .env 里缺 ORGFLOW_INITIAL_PASSWORD 时必须失败（不能悄悄用空口令）
+  3. env 文件里缺 LDAP_USER_PASSWORD 时必须失败（不能悄悄用空口令）
   4. 口令短于 12 字符时必须失败
 
 反证：把 USERS_LDIF 指向一个只含 9 个账号的副本 -> 第 1 条红；
@@ -38,7 +38,7 @@ def run(env_file: str, users: str | None = None):
     # （`D:\zeek\...` 变成 `D:zeek...`），而且 cwd 已经在仓库根，相对路径两边都认。
     env = dict(os.environ)
     env["ENV_FILE"] = env_file
-    env.pop("ORGFLOW_INITIAL_PASSWORD", None)
+    env.pop("LDAP_USER_PASSWORD", None)
     if users is not None:
         env["USERS_LDIF"] = users
     return subprocess.run(
@@ -50,7 +50,7 @@ def run(env_file: str, users: str | None = None):
 def write_env(path: pathlib.Path, password: str | None) -> None:
     lines = ["LDAP_DOMAIN=devops.com\n"]
     if password is not None:
-        lines.append(f"ORGFLOW_INITIAL_PASSWORD={password}\n")
+        lines.append(f"LDAP_USER_PASSWORD={password}\n")
     path.write_text("".join(lines), encoding="utf-8")
 
 
@@ -102,7 +102,7 @@ def main() -> int:
         write_env(ROOT / missing_key, None)
         proc = run(missing_key)
         if proc.returncode == 0:
-            fails.append("缺 ORGFLOW_INITIAL_PASSWORD 时仍然成功（会静默使用空口令）")
+            fails.append("缺 LDAP_USER_PASSWORD 时仍然成功（会静默使用空口令）")
 
         # 4：过短的口令必须失败
         short = f"{rel}/short.env"

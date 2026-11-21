@@ -211,7 +211,7 @@ ldap-passwords:
 	pw=$$(python3 -c 'import scripts.lib.config as c; print(c.load()["ldap"]["password"])' 2>/dev/null || \
 	     python3 -c 'import sys; sys.path.insert(0,"scripts/lib"); import config; print(config.load()["ldap"]["password"])'); \
 	if [ -z "$$pw" ]; then echo "✗ config/orgflow.yml 里没有 ldap.password" >&2; exit 1; fi; \
-	ORGFLOW_INITIAL_PASSWORD="$$pw" python3 scripts/11-gen-ldif-passwords.py >/dev/null; \
+	LDAP_USER_PASSWORD="$$pw" python3 scripts/11-gen-ldif-passwords.py >/dev/null; \
 	echo "✓ users.ldif 的 {SSHA} 已按 config/orgflow.yml 的 ldap.password 重算"
 	@echo "  目录已经存在时这一步不会改运行中的口令；要生效再跑 make ldap-apply"
 

@@ -43,9 +43,11 @@ read_env() {
     sed -n "s/^$1=//p" "$ENV_FILE" | tail -1
 }
 
-PASSWORD="$(read_env ORGFLOW_INITIAL_PASSWORD)"
-[ -n "$PASSWORD" ] || fail "$ENV_FILE 里没有 ORGFLOW_INITIAL_PASSWORD（≥12 字符）"
-[ "${#PASSWORD}" -ge 12 ] || fail "ORGFLOW_INITIAL_PASSWORD 至少 12 字符（当前 ${#PASSWORD}）"
+# M0 起口令只有一个真源（config/orgflow.yml 的 ldap.password），渲染成
+# LDAP_USER_PASSWORD；旧的 ORGFLOW_INITIAL_PASSWORD 随 .env 一起退役。
+PASSWORD="$(read_env LDAP_USER_PASSWORD)"
+[ -n "$PASSWORD" ] || fail "$ENV_FILE 里没有 LDAP_USER_PASSWORD（≥12 字符）"
+[ "${#PASSWORD}" -ge 12 ] || fail "LDAP_USER_PASSWORD 至少 12 字符（当前 ${#PASSWORD}）"
 
 LDAP_DOMAIN="$(read_env LDAP_DOMAIN)"
 LDAP_DOMAIN="${LDAP_DOMAIN:-devops.com}"

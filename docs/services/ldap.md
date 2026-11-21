@@ -127,7 +127,7 @@ make backup
 ## 使用指南
 
 首次建目录前先确认初始口令：仓库里的 `users.ldif` 只存 `{SSHA}` 哈希，**口令真值不在
-仓库里**（[开源合规 §4](../records/开源合规.md)）。`.env` 里的 `ORGFLOW_INITIAL_PASSWORD` 是真源，
+仓库里**（[开源合规 §4](../records/开源合规.md)）。`.env` 里的 `LDAP_USER_PASSWORD` 是真源，
 两者不一致的表现是「密码看着对，bind 却一直返回 49」。
 
 改 LDIF **不等于**改口令，这一点最容易踩：目录建好之后 `ldapadd` 对已存在的 DN 只报
