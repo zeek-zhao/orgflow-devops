@@ -121,7 +121,7 @@ sys.exit(status)
 
     def backup(self, **env):
         previous = set(self.backups.glob("ldap-*.tgz"))
-        result = self.run_script("backup", "--service", "ldap", **env)
+        result = self.run_script("61-backup", "--service", "ldap", **env)
         self.assertEqual(result.returncode, 0, result.stderr)
         created = set(self.backups.glob("ldap-*.tgz")) - previous
         self.assertEqual(len(created), 1)
@@ -149,14 +149,14 @@ sys.exit(status)
             (["--all"], {"BACKUP_TARGET": "remote"}, "仅支持"),
         ):
             with self.subTest(args=args, env=env):
-                result = self.run_script("backup", *args, **env)
+                result = self.run_script("61-backup", *args, **env)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(message, result.stderr)
                 self.assertFalse(self.log.exists())
 
     def test_zero_refuses_cleanup_but_keeps_backup(self):
         old = self.old_package()
-        result = self.run_script("backup", "--service", "ldap", RETENTION="0")
+        result = self.run_script("61-backup", "--service", "ldap", RETENTION="0")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("拒绝清理", result.stderr)
         self.assertTrue(old.exists())
@@ -192,7 +192,7 @@ sys.exit(status)
         self.assertLess(run, start)
         self.assertTrue(self.running.exists())
         self.log.unlink()
-        result = self.run_script("backup", "--verify", str(archive))
+        result = self.run_script("61-backup", "--verify", str(archive))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(self.log.exists())
 
@@ -200,7 +200,7 @@ sys.exit(status)
         for env in ({"FAKE_ARCHIVE_FAIL": "1"}, {"FAKE_CORRUPT": "1"}):
             with self.subTest(env=env):
                 old = self.old_package()
-                result = self.run_script("backup", "--service", "ldap", **env)
+                result = self.run_script("61-backup", "--service", "ldap", **env)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(list(self.backups.glob("*.tgz")), [old])
                 self.assertFalse(list(self.backups.glob(".ldap-*.*/")))
@@ -211,12 +211,12 @@ sys.exit(status)
                     {"FAKE_PS_FAIL": "1"}, {"FAKE_PS_FAIL_AFTER_STOP": "1"}):
             with self.subTest(env=env):
                 self.log.unlink(missing_ok=True)
-                result = self.run_script("backup", "--service", "ldap", **env)
+                result = self.run_script("61-backup", "--service", "ldap", **env)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse(any(call[0] == "run" for call in self.calls()))
 
     def test_no_stop_escape_and_previously_stopped_service(self):
-        result = self.run_script("backup", "--service", "ldap", "--no-stop")
+        result = self.run_script("61-backup", "--service", "ldap", "--no-stop")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("可能不一致", result.stderr)
         self.assertFalse(any("stop" in call or "start" in call for call in self.calls()))
@@ -244,7 +244,7 @@ sys.exit(status)
 
     def test_all_volume_mappings(self):
         self.seed_nexus_volume()
-        result = self.run_script("backup", "--all")
+        result = self.run_script("61-backup", "--all")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(list(self.backups.glob("*.tgz"))), 3)
         for service, volume in (("jenkins", "jenkins_home"), ("nexus", "nexus_data"), ("ldap", "ldap_data")):
@@ -254,23 +254,23 @@ sys.exit(status)
         archive = self.backup()
         archive.with_suffix(".sha256").unlink()
         archive.write_bytes(b"bad tar")
-        result = self.run_script("backup", "--verify", str(archive))
+        result = self.run_script("61-backup", "--verify", str(archive))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("tar 校验失败", result.stderr)
         archive = self.backup()
         archive.write_bytes(archive.read_bytes() + b"tampered")
-        result = self.run_script("backup", "--verify", str(archive))
+        result = self.run_script("61-backup", "--verify", str(archive))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("sha256 校验失败", result.stderr)
 
     def test_restore_refuses_nonempty_and_dry_run_changes_nothing(self):
         archive = self.backup()
         self.log.unlink()
-        result = self.run_script("restore", "--service", "ldap", "--file", str(archive))
+        result = self.run_script("62-restore", "--service", "ldap", "--file", str(archive))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("现有条目数: 3", result.stderr)
         self.assertIn("--force", result.stderr)
-        result = self.run_script("restore", "--service", "ldap", "--file", str(archive), "--force", "--dry-run")
+        result = self.run_script("62-restore", "--service", "ldap", "--file", str(archive), "--force", "--dry-run")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("dry-run", result.stdout)
         self.assertTrue(self.running.exists())
@@ -282,7 +282,7 @@ sys.exit(status)
     def test_restore_replaces_contents_and_preserves_hidden_files(self):
         archive = self.backup()
         (self.volume / "extra").write_text("remove me")
-        result = self.run_script("restore", "--service", "ldap", "--file", str(archive), "--force")
+        result = self.run_script("62-restore", "--service", "ldap", "--file", str(archive), "--force")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse((self.volume / "extra").exists())
         self.assertEqual((self.volume / ".hidden").read_text(), "restore me\n")
@@ -291,7 +291,7 @@ sys.exit(status)
 
     def test_extract_failure_keeps_service_stopped(self):
         archive = self.backup()
-        result = self.run_script("restore", "--service", "ldap", "--file", str(archive),
+        result = self.run_script("62-restore", "--service", "ldap", "--file", str(archive),
                                  "--force", FAKE_EXTRACT_FAIL="1")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("保持停止", result.stderr)
@@ -301,11 +301,11 @@ sys.exit(status)
         archive = self.backup()
         external = self.root / "external.tgz"
         shutil.copyfile(archive, external)
-        result = self.run_script("restore", "--service", "ldap", "--file", str(external), "--force", "--dry-run")
+        result = self.run_script("62-restore", "--service", "ldap", "--file", str(external), "--force", "--dry-run")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("缺少 sha256", result.stderr)
         external.write_bytes(b"corrupt")
-        result = self.run_script("restore", "--service", "ldap", "--file", str(external), "--force")
+        result = self.run_script("62-restore", "--service", "ldap", "--file", str(external), "--force")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("tar 校验失败", result.stderr)
 
@@ -321,7 +321,7 @@ sys.exit(status)
             (["--service", "ldap", "--file", str(fifo)], "普通文件"),
         ):
             with self.subTest(args=args):
-                result = self.run_script("restore", *args)
+                result = self.run_script("62-restore", *args)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(message, result.stderr)
                 self.assertFalse(self.log.exists())
@@ -329,7 +329,7 @@ sys.exit(status)
     def test_wrong_service_metadata_and_unsafe_tar_refused(self):
         archive = self.backup()
         self.log.unlink()
-        result = self.run_script("restore", "--service", "jenkins", "--file", str(archive), "--force")
+        result = self.run_script("62-restore", "--service", "jenkins", "--file", str(archive), "--force")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("不匹配", result.stderr)
         unsafe = self.root / "unsafe.tgz"
@@ -337,7 +337,7 @@ sys.exit(status)
             member = tarfile.TarInfo("../escape")
             member.size = 3
             handle.addfile(member, io.BytesIO(b"bad"))
-        result = self.run_script("restore", "--service", "ldap", "--file", str(unsafe), "--force")
+        result = self.run_script("62-restore", "--service", "ldap", "--file", str(unsafe), "--force")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("不安全", result.stderr)
         self.assertFalse(self.log.exists())

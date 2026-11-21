@@ -98,21 +98,21 @@ cli_token_revoke() {
     # CLI 直连容器固定 IP，不走网关（forward_auth 会把 API 请求 302 到 Dex）
     export JENKINS_ADMIN_ID=svc-platform-admin
     export JENKINS_ADMIN_PASSWORD="$CLI_TOK_VALUE"
-    run bash "$M0_REPO/scripts/jenkins-cli.sh" list
+    run bash "$M0_REPO/scripts/14-jenkins-cli.sh" list
     echo "cli list: ${output:0:160}" >&2
     [ "$status" -eq 0 ]
     assert_contains "$output" "${job}"
-    run bash "$M0_REPO/scripts/jenkins-cli.sh" get "$job"
+    run bash "$M0_REPO/scripts/14-jenkins-cli.sh" get "$job"
     [ "$status" -eq 0 ]
     assert_contains "$output" "ECHO_MSG"
-    run bash "$M0_REPO/scripts/jenkins-cli.sh" run "$job" "ECHO_MSG=${sent}"
+    run bash "$M0_REPO/scripts/14-jenkins-cli.sh" run "$job" "ECHO_MSG=${sent}"
     echo "cli run: ${output:0:160}" >&2
     [ "$status" -eq 0 ]
     assert_contains "$output" "201"
     # log：构建在 agent 上跑（探针 2026-11-14 实证 ~9s），轮询等 echo 行出现
     msg="cli fixture: ${sent}"
     for i in $(seq 1 30); do
-        run bash "$M0_REPO/scripts/jenkins-cli.sh" log "$job" last || true
+        run bash "$M0_REPO/scripts/14-jenkins-cli.sh" log "$job" last || true
         if [[ "$output" == *"${msg}"* ]]; then break; fi
         sleep 3
     done

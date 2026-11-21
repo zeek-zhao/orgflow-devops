@@ -53,7 +53,7 @@ CA 随之重建，之前导出的 `.crt` 立刻作废 —— 而症状是「浏�
 
 ```
 ssh jenkins@192.0.2.10  →  cd ~/workbuddy/orgflow-devops
-                          →  [ -s out/ca/root.crt ] || bash scripts/ca-install.sh --export
+                          →  [ -s out/ca/root.crt ] || bash scripts/21-ca-install.sh --export
                           →  cat out/ca/root.crt
 ```
 

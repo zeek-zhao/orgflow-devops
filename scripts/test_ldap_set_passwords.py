@@ -42,7 +42,7 @@ def run(env_file: str, users: str | None = None):
     if users is not None:
         env["USERS_LDIF"] = users
     return subprocess.run(
-        ["bash", "scripts/ldap-set-passwords.sh", "--dry-run"],
+        ["bash", "scripts/11-ldap-set-passwords.sh", "--dry-run"],
         cwd=ROOT, env=env, capture_output=True, text=True,
     )
 

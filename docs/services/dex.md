@@ -47,7 +47,7 @@ make render                       # 同时渲染 out/Caddyfile 和 out/dex/confi
 docker compose up -d dex
 ```
 
-模板在 `services/auth/dex/config.yaml.tmpl`，渲染脚本 `scripts/render-dex.sh`。
+模板在 `services/auth/dex/config.yaml.tmpl`，渲染脚本 `scripts/12-render-dex.sh`。
 渲染后脚本会 `chmod 0644`——调用方 umask 为 `077` 时，uid 1001 读不到配置，
 症状同样是那句误导人的 gomplate 报错。
 
@@ -175,7 +175,7 @@ curl -sS -k --resolve dex.org-devops.com:443:127.0.0.1 \
 | 真源 / 产物 | 路径 |
 |---|---|
 | 配置模板 | `services/auth/dex/config.yaml.tmpl` |
-| 渲染脚本 | `scripts/render-dex.sh` |
+| 渲染脚本 | `scripts/12-render-dex.sh` |
 | 渲染产物（单文件挂载、0644） | `out/dex/config.yaml` |
 | LDAP connector / static client | `out/dex/config.yaml`（由模板生成，不手改） |
 | 凭据 | `.env` 的 `LDAP_ADMIN_PASSWORD` / `OAUTH2_CLIENT_SECRET`（值不入库、不写文档） |

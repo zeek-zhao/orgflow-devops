@@ -101,7 +101,7 @@ def main():
                 if hashlib.sha1(p + salt).digest() == digest]
         if weak:
             fails.append('%s: 口令是常见弱口令之一（%s）；用 '
-                         'scripts/gen-ldif-passwords.py 重算' % (label, ', '.join(weak)))
+                         'scripts/11-gen-ldif-passwords.py 重算' % (label, ', '.join(weak)))
 
         if salt in seen_salts:
             fails.append('%s: salt 与 %s 相同（同口令会暴露成相同哈希）'

@@ -7,7 +7,7 @@ setup() {
 # #46：Nexus 从 compose 里摘出来，改由 Jenkins job `nexus-deploy` 部署。
 #
 # 这里测的是「跑完 job 之后」的状态 —— harness 在 compose 起来之后会执行
-# scripts/nexus-deploy.sh，等价于跑完那个 job。
+# scripts/70-nexus-deploy.sh，等价于跑完那个 job。
 #
 # 分三层，因为它们的失败原因完全不同：
 #   1. 网关层：站点 200 / status API 200 —— Caddy 的上游解析对不对
@@ -40,9 +40,9 @@ setup() {
     # 但 digest 不能漂，漂了就是「备份的是 A 版本、跑的是 B 版本」。
     local locked
     locked="$(awk -F '\t' '$1 == "nexus" {print $3}' "$M0_REPO/tests/images.lock")"
-    assert_contains "$(cat "$M0_REPO/scripts/nexus-deploy.sh")" "$locked"
+    assert_contains "$(cat "$M0_REPO/scripts/70-nexus-deploy.sh")" "$locked"
 
-    # 卷名必须与 scripts/backup-common.sh 里写死的一致。
+    # 卷名必须与 scripts/lib/backup-common.sh 里写死的一致。
     # 卷名一漂，备份脚本会备份一个空卷而真正的数据在另一个卷里 —— 静默出错，
     # 等要恢复的时候才发现，那时候已经没有「另一个卷」可用了。
     [ "$(docker inspect -f \
@@ -59,7 +59,7 @@ setup() {
     # 带上密码重跑：走的是「容器已存在 + 密码已生效」这条真实幂等路径，
     # 不带密码会走到「跳过改密」的分支，测不到真正要测的那一半。
     run env NEXUS_ADMIN_ID="$admin" NEXUS_ADMIN_PASSWORD="$pass" \
-        bash "$M0_REPO/scripts/nexus-deploy.sh"
+        bash "$M0_REPO/scripts/70-nexus-deploy.sh"
     [ "$status" -eq 0 ]
     assert_contains "$output" "已存在"
     assert_contains "$output" "配置的密码已生效"

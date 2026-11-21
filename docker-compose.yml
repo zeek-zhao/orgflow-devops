@@ -1,461 +1,57 @@
+# =============================================================================
+# orgflow-devops 主编排入口（M0 重构，2026-11-21）
+#
+# 结构变了：每个服务一份片段，放在自己目录下 services/<svc>/compose.yml。
+# 这个文件只做三件事：
+#   1. 定义共享网络与卷；
+#   2. include 全部服务片段（compose 2.20+ 的 include）；
+#   3. 给 `docker compose -f docker-compose.yml` 一个稳定的入口。
+#
+# 为什么拆：改一个服务只动它自己那份文件；服务清单、固定 IP、容器名在
+# config/services.yml 里登记，脚本按 start_order 串行启动（bash scripts/30-up-serial.sh）。
+#
+# ⚠ 变量来源：不再有 .env。`make deploy` 会先渲染 out/runtime.env，
+#   compose 的 ${VAR} 全部从那里取。直接跑 docker compose 时请带
+#   --env-file out/runtime.env（Makefile 已经这么做了）。
+# =============================================================================
+
 name: orgflow-devops
 
-# M0 最小核心：Jenkins + 权限管理服务 + 路由注册服务 + Caddy + 内部 DNS
-#
-# ★ Nexus 不在这里（#46）：它是「被 Jenkins 部署的制品库」，不是底座。
-#   由 job `nexus-deploy` 调 scripts/nexus-deploy.sh 用 docker run 拉起，
-#   固定 IP 与网络别名由脚本负责。所以 `make deploy` 之后 nexus 站点是 502，
-#   跑完 job 才是 200 —— 这是设计，不是故障。
-#
-# 网络模型（ADR-13）：固定 IP + 域名路由
-#   172.31.0.2   dnsmasq      *.org-devops.com → 172.31.0.10
-#   172.31.0.10  caddy        :80 跳转 / :443 站点
-#   172.31.0.11  router
-#   172.31.0.20  jenkins
-#   172.31.0.21  nexus        ← 不在本文件，由 nexus-deploy.sh 创建
-#   172.31.0.22  ldap
-#   172.31.0.23  ldapadmin
-#   172.31.0.24  dex
-#   172.31.0.25  oauth2-proxy
-#   172.31.0.26  homepage
-#   172.31.0.27  jenkins-agent
-# 固定 IP 的意义：排查时能直接用 IP 定位到容器，不必反查随机地址。
-
-services:
-  dnsmasq:
-    build:
-      context: ./services/dnsmasq
-      tags: ["orgflow/dnsmasq:24.04-v1"]
-    container_name: of-dnsmasq
-    restart: unless-stopped
-    environment:
-      - GATEWAY_DOMAIN=${GATEWAY_DOMAIN:-org-devops.com}
-      - GATEWAY_IP=${GATEWAY_IP:-172.31.0.10}
-      # dnsmasq 只绑这个地址：0.0.0.0:53 会与 Docker 内嵌 DNS 的 127.0.0.11:53 冲突
-      - DNSMASQ_LISTEN_IP=${DNSMASQ_LISTEN_IP:-172.31.0.2}
-    networks:
-      orgflow:
-        ipv4_address: 172.31.0.2
-    healthcheck:
-      test: ["CMD-SHELL", "dig +short +time=2 +tries=1 jenkins.$$GATEWAY_DOMAIN @$$DNSMASQ_LISTEN_IP | grep -q ."]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
-  jenkins:
-    # 自建镜像（#44 / #90）：上游 jenkins/jenkins 不带插件，pipeline job 与 JCasC 都用不了。
-    # #90 起插件清单迁到 services/jenkins/plugins.txt（8 项，新增 ldap 等），
-    # 构建上下文随之切到 ./services/jenkins。改完要等 main 的 Images 工作流构建、
-    # make images-pin 回写 digest 之后，213 才吃得到新镜像。
-    # 底座在 Docker Hub 上，213 拉不到，所以本地构建只适用于能出网的机器；
-    # 213 一律 USE_GHCR=1，拉 GHCR 上由 images.yml 构建的同一份。
-    # .ghcr.yml 里的 image 是 digest 引用，USE_GHCR=1 时 up/deploy 必须 --no-build，
-    # 否则会报 refusing to create a tag with a digest reference（见 Makefile）。
-    build:
-      context: ./services/jenkins
-      tags: ["orgflow/jenkins:24.04-v1"]
-    container_name: of-jenkins
-    restart: unless-stopped
-    environment:
-      - JENKINS_OPTS=-Djava.util.logging.config.file=/var/jenkins_home/logging.properties
-      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
-      - CASC_JENKINS_CONFIG=/var/jenkins_home/casc/jenkins.yaml
-      - JENKINS_URL=${JENKINS_URL:-https://jenkins.${GATEWAY_DOMAIN:-org-devops.com}/}
-      - JENKINS_ADMIN_ID=${JENKINS_ADMIN_ID:-admin}
-      - JENKINS_ADMIN_PASSWORD=${JENKINS_ADMIN_PASSWORD}
-      - GITHUB_USER=${GITHUB_USER:-zeek-zhao}
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - LDAP_ADMIN_PASSWORD=${LDAP_ADMIN_PASSWORD}
-      - OAUTH2_CLIENT_SECRET=${OAUTH2_CLIENT_SECRET}
-      - OAUTH2_COOKIE_SECRET=${OAUTH2_COOKIE_SECRET}
-      # agent 的 SSH 私钥（#45）：由 deploy.sh / harness 在 compose 之前从
-      # secrets/agent_ssh_key 读出来 export，这里只做透传（不带 = 就是从宿主环境取值）。
-      # JCasC 用 directEntry 引用它 —— 私钥既不进仓库，也不进 .env。
-      - JENKINS_AGENT_SSH_PRIVATE_KEY
-      # agent 的 sshd host key 公钥（同上下同理由：从宿主环境透传）。
-      # JCasC 用 manuallyProvidedKeyVerificationStrategy 声明期望值，host key 一变就
-      # 连不上 —— 所以它必须是 secrets/ 里那个固定的 key，不能靠首次自动信任。
-      - JENKINS_AGENT_HOST_KEY
-      # Nexus 管理员密码（#46）：Nexus 已移出 compose，由 job `nexus-deploy` 部署并改密。
-      # 密码经 JCasC 落成 Jenkins 凭据 `nexus-admin-password`，job 里 withCredentials 注入，
-      # 不出现在命令行与日志里。留空则 job 跳过改密（Nexus 仍用初始密码）。
-      - NEXUS_ADMIN_ID=${NEXUS_ADMIN_ID:-admin}
-      - NEXUS_ADMIN_PASSWORD=${NEXUS_ADMIN_PASSWORD:-}
-    volumes:
-      - jenkins_home:/var/jenkins_home
-      - ./config/jenkins.yaml:/var/jenkins_home/casc/jenkins.yaml:ro
-    expose:
-      - "8080"
-    # 所有容器的 resolver 都是 dnsmasq，等它就绪再起，避免启动期 DNS 抖动
-    depends_on:
-      dnsmasq:
-        condition: service_healthy
-    dns:
-      - 172.31.0.2
-    networks:
-      orgflow:
-        ipv4_address: 172.31.0.20
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/login >/dev/null"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
-      start_period: 60s
-
-  jenkins-agent:
-    # docker 能力放在独立 agent 里，不塞进 controller（#45）：
-    # controller 挂 /var/run/docker.sock 等于把宿主 root 交给拿全部凭据的主进程。
-    build:
-      context: ./tools/jenkins-agent
-      tags: ["orgflow/jenkins-agent:24.04-v1"]
-    container_name: of-jenkins-agent
-    restart: unless-stopped
-    environment:
-      # 入口脚本用它把 gid 写进 /etc/group（理由见下面 group_add 的注释）。
-      # 不带 `=` 是从宿主环境取值，由 deploy.sh / harness / Makefile export。
-      - DOCKER_GID
-    # ★ docker.sock 的 gid 必须让 jenkins 用户拿到（2026-11-01 真机验收踩到）。
-    #
-    #   agent 的 SSH 会话用户是 jenkins(1000)，**不是 root** —— 上游
-    #   jenkins/ssh-agent 镜像里 `PermitRootLogin no`，Jenkins 连进来就是 jenkins。
-    #   而 /var/run/docker.sock 是 `root:<宿主 docker 组>` 0660，不补组就是
-    #   `permission denied ... /var/run/docker.sock`。
-    #
-    #   症状极具误导性：job 里 `docker network inspect orgflow` 失败，脚本报的是
-    #   「找不到网络 orgflow；先跑 make deploy」—— 看起来像底座没起，其实是权限。
-    #
-    # ★ 光有 group_add 不够：它只给容器的 PID 1 加附加组，而 sshd 给登录会话调
-    #   initgroups()，会按 /etc/group **重置**附加组。于是同一个容器里
-    #   `docker exec -u jenkins ... docker info` 能过、真实 SSH 会话却 permission denied
-    #   —— 用 docker exec 做的检查是假阳性。所以真正生效的是 agent-entrypoint.sh
-    #   里的 groupadd/usermod（改 /etc/group 本身），group_add 只保留给 exec 类工具用。
-    #
-    #   gid 因宿主而异，且容器内 /etc/group 的名字和宿主对不上（213 上宿主叫
-    #   docker、容器内同 gid 叫 systemd-network），所以只能用**数字**，由
-    #   deploy.sh / harness / Makefile 探测后 export，compose 从这里取。
-    group_add:
-      - "${DOCKER_GID:-0}"
-    volumes:
-      # 复用宿主 daemon：agent 里的 docker CLI 直接操作宿主 Docker
-      - /var/run/docker.sock:/var/run/docker.sock
-      # ★ 固定 sshd 的 host key（2026-11-01 真机验收踩到）。/etc/ssh 不持久化，
-      #   每次重建 `ssh-keygen -A` 都会生成新 host key，而 JCasC 的 host key 校验
-      #   一见到 key 变化就要人工点「Trust SSH Host Key」，节点直接离线、job 全 pending。
-      #   挂一个受管 key 覆盖掉 ed25519（`ssh-keygen -A` 见到已存在就跳过），
-      #   再用 manuallyProvidedKeyVerificationStrategy 显式声明期望值。
-      - ./secrets/agent_host_key:/etc/ssh/ssh_host_ed25519_key:ro
-      # 公钥单独挂一个文件，不走 .env：deploy.sh 有「已有 .env 就绝不修改」的约定，
-      # 不能为了塞一个公钥去动它。私钥在同一目录，由 gen-agent-key.sh 一起生成。
-      - ./secrets/agent_ssh_key.pub:/run/secrets/agent_ssh_pub:ro
-    expose:
-      - "22"
-    depends_on:
-      dnsmasq:
-        condition: service_healthy
-    dns:
-      - 172.31.0.2
-    networks:
-      orgflow:
-        ipv4_address: 172.31.0.27
-    healthcheck:
-      # 不依赖 curl/nc：用 bash 的 /dev/tcp 探 22 端口，镜像里一定有 bash
-      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/127.0.0.1/22'"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-
-  jjb:
-    build:
-      context: ./tools/jjb
-      tags: ["orgflow/jjb:24.04-v1"]
-    profiles: ["tools"]
-    working_dir: /repo
-    volumes:
-      - .:/repo
-    environment:
-      - JJB_CONF=/repo/.jjb/jenkins_jobs.ini
-    # compose 内网直连 jenkins:8080（#30）：不走网关，不经 oauth2，无需 CA 与宿主 hosts。
-    # 不给固定 IP：从 ipam 动态段取（见文件末尾 iprange），与固定 IP 表互不抢占。
-    networks:
-      orgflow:
-
-  caddy:
-    image: caddy:2@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e # lock: caddy
-    container_name: of-caddy
-    restart: unless-stopped
-    ports:
-      - "${GATEWAY_HTTP_PORT:-80}:80"
-      - "${GATEWAY_HTTPS_PORT:-443}:443"
-    volumes:
-      - ./out:/etc/caddy
-      # 文档站静态内容(#86/#88):唯一受网关保护的站点由 Caddy file_server 直接服务
-      - ./docs:/srv/docs:ro
-      - caddy_data:/data
-    depends_on:
-      router:
-        condition: service_healthy
-      dnsmasq:
-        condition: service_healthy
-    dns:
-      - 172.31.0.2
-    networks:
-      orgflow:
-        ipv4_address: 172.31.0.10
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:2019/config/"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
-  router:
-    build:
-      context: ./services/router
-      tags: ["orgflow/router:24.04-v1"]
-    container_name: of-router
-    restart: unless-stopped
-    environment:
-      - CADDY_ADMIN_URL=${CADDY_ADMIN_URL:-http://caddy:2019}
-      - ROUTES_FILE=/app/config/routes.yaml
-      - GATEWAY_DOMAIN=${GATEWAY_DOMAIN:-org-devops.com}
-    volumes:
-      # 注册 API(#61)要写 routes.yaml,config 不再只读——routes.yaml 仍是唯一真源
-      - ./config:/app/config
-      - ./out:/app/out
-    expose:
-      - "8090"
-    depends_on:
-      dnsmasq:
-        condition: service_healthy
-    dns:
-      - 172.31.0.2
-    networks:
-      orgflow:
-        ipv4_address: 172.31.0.11
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/healthz', timeout=4)"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
-  ldap:
-    image: osixia/openldap:1.5.0@sha256:18742e9c449c9c1afe129d3f2f3ee15fb34cc43e5f940a20f3399728f41d7c28 # lock: ldap
-    container_name: of-ldap
-    restart: unless-stopped
-    environment:
-      - LDAP_ORGANISATION=${LDAP_ORGANISATION:-OrgFlow}
-      - LDAP_DOMAIN=${LDAP_DOMAIN:-devops.com}
-      - LDAP_ADMIN_PASSWORD=${LDAP_ADMIN_PASSWORD:-change-me}
-    volumes:
-      - ldap_data:/var/lib/ldap
-      - ldap_config:/etc/ldap/slapd.d
-      - ./services/auth:/opt/orgflow-auth:ro
-    expose:
-      - "389"
-    depends_on:
-      dnsmasq:
-        condition: service_healthy
-    dns:
-      - 172.31.0.2
-    networks:
-      orgflow:
-        ipv4_address: 172.31.0.22
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - >-
-          printf '%s' "$$LDAP_ADMIN_PASSWORD" |
-          ldapsearch -x -H ldap://localhost:389
-          -D cn=admin,dc=devops,dc=com -y /dev/stdin
-          -b dc=devops,dc=com -s base
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  ldapadmin:
-    image: osixia/phpldapadmin:0.9.0@sha256:d112b82be1336f91e028b0348755133fda333992355b533419355a65c32ff9ad # lock: ldapadmin
-    container_name: of-ldapadmin
-    restart: unless-stopped
-    environment:
-      - PHPLDAPADMIN_LDAP_HOSTS=ldap
-      - PHPLDAPADMIN_HTTPS=false
-    expose:
-      - "80"
-    depends_on:
-      dnsmasq:
-        condition: service_healthy
-    dns:
-      - 172.31.0.2
-    networks:
-      orgflow:
-        ipv4_address: 172.31.0.23
-    healthcheck:
-      test: ["CMD", "php", "-r", "exit(file_get_contents('http://localhost/') === false ? 1 : 0);"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
-  dex:
-    image: ghcr.io/dexidp/dex:v2.41.1@sha256:bc7cfce7c17f52864e2bb2a4dc1d2f86a41e3019f6d42e81d92a301fad0c8a1d # lock: dex
-    container_name: of-dex
-    restart: unless-stopped
-    command: ["dex", "serve", "/etc/dex/config.yaml"]
-    environment:
-      - LDAP_ADMIN_PASSWORD=${LDAP_ADMIN_PASSWORD:-change-me}
-      - OAUTH2_CLIENT_SECRET=${OAUTH2_CLIENT_SECRET:-change-me}
-    volumes:
-      # 由 scripts/render-dex.sh 从模板生成，域名变化时重新渲染。
-      # 只挂单个文件，不要挂整个目录：dex 以 uid 1001 运行，它的 entrypoint
-      # 会先 chdir 到 /etc/dex 再 fork gomplate。整目录挂载会把镜像里那个
-      # 1001:1001 / 0755 的 /etc/dex 换成宿主目录，权限一变就 chdir 失败，
-      # 报出来的却是 "fork/exec /usr/local/bin/gomplate: permission denied"。
-      - ./out/dex/config.yaml:/etc/dex/config.yaml:ro
-    expose:
-      - "5556"
-    depends_on:
-      ldap:
-        condition: service_healthy
-      dnsmasq:
-        condition: service_healthy
-    dns:
-      - 172.31.0.2
-    networks:
-      orgflow:
-        ipv4_address: 172.31.0.24
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:5556/dex/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
-  oauth2-proxy:
-    image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0@sha256:dcb6ff8dd21bf3058f6a22c6fa385fa5b897a9cd3914c88a2cc2bb0a85f8065d # lock: oauth2proxy
-    container_name: of-oauth2
-    restart: unless-stopped
-    # 认证域名与业务域名分离：浏览器侧走 https://auth.<domain>，
-    # 服务端到服务端（redeem / jwks）走容器网络，避免绕公网。
-    command:
-      - --http-address=0.0.0.0:4180
-      - --provider=oidc
-      - --client-id=${OAUTH2_CLIENT_ID:-jenkins}
-      - --client-secret=${OAUTH2_CLIENT_SECRET:-change-me}
-      - --cookie-secret=${OAUTH2_COOKIE_SECRET:-0123456789abcdef0123456789abcdef}
-      - --oidc-issuer-url=https://dex.${GATEWAY_DOMAIN:-org-devops.com}/dex
-      - --skip-oidc-discovery=true
-      - --login-url=https://dex.${GATEWAY_DOMAIN:-org-devops.com}/dex/auth
-      - --redeem-url=http://dex:5556/dex/token
-      - --oidc-jwks-url=http://dex:5556/dex/keys
-      - --insecure-oidc-skip-issuer-verification=true
-      - --upstream=static://202
-      - --reverse-proxy=true
-      - --set-xauthrequest=true
-      - --cookie-secure=true
-      # cookie 收窄到 docs 单域(#86):网关只守文档站,不再全域通吃
-      - --cookie-domain=docs.${GATEWAY_DOMAIN:-org-devops.com}
-      - --cookie-refresh=1h
-      - --whitelist-domain=.${GATEWAY_DOMAIN:-org-devops.com}
-      # 回调按请求 host 推导(docs 域发起就回 docs 域,cookie 才落对域);
-      # 固定 --redirect-url 会把 cookie 钉在 auth 域造成跨域拒收,故删除
-      - --ping-path=/ping
-      # 组授权:仅 docs-users 组成员可完成登录(#86);非组成员 Dex 认证成功也被拒
-      - --allowed-group=docs-users
-      # X-Forwarded-* 伪造防护(#86):上游 oauth2-proxy 至 v7.9.0 均无
-      # --trusted-proxy-ip 旗标(7.6.0/7.7.1/7.8.2/7.9.0 --help 逐一核实),
-      # 实际防线=网络隔离:4180 仅 expose 不发布端口,只有 orgflow 网络内容器可达,
-      # 宿主与局域网根本路由不到(上游文档对 reverse-proxy 信任的推荐即网络隔离)。
-      - --email-domain=devops.com
-      - --skip-provider-button=true
-    expose:
-      - "4180"
-    depends_on:
-      dex:
-        condition: service_healthy
-      dnsmasq:
-        condition: service_healthy
-    dns:
-      - 172.31.0.2
-    networks:
-      orgflow:
-        ipv4_address: 172.31.0.25
-    healthcheck:
-      test: ["CMD", "/bin/oauth2-proxy", "--version"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
-  # 统一入口：一屏看到所有服务，点进去直达。
-  # HOMEPAGE_ALLOWED_HOSTS 必须由 GATEWAY_DOMAIN 驱动：homepage 会校验 Host 头，
-  # 写死某个域名后换域名访问会直接 400，而且报错只说 "host not allowed"，
-  # 看不出是配置问题还是路由问题。
-  homepage:
-    image: gethomepage/homepage:v2.7.0@sha256:19c5c09184458a41b7b5915e71463a39f36cd33540f41bdbed008791b8182d5f # lock: homepage
-    container_name: of-homepage
-    restart: unless-stopped
-    environment:
-      # 两种写法都要列：homepage 拿 Host 头做精确匹配，而 Host 头里带不带端口取决于
-      # 访问者敲的 URL。非 443 端口（CI 用 8443、局域网自测常用 8443）访问时
-      # Host 是 `home.example.com:8443`，只列不带端口的那条会直接 400 —— 而 400
-      # 和「服务没起来」在浏览器里长得一样，排查方向会完全跑偏。
-      - HOMEPAGE_ALLOWED_HOSTS=home.${GATEWAY_DOMAIN:-org-devops.com},home.${GATEWAY_DOMAIN:-org-devops.com}:${GATEWAY_HTTPS_PORT:-443}
-      # 卡片里的链接用 {{HOMEPAGE_VAR_GATEWAY_DOMAIN}} 引用，换域名不用改 yaml
-      - HOMEPAGE_VAR_GATEWAY_DOMAIN=${GATEWAY_DOMAIN:-org-devops.com}
-      - PUID=1000
-      - PGID=1000
-    volumes:
-      # 不挂 :ro —— homepage 默认把运行日志写到 config/logs 下，只读会起不来
-      - ./config/homepage:/app/config
-    expose:
-      - "3000"
-    depends_on:
-      dnsmasq:
-        condition: service_healthy
-    dns:
-      - 172.31.0.2
-    networks:
-      orgflow:
-        ipv4_address: 172.31.0.26
-    healthcheck:
-      # 用 node 自检而不是 wget/curl：这个镜像里不一定有那两个，但 node 一定在（它就是运行时）。
-      # 判据是「<500 就算起来了」而不是「==200」：探针从 127.0.0.1 发，
-      # Host 头不在 HOMEPAGE_ALLOWED_HOSTS 里，正常返回 400。
-      # 要 200 的话这个健康检查永远不过——而那 400 恰好证明 HTTP 服务是活的。
-      test: ["CMD", "node", "-e", "require('http').get({host:'127.0.0.1',port:3000,path:'/'},r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 30s
+include:
+  - services/dnsmasq/compose.yml
+  - services/ldap/compose.yml
+  - services/ldapadmin/compose.yml
+  - services/dex/compose.yml
+  - services/oauth2-proxy/compose.yml
+  - services/router/compose.yml
+  - services/caddy/compose.yml
+  - services/homepage/compose.yml
+  - services/docs/compose.yml
+  - services/jenkins/compose.yml
+  - services/jenkins-agent/compose.yml
+  - tools/jjb/compose.yml
 
 networks:
+  # 网络名与网段来自 config/orgflow.yml（渲染进 out/runtime.env）
   orgflow:
-    name: orgflow
+    name: ${NETWORK_NAME:-orgflow}
     ipam:
       driver: default
       config:
-        # 避开 devops 仓库环境用的 172.30.0.0/24
-        # ip_range 必须与 subnet 同属一个 config 对象：写成两个列表项会被
-        # daemon 拒绝（`invalid ip-range ... parent subnet invalid`），
-        # 且 `docker compose config` 的 schema 校验发现不了，只有真正
-        # `docker network create` 才报错（CI 的 DinD 与真机都会炸）。
-        - subnet: 172.31.0.0/24
-          # 动态分配段：jjb 这类 `compose run` 的一次性容器没有固定 IP，
-          # 从这里取地址（172.31.0.200-207），不会抢占 .2-.26 的固定 IP
-          ip_range: 172.31.0.200/29
+        # ip_range 必须与 subnet 同属一个 config 对象：写成两个列表项会被 daemon
+        # 拒绝（invalid ip-range ... parent subnet invalid），而 `docker compose config`
+        # 的 schema 校验发现不了，只有真正 network create 才报错。
+        - subnet: ${NETWORK_SUBNET}
+          ip_range: ${NETWORK_IP_RANGE}
 
 volumes:
   jenkins_home:
   caddy_data:
   ldap_data:
   ldap_config:
-  # ★ 保留声明但已没有服务使用（#46：nexus 移出 compose）。
-  # 留着是为了让卷名继续由 compose 决定（`name: orgflow-devops` → orgflow-devops_nexus_data），
-  # 与 scripts/backup-common.sh 里写死的卷名对齐 —— 卷名一旦漂移，
-  # 备份脚本会备份一个空卷而真正的数据在另一个卷里，**静默出错**。
-  # 声明在这里的卷 `docker compose up` 仍会创建它，nexus-deploy.sh 直接挂这个卷。
+  # ★ 保留声明但 compose 里没有服务使用（#46：nexus 移出 compose）。
+  # 留着是为了让卷名继续由 compose 项目名决定（orgflow-devops_nexus_data），
+  # 与 scripts/lib 里登记的卷名对齐 —— 卷名一旦漂移，备份脚本会备份一个空卷
+  # 而真正的数据在另一个卷里，**静默出错**。
   nexus_data:
+  docs_site:

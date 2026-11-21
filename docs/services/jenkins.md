@@ -123,7 +123,7 @@ GHCR 可复现性——都要等构建轮补齐。回填后去掉占位，才允
 
 > 最后两个**不在 `.env` 里**。它们是 `deploy.sh` / harness / `Makefile` 探测后
 > `export` 的裸变量，compose 里写成不带 `=` 的 `- JENKINS_AGENT_HOST_KEY` 透传。
-> 私钥和 host key 都放在 `secrets/`（不进 git），由 `scripts/gen-agent-key.sh` 幂等生成。
+> 私钥和 host key 都放在 `secrets/`（不进 git），由 `scripts/40-gen-agent-key.sh` 幂等生成。
 
 `.env` 里的真实值不要写进任何文档或 Job 定义——Job 侧一律走 Credentials（`github-token` 等）。
 
@@ -204,13 +204,13 @@ make backup
 
 ## Jenkins CLI 四件套（list / get / run / log）
 
-`scripts/jenkins-cli.sh` 把 Remote Access API 收成四个子命令，每步打印请求与结果，失败一律非 0 退出并给明确信息，绝不静默成功。
+`scripts/14-jenkins-cli.sh` 把 Remote Access API 收成四个子命令，每步打印请求与结果，失败一律非 0 退出并给明确信息，绝不静默成功。
 
 ```bash
-bash scripts/jenkins-cli.sh list
-bash scripts/jenkins-cli.sh get deploy-service
-bash scripts/jenkins-cli.sh run deploy-service SERVICE=caddy ENV=dev
-bash scripts/jenkins-cli.sh log nexus-deploy last
+bash scripts/14-jenkins-cli.sh list
+bash scripts/14-jenkins-cli.sh get deploy-service
+bash scripts/14-jenkins-cli.sh run deploy-service SERVICE=caddy ENV=dev
+bash scripts/14-jenkins-cli.sh log nexus-deploy last
 ```
 
 `run` 的参数是 `KEY=VAL`（可多个）；`log` 的 `last` 等价于 `lastBuild`。
@@ -280,8 +280,8 @@ Gerrit 实例。启动时日志里的 `Listening to event types: [...]` 只是�
 Manage Jenkins 页面警告逐条处置。抓取时间 **2026-11-06**，运行时 **Jenkins 2.580.2 / Java 21**。
 本段结论只针对 213 当前运行时；**警告清单一律从运行时抓取，不得凭印象编写**。
 
-工具：[collect-jenkins-warnings.sh](../../scripts/collect-jenkins-warnings.sh)（只读抓取）、
-[check-jenkins-warnings.sh](../../scripts/check-jenkins-warnings.sh)（台账核对）、
+工具：[collect-jenkins-warnings.sh](../../scripts/19-collect-jenkins-warnings.sh)（只读抓取）、
+[check-jenkins-warnings.sh](../../scripts/19-check-jenkins-warnings.sh)（台账核对）、
 [jenkins.warnings](jenkins.warnings)（抓取快照，前者 `--save` 生成）。
 
 ### 抓取方式（只读）
@@ -290,7 +290,7 @@ Manage Jenkins 页面警告逐条处置。抓取时间 **2026-11-06**，运行�
 
 ```bash
 cd /tmp/wt-92
-bash scripts/collect-jenkins-warnings.sh --save docs/services/jenkins.warnings
+bash scripts/19-collect-jenkins-warnings.sh --save docs/services/jenkins.warnings
 ```
 
 脚本先 `docker ps --format '{{.Names}}'` 确认容器（默认 `of-jenkins`），再在该容器内直连
@@ -303,7 +303,7 @@ bash scripts/collect-jenkins-warnings.sh --save docs/services/jenkins.warnings
 命令：
 
 ```bash
-ssh jenkins@192.0.2.10 'cd /tmp/wt-92 && bash scripts/collect-jenkins-warnings.sh --save docs/services/jenkins.warnings'
+ssh jenkins@192.0.2.10 'cd /tmp/wt-92 && bash scripts/19-collect-jenkins-warnings.sh --save docs/services/jenkins.warnings'
 ```
 
 stderr（HTTP 码与大小，原样）：
@@ -382,7 +382,7 @@ W-01 修复依据 —— JCasC 运行时导出（GET `viewExport` 为 405、POST
 核对脚本纯文件比对，不连 213，可在 CI 复跑：
 
 ```bash
-bash scripts/check-jenkins-warnings.sh
+bash scripts/19-check-jenkins-warnings.sh
 ```
 
 它断言：① 快照里每个编号都在台账登记（否则报「未登记」）；② 台账里每个编号都在快照里

@@ -32,7 +32,7 @@ restore_compose() {
 run_restore() {
     run env ENV_FILE="$M0_ENV_FILE" COMPOSE="$(restore_compose)" \
         BACKUP_DIR="$(mktemp -d)" \
-        bash "$M0_REPO/scripts/restore.sh" "$@"
+        bash "$M0_REPO/scripts/62-restore.sh" "$@"
 }
 
 # 归档里放什么条目由 python3 定制（GNU tar -C 捏不出穿越路径）。

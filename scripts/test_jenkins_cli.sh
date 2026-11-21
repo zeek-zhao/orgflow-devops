@@ -4,7 +4,7 @@
 # 或文档把 consoleText / api/json 冒充成官方文档规定。
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CLI="$ROOT/scripts/jenkins-cli.sh"
+CLI="$ROOT/scripts/14-jenkins-cli.sh"
 DOC="$ROOT/docs/services/jenkins.md"
 fail=0
 ok()  { echo "  ✓ $*"; }

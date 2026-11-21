@@ -1,0 +1,47 @@
+# ldap：OpenLDAP，目录是所有认证路径的最终真源（Jenkins 直连它，Dex 也直连它）
+#
+# 账号口令：统一口令写在 config/orgflow.yml 的 ldap.password；仓库 users.ldif
+# 里存的是同一口令的 {SSHA} 哈希（每个账号各自一份 salt）。
+#
+# ⚠ 两卷都不能删：LDAP 的数据包（backup.sh）只覆盖 /var/lib/ldap，
+#   不含 /etc/ldap/slapd.d。删了 config 卷等于把 schema 与 ACL 一起删掉。
+services:
+  ldap:
+    image: osixia/openldap:1.5.0@sha256:18742e9c449c9c1afe129d3f2f3ee15fb34cc43e5f940a20f3399728f41d7c28 # lock: ldap
+    container_name: of-ldap
+    restart: unless-stopped
+    environment:
+      - LDAP_ORGANISATION=${LDAP_ORGANISATION}
+      - LDAP_DOMAIN=${LDAP_DOMAIN}
+      - LDAP_ADMIN_PASSWORD=${LDAP_ADMIN_PASSWORD}
+      # healthcheck 用：osixia 镜像不会把这两个传给容器进程，必须自己注入
+      - LDAP_BASE_DN=${LDAP_BASE_DN}
+      - LDAP_ADMIN_DN=${LDAP_ADMIN_DN}
+    volumes:
+      - ldap_data:/var/lib/ldap
+      - ldap_config:/etc/ldap/slapd.d
+      - ./services/auth:/opt/orgflow-auth:ro
+    expose:
+      - "389"
+    depends_on:
+      dnsmasq:
+        condition: service_healthy
+    dns:
+      - ${IP_DNSMASQ}
+    networks:
+      orgflow:
+        ipv4_address: ${IP_LDAP}
+    healthcheck:
+      # 用配置里的 base_dn 与 admin DN 自检：目录根写错时这里就红，
+      # 而不是等到 Jenkins 登录报 err 32（DN 不存在）。
+      test:
+        - CMD-SHELL
+        - >-
+          printf '%s' "$$LDAP_ADMIN_PASSWORD" |
+          ldapsearch -x -H ldap://localhost:389
+          -D "$$LDAP_ADMIN_DN" -y /dev/stdin
+          -b "$$LDAP_BASE_DN" -s base
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s

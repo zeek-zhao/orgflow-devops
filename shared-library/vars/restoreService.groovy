@@ -28,7 +28,7 @@ if not files:
 print(max(files, key=lambda p: (p.stat().st_mtime_ns, p.name)))
 ')"
             fi
-            bash scripts/restore.sh --service "$RESTORE_SERVICE" --file "$file" --force
+            bash scripts/62-restore.sh --service "$RESTORE_SERVICE" --file "$file" --force
         '''
     }
 }

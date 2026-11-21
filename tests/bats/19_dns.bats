@@ -43,7 +43,7 @@ setup() {
     assert_fixed_ip caddy 172.31.0.10
     assert_fixed_ip router 172.31.0.11
     assert_fixed_ip jenkins 172.31.0.20
-    # nexus 的 IP 由 scripts/nexus-deploy.sh 的 --ip 决定，不在 compose 里
+    # nexus 的 IP 由 scripts/70-nexus-deploy.sh 的 --ip 决定，不在 compose 里
     assert_container_ip of-nexus 172.31.0.21
     assert_fixed_ip ldap 172.31.0.22
     assert_fixed_ip ldapadmin 172.31.0.23

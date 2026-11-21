@@ -1,0 +1,38 @@
+# docs：MkDocs Material 在线文档站（本轮新增）
+#
+# 与旧实现的关键差别：旧版让 Caddy 的 file_server 直接服务 docs/ 目录里的
+# Markdown（浏览器打开是源码，不是网页）。现在由本服务用 MkDocs 构建成静态站，
+# 产物写进共享卷 docs_site，Caddy 只读该卷 —— 站点内容变了不用重建 caddy。
+#
+# 鉴权不变（#86）：docs.<domain> 仍是唯一受网关保护的站点（oauth2-proxy → dex → ldap，
+# 仅 docs-users 组成员可进）。
+#
+# 构建只在启动时做一次（make docs-site 可手动重建）；改了文档后
+# `docker compose restart docs` 即生效。
+services:
+  docs:
+    build:
+      context: .
+      dockerfile: services/docs/Dockerfile
+    container_name: of-docs
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - mkdocs build --clean --strict --site-dir /site && echo "== docs 站点已生成 ==" && sleep infinity
+    volumes:
+      - docs_site:/site
+    healthcheck:
+      # 构建产出 index.html 才算好；只查进程活着会漏掉「构建失败但容器还在」
+      test: ["CMD-SHELL", "test -f /site/index.html"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      orgflow:
+        ipv4_address: ${IP_DOCS}
+    dns:
+      - ${IP_DNSMASQ}
+    depends_on:
+      dnsmasq:
+        condition: service_healthy

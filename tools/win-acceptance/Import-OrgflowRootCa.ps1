@@ -52,7 +52,7 @@ function Get-RemoteRootCa {
     #   机器级存储里是 10-31 的旧根，而服务端已经在用 11-03 的新根，
     #   症状是「换用户/服务账户访问就证书告警」，极难联想到是导出的文件过期。
     #   ca-install.sh --export 本身是幂等的，重复跑没有副作用。
-    $remote = "cd $RemoteRepo && bash scripts/ca-install.sh --export >/dev/null 2>&1; cat out/ca/root.crt"
+    $remote = "cd $RemoteRepo && bash scripts/21-ca-install.sh --export >/dev/null 2>&1; cat out/ca/root.crt"
     $sshArgs = @('-n')
     if (Test-Path -LiteralPath $SshKey) {
         $sshArgs += @('-i', $SshKey, '-o', 'IdentitiesOnly=yes')

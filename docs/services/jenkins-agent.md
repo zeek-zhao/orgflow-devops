@@ -39,7 +39,7 @@ Jenkins 的构建节点。**所有 pipeline job 实际跑在这个容器里，�
 make deploy     # 全栈，含 agent
 ```
 
-**`secrets/` 下两个文件是前提**，由 `scripts/gen-agent-key.sh` 幂等生成
+**`secrets/` 下两个文件是前提**，由 `scripts/40-gen-agent-key.sh` 幂等生成
 （`deploy.sh` 会自动调用它，不用手动跑）：
 
 | 文件 | 用途 | 挂到哪 |
@@ -198,13 +198,13 @@ docker exec of-jenkins-agent getent group docker      # 期望 docker:x:<gid>:je
 | 挂 socket / host key / `group_add` | `docker-compose.yml` 的 `jenkins-agent` 段 |
 | 启动时改 `/etc/group` | `tools/jenkins-agent/agent-entrypoint.sh` |
 | SSH agent cloud / host key 校验策略 | `config/jenkins.yaml` 的 `clouds` 段 |
-| 密钥对（不进 Git） | `secrets/agent_ssh_key*` / `secrets/agent_host_key*`，由 `scripts/gen-agent-key.sh` 幂等生成 |
+| 密钥对（不进 Git） | `secrets/agent_ssh_key*` / `secrets/agent_host_key*`，由 `scripts/40-gen-agent-key.sh` 幂等生成 |
 | `DOCKER_GID` | 由 `deploy.sh` / harness / `Makefile` 用 `stat -c %g` 探测后 `export`，**不在 `.env`** |
 
 ## 备份
 
 agent **无状态、无数据卷**，不在 `make backup` 范围内；它的身份材料在 `secrets/`（不进 Git），
-必须走受控密钥保管另存。丢失时用 `scripts/gen-agent-key.sh` 重建两对密钥，并同步
+必须走受控密钥保管另存。丢失时用 `scripts/40-gen-agent-key.sh` 重建两对密钥，并同步
 `config/jenkins.yaml` 的 `manuallyProvidedKeyVerificationStrategy`（重启 jenkins）。
 Jenkins 侧的状态备份只保 `jenkins_home`，见 [备份与恢复](../engineering/备份与恢复.md)。
 

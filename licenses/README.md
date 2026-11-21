@@ -22,4 +22,4 @@ cd licenses && sha256sum *.txt   # 与上表逐项对照
 ```
 
 > 说明：新增任何 copyleft 组件时，必须同时更新本目录、`THIRD_PARTY_NOTICES.md`
-> 与 `scripts/gen-sbom.py` 的 `DECLARED` 表——三处不一致等于声明不可信。
+> 与 `scripts/18-gen-sbom.py` 的 `DECLARED` 表——三处不一致等于声明不可信。

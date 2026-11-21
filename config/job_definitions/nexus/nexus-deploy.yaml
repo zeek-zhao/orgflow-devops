@@ -2,7 +2,7 @@
     name: nexus-deploy
     description: >-
       M0 制品库部署（#46）：Nexus 已移出 docker-compose.yml，由本 job 调
-      scripts/nexus-deploy.sh 拉起容器并改掉初始密码。幂等 ——
+      scripts/70-nexus-deploy.sh 拉起容器并改掉初始密码。幂等 ——
       容器已存在就复用、密码已改过就跳过。
     project-type: pipeline
     sandbox: true

@@ -1,0 +1,17 @@
+# jjb：Jenkins Job Builder，一次性容器（profile: tools），推 Job 配置用。
+#
+# compose 内网直连 jenkins:8080（#30）：不走网关，不经 oauth2，无需 CA 与宿主 hosts。
+# 不给固定 IP：从 ipam 动态段取（见 docker-compose.yml 末尾 ip_range），与固定 IP 表互不抢占。
+services:
+  jjb:
+    build:
+      context: ./tools/jjb
+      tags: ["orgflow/jjb:24.04-v1"]
+    profiles: ["tools"]
+    working_dir: /repo
+    volumes:
+      - .:/repo
+    environment:
+      - JJB_CONF=/repo/.jjb/jenkins_jobs.ini
+    networks:
+      orgflow:

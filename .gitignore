@@ -5,7 +5,7 @@
 .jjb/
 out/
 *.log
-# agent 的 SSH 私钥（scripts/gen-agent-key.sh 生成，永不入库）
+# agent 的 SSH 私钥（scripts/40-gen-agent-key.sh 生成，永不入库）
 secrets/
 
 # 语言

@@ -44,7 +44,7 @@ setup() {
 @test "stack: every service on the orgflow network has a fixed IPv4" {
     local file="$M0_REPO/docker-compose.yml"
     # jjb 用 host 网络（要访问宿主上的网关入口），其余 10 个服务全部固定 IP。
-    # nexus 移出 compose 后它的固定 IP 由 scripts/nexus-deploy.sh 负责（172.31.0.21）。
+    # nexus 移出 compose 后它的固定 IP 由 scripts/70-nexus-deploy.sh 负责（172.31.0.21）。
     [ "$(grep -cE '^[[:space:]]+ipv4_address:' "$file")" -eq 10 ]
     [ "$(grep -cE '^[[:space:]]+ipv4_address: 172\.31\.0\.' "$file")" -eq 10 ]
     # 固定 IP 必须唯一，否则 compose 起不来（这里先静态证伪）

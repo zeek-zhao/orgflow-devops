@@ -157,7 +157,7 @@ make backup
 
 ## 仓库三件套（#117，2026-11-11 实测）
 
-`scripts/nexus-setup-repos.py` 幂等做三件事：接受 CE EULA、开启匿名访问、创建 6 个仓库；
+`scripts/72-nexus-setup-repos.py` 幂等做三件事：接受 CE EULA、开启匿名访问、创建 6 个仓库；
 配置存在 `nexus_data` 卷里，**容器重建不丢、卷删了要重跑脚本**。全新实例不接受 EULA 时
 所有写路径 403（2026-11-14 CI 实测）。建仓前 7 个（maven2 / nuget），建仓后 13 个。
 
@@ -202,7 +202,7 @@ denied: Deploying to groups is a PRO-licensed feature.
 复现命令（在部署机上）：
 
 ```bash
-python3 scripts/nexus-setup-repos.py     # 幂等：EULA/匿名/6 仓库，已就绪的项跳过
+python3 scripts/72-nexus-setup-repos.py     # 幂等：EULA/匿名/6 仓库，已就绪的项跳过
 curl -u "$NEXUS_ADMIN_ID:$NEXUS_ADMIN_PASSWORD" \
   http://172.31.0.21:8081/service/rest/v1/repositories | python3 -m json.tool
 ```
@@ -221,7 +221,7 @@ curl -u "$NEXUS_ADMIN_ID:$NEXUS_ADMIN_PASSWORD" \
 - 没有配 `auth: true`：Nexus 自己的账号体系没接 LDAP，谁都能打开界面。M1 再接
 - 备份只含 `orgflow-devops_nexus_data`，不含镜像本身的配置（那是镜像的一部分，可重建）
 - **job 只做「建容器 + 改密 + 删初始密码」**，不建仓库、不建角色；#117 的六个仓库由
-  `scripts/nexus-setup-repos.py` 单独建（已入仓，卷重建后重跑即可）
+  `scripts/72-nexus-setup-repos.py` 单独建（已入仓，卷重建后重跑即可）
 
 ## 使用指南
 
@@ -251,7 +251,7 @@ make backup                             # 备份 nexus_data
 | 真源 | 路径 |
 |---|---|
 | 创建 / 改密 job 定义 | `config/job_definitions/nexus/nexus-deploy.yaml` |
-| 等价脚本 | `scripts/nexus-deploy.sh` |
+| 等价脚本 | `scripts/70-nexus-deploy.sh` |
 | 管理员账号 / 口令 | `.env` 的 `NEXUS_ADMIN_ID` / `NEXUS_ADMIN_PASSWORD`（值不入库、不写文档） |
 | 全部状态 | `orgflow-devops_nexus_data` 卷 → `/nexus-data` |
 | 其余配置 | 卷内配置文件或 UI `Admin → System` |

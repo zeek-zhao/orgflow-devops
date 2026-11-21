@@ -48,14 +48,14 @@ run_backup() {
     local dir=$1; shift
     ensure_alpine
     run env ENV_FILE="$M0_ENV_FILE" COMPOSE="$(backup_compose)" BACKUP_DIR="$dir" \
-        bash "$M0_REPO/scripts/backup.sh" "$@"
+        bash "$M0_REPO/scripts/61-backup.sh" "$@"
 }
 
 run_restore() {
     local dir=$1; shift
     ensure_alpine
     run env ENV_FILE="$M0_ENV_FILE" COMPOSE="$(backup_compose)" BACKUP_DIR="$dir" \
-        bash "$M0_REPO/scripts/restore.sh" "$@"
+        bash "$M0_REPO/scripts/62-restore.sh" "$@"
 }
 
 ldap_query() {
@@ -106,7 +106,7 @@ ldap_wait_healthy() {
     [ "$(cut -d' ' -f1 "${archive%.tgz}.sha256")" = "$(sha256sum "$archive" | cut -d' ' -f1)" ]
 
     # 官方校验入口。
-    run env ENV_FILE="$M0_ENV_FILE" bash "$M0_REPO/scripts/backup.sh" --verify "$archive"
+    run env ENV_FILE="$M0_ENV_FILE" bash "$M0_REPO/scripts/61-backup.sh" --verify "$archive"
     [ "$status" -eq 0 ]
     assert_contains "$output" "校验通过"
 

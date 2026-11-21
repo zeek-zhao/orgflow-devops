@@ -11,7 +11,7 @@
 | **REQ-M0-B0** | deploy / backup / restore / verify / nexus 五类 Job 可按参数执行；敏感值一律走 `withCredentials`，不落 Job 定义 | `make jobs-test` → 退出码 0；`python3 scripts/test_jobs.py` 绿；`bats tests/bats/31_verify_jobs.bats` 绿 | 已实现 | [#3](https://github.com/zeek-zhao/orgflow-devops/issues/3) · PR #8 #76 #122 |
 | **REQ-M0-B1** | Jenkins 镜像自带 pipeline / git / credentials / JCasC 等常用插件，装机即可用，插件清单在仓库内可审 | `grep -c workflow-aggregator services/jenkins/plugins.txt` → `1`；`bats tests/bats/16_jenkins.bats` 绿；反证：从 `plugins.txt` 删掉 `workflow-aggregator` → 镜像自检必须红 | 已实现 | [#44](https://github.com/zeek-zhao/orgflow-devops/issues/44) [#90](https://github.com/zeek-zhao/orgflow-devops/issues/90) · PR #48 |
 | **REQ-M0-B2** | 五类 Job 都是 declarative pipeline，同类 Job 内 stage 数 ≥ 2、stage 名不重复、stage 体非空、`options{}` 只允许运行时认的类型 | `python3 scripts/test_job_pipelines.py` → 退出码 0；反证：把两个 stage 改成同名 → 必须红；把 `options { timestamps() }` 塞回去 → 必须红 | 已实现 | [#91](https://github.com/zeek-zhao/orgflow-devops/issues/91) |
-| **REQ-M0-B3** | Manage Jenkins 的警告逐条处置：能修的修掉，不能修的在台账里写编号 / 现象 / 处置 / 理由 / 复核日期 | ⚠ 需真机：`bash scripts/collect-jenkins-warnings.sh` 抓到的警告数与台账条目数一致，且每条有「已修」或「不修 + 理由」；反证：人为制造一条反向代理 URL 不匹配的警告 → 核对脚本必须报未登记 | 已实现 | [#92](https://github.com/zeek-zhao/orgflow-devops/issues/92) |
+| **REQ-M0-B3** | Manage Jenkins 的警告逐条处置：能修的修掉，不能修的在台账里写编号 / 现象 / 处置 / 理由 / 复核日期 | ⚠ 需真机：`bash scripts/19-collect-jenkins-warnings.sh` 抓到的警告数与台账条目数一致，且每条有「已修」或「不修 + 理由」；反证：人为制造一条反向代理 URL 不匹配的警告 → 核对脚本必须报未登记 | 已实现 | [#92](https://github.com/zeek-zhao/orgflow-devops/issues/92) |
 | **REQ-M0-B4** | 一个脚本完成 list / get / run / log 四件事，用 API token 免 crumb，每步打印请求与结果，错误必须非零退出 | `bash scripts/test_jenkins_cli.sh` → 退出码 0（离线自检）；⚠ 四个子命令的真机实测需部署机；反证：故意用错 token → 四条命令必须都非零退出 | 已实现 | [#96](https://github.com/zeek-zhao/orgflow-devops/issues/96) |
 | **REQ-M0-B5** | Nexus 备份 Job 同时产出**数据库与 blob store**，可恢复演练；GHCR 推送配置成文、可照抄复跑 | `python3 scripts/test_nexus_archive.py` 绿；反证：只备份 db 不备份 blobs → 内容级门禁必须 rc=1 | 已实现 | [#93](https://github.com/zeek-zhao/orgflow-devops/issues/93) · PR #108 |
 | **REQ-M0-B6** | Jenkins 有独立的 docker agent 节点（SSH 接入、挂 docker socket）；`securityRealm` / 凭据 / 全局共享库 / agent cloud **全部由 JCasC 声明**，不写 `init.groovy.d` | `bats tests/bats/23_jenkins_agent.bats` 绿（三条：容器与 docker CLI、JCasC 节点在线且带标签、SSH 私钥进凭据库）；反证：从 `config/jenkins.yaml` 删掉 agent cloud 段 → 「节点在线」用例必须红 | 已实现 | [#45](https://github.com/zeek-zhao/orgflow-devops/issues/45) · PR #50 #51 |
@@ -39,7 +39,7 @@
 
 包 870441 B（db 2076672 B + blobs 85 文件 / 830352 B）；drill 卷 db sha256 一致、blobs 数与字节一致、临时容器 20 秒启动后 HTTP 200；反证「只 db」「只 blobs」均 rc=1，「全量」rc=0。
 
-同时修掉一个当时**完全不通**的链路：Nexus 自 #46 移出 compose 后，`backup.sh` / `restore.sh` 里的 `docker compose ps/stop/start nexus` 必然报 `no such service`。修法是在 `scripts/backup-common.sh` 加服务运行时抽象（nexus 走 `docker inspect/stop/start`，容器名可用环境变量覆盖），并在 `backup.sh` 加内容级门禁（缺 db 或 blobs 直接删包报错）。
+同时修掉一个当时**完全不通**的链路：Nexus 自 #46 移出 compose 后，`backup.sh` / `restore.sh` 里的 `docker compose ps/stop/start nexus` 必然报 `no such service`。修法是在 `scripts/lib/backup-common.sh` 加服务运行时抽象（nexus 走 `docker inspect/stop/start`，容器名可用环境变量覆盖），并在 `backup.sh` 加内容级门禁（缺 db 或 blobs 直接删包报错）。
 
 这条值得留在需求里，是因为它说明 **B7（移出 compose）会静默打断 B5（备份）**，而当时没有一条判据能发现这种跨需求的破坏。
 

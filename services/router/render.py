@@ -11,7 +11,7 @@
   每个 route 是一个独立站点 https://<subdomain>.<gateway_domain>
   - gateway_domain 默认取 routes.yaml，可被环境变量 GATEWAY_DOMAIN 覆盖
   - 认证网关域名由 name: auth 那条路由的 subdomain 决定（单一真源，无独立变量）
-  - 全部站点用 Caddy 内部 CA（local_certs），不向公网申请证书
+  - 全部站点用仓库自带的 orgflow 内部 CA（config/ca/），不向公网申请证书
   - 未登录访问受保护站点时，跳转到认证域名登录，登录后回到原 URL
 """
 import argparse
@@ -32,6 +32,13 @@ DEFAULT_DOMAIN = "org-devops.com"
 # 刻意不做成独立环境变量：AUTH_SUBDOMAIN 会与 Caddyfile 站点、dex 的 issuer、
 # oauth2-proxy 的 redirect_url 形成四处独立声明，改一处不改另一处就静默错位。
 AUTH_ROUTE_NAME = "auth"
+
+# 内部 CA 的证书来自 config/ca/（入库、有效期到 2036），挂在 caddy 容器的 /certs。
+# 不再用 Caddy 自签的 local_certs：那样 `docker compose down -v` 删卷就换一把新根证书，
+# 每台客户端都要重装一次。
+#
+# tls 是**站点级**指令，不能写进全局块 —— 所以每个站点块里都插一行。
+TLS_LINE = "\ttls /certs/orgflow-ca.crt /certs/orgflow-ca.key"
 SUBDOMAIN_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
 NAME_RE = SUBDOMAIN_RE
 # 注册 API 写 routes.yaml；routes.yaml 仍是唯一真源，API 只是它的写入口。
@@ -119,8 +126,6 @@ def render(settings, routes):
     out = [
         "{",
         "\tadmin 0.0.0.0:2019",
-        # 内部 CA：不向公网申请证书，根证书由 scripts/ca-install.sh 分发
-        "\tlocal_certs",
         "}",
         "",
     ]
@@ -135,6 +140,7 @@ def render(settings, routes):
         if (r.get("name") or "").strip() == "docs":
             out.append(f"https://docs.{domain} {{")
             out.extend([
+                TLS_LINE,
                 # 匹配器豁免 /oauth2/*:start/callback 若也被 forward_auth 拦下,
                 # 会 302 到自身造成 rd 无限增长(实测踩过)
                 "\t@notoauth2 not path /oauth2/*",
@@ -160,6 +166,7 @@ def render(settings, routes):
             continue
 
         out.append(f"https://{sub}.{domain} {{")
+        out.append(TLS_LINE)
         if r.get("auth", False):
             out.extend([
                 "\tforward_auth oauth2-proxy:4180 {",

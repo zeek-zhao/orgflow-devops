@@ -72,14 +72,14 @@ assert deploy.bindings*.variable == [
 def nexusDry = newState()
 loadStep('deployNexus', nexusDry).call(environment: 'dev', dryRun: true)
 assert nexusDry.messages.size() == 1
-assert nexusDry.messages[0].contains('bash scripts/nexus-deploy.sh')
+assert nexusDry.messages[0].contains('bash scripts/70-nexus-deploy.sh')
 assert nexusDry.commands.empty
 assert nexusDry.bindings == null
 
 def nexus = newState()
 loadStep('deployNexus', nexus).call(environment: 'prod', dryRun: false)
 assert nexus.commands.size() == 1
-assert nexus.commands[0].contains('bash scripts/nexus-deploy.sh')
+assert nexus.commands[0].contains('bash scripts/70-nexus-deploy.sh')
 assert nexus.environment.contains('ENV_NAME=prod')
 assert nexus.bindings*.credentialsId == ['nexus-admin-password']
 assert nexus.bindings*.variable == ['NEXUS_ADMIN_PASSWORD']
@@ -96,7 +96,7 @@ assert backupEnvFile.environment.contains('ENV_FILE=/fake/env')
 def backup = newState()
 loadStep('backupService', backup).call(service: 'all', target: 'local', retentionDays: '0')
 assert backup.commands.size() == 1
-assert backup.commands[0].contains('bash scripts/backup.sh --service "$BACKUP_SERVICE"')
+assert backup.commands[0].contains('bash scripts/61-backup.sh --service "$BACKUP_SERVICE"')
 assert backup.bindings == []
 assert backup.environment.contains('BACKUP_RETENTION_DAYS=0')
 

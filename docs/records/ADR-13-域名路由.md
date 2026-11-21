@@ -31,7 +31,7 @@ M0 最初把 Caddy 当「路径前缀反代」用：`http://localhost:8080/jenki
   Caddy 的 `172.31.0.10`，其余查询转发 Docker 内嵌 DNS（`127.0.0.11`），
   所以 `ldap` / `dex` 这类服务名照旧可用。
 - Caddy 用 `local_certs`（内部 CA）自签，不向公网申请证书；根证书由
-  `scripts/ca-install.sh` 导出并装进系统信任库。
+  `scripts/21-ca-install.sh` 导出并装进系统信任库。
 
 ## 固定 IP 表
 
@@ -76,7 +76,7 @@ M0 最初把 Caddy 当「路径前缀反代」用：`http://localhost:8080/jenki
 站点仍是 `auth`，登录跳转打到不存在的域名，而所有静态检查都绿。
 
 现在缺 `name: auth` 路由会直接报错（`缺少 name: auth 的路由`），不会退化成默认值。
-`dex` 子域同理，是 M0 的固定约定（`scripts/render-dex.sh` 与站点表必须一致）。
+`dex` 子域同理，是 M0 的固定约定（`scripts/12-render-dex.sh` 与站点表必须一致）。
 
 ## 名字解析
 
@@ -97,8 +97,8 @@ DNS，`0.0.0.0:53` 会与它端口冲突（`EADDRINUSE`），容器直接起不�
 局域网访问时域名要指向**部署机的局域网 IP**，不是 `127.0.0.1`：
 
 ```bash
-bash scripts/gen-hosts.sh 192.168.0.50        # 打印片段
-sudo bash scripts/gen-hosts.sh 192.168.0.50 --write
+bash scripts/22-gen-hosts.sh 192.168.0.50        # 打印片段
+sudo bash scripts/22-gen-hosts.sh 192.168.0.50 --write
 ```
 
 ## 认证跳转
