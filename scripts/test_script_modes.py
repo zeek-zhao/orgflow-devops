@@ -54,6 +54,34 @@ class ScriptModeTests(unittest.TestCase):
             + "\n  ".join(offenders),
         )
 
+    def test_renamed_scripts_have_no_stale_references(self):
+        """反证另一面：脚本改名后，任何文件里都不能再出现旧路径。
+
+        tests/harness/entrypoint.sh 里的脚本路径是烧进 m0-test 镜像的
+        （COPY tests/harness/entrypoint.sh），改了名字而这里漏改，CI 会红在
+        「No such file or directory」——这次真机就是被它卡住的。
+        """
+        import re
+
+        old = re.findall(r"(?<![-\w])(?:gen-agent-key|ca-install|gen-hosts|init|backup|restore|"
+                         r"nexus-deploy|nexus-backup|nexus-setup-repos|pin-images|doctor|"
+                         r"cve-scan|gen-sbom|render-dex|gen-jjb-conf|jenkins-cli|"
+                         r"ldap-set-passwords|gen-ldif-passwords|collect-jenkins-warnings|"
+                         r"check-jenkins-warnings)\.(?:sh|py)", "", re.S)
+        self.assertEqual(old, [])
+
+        stale = []
+        for path in (ROOT / "tests").rglob("*"):
+            if not path.is_file() or path.suffix not in {".sh", ".bats", ".py", ".yml"}:
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for hit in re.finditer(r"scripts/([a-z0-9-]+)\.(?:sh|py)", text):
+                name = hit.group(1)
+                if re.match(r"^\d", name):
+                    continue  # 已编号
+                stale.append(f"{path.relative_to(ROOT)}: scripts/{hit.group(0)}")
+        self.assertEqual(stale, [], "脚本编号化后出现旧名引用：\n  " + "\n  ".join(stale))
+
     def test_candidates_are_not_empty(self):
         # 反证守卫：目录改名或扫描逻辑写错时，用例会「扫不到东西」而假绿。
         self.assertGreater(len(list(iter_candidates())), 10)

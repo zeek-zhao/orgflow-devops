@@ -68,7 +68,9 @@ for name, service in services.items():
         # Rebuild against the current sources (cached when unchanged).
         # jenkins / jenkins-agent 也在这里构建：底座在 Docker Hub，所以这条路径只适用于
         # 能出网的机器；213 拉不到 Hub，一律走 USE_GHCR=1，不经过这里。
-        docker compose build router dnsmasq jenkins jenkins-agent
+        # docs（MkDocs Material）同理：本地构建路径必须把它一起建出来，否则 harness 的
+        # 「宿主镜像预载」会报 No such image: orgflow-devops-docs:latest。
+        docker compose build router dnsmasq jenkins jenkins-agent docs
         ;;
     update)
         temporary=$(mktemp tests/images.lock.XXXXXX)

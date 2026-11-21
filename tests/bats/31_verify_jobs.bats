@@ -39,11 +39,17 @@ setup() {
     grep -q 'credentials-id: github-token' "$file"
 }
 
-@test "verifyService: deployable 白名单与 deploy.sh 的 case 完全一致" {
-    # deploy.sh case 行（去掉空串与 nexus——nexus 走 deployNexus）
+@test "verifyService: deployable 白名单与 config/services.yml 完全一致" {
+    # M0 重构后 --service 的合法值来自 config/services.yml（单一真源），
+    # 不再是 50-deploy.sh 里手写的 case 行；这里对照那份登记表。
     local from_script
-    from_script="$(sed -n 's/^  ""|\(.*\)) ;;/\1/p' "$M0_REPO/scripts/deploy.sh" \
-        | tr '|' '\n' | grep -vx nexus | sort | tr '\n' ' ')"
+    from_script="$(python3 - "$M0_REPO" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1] + "/scripts")
+import lib.config as cfg
+print(" ".join(sorted(cfg.load_services()["services"])))
+PY
+)"
     [ -n "$from_script" ]
 
     local from_step
