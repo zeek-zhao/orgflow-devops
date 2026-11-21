@@ -5,7 +5,7 @@
 services:
   jjb:
     build:
-      context: ./tools/jjb
+      context: ./jjb
       tags: ["orgflow/jjb:24.04-v1"]
     profiles: ["tools"]
     working_dir: /repo

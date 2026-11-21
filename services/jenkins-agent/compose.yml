@@ -3,7 +3,7 @@
 services:
   jenkins-agent:
     build:
-      context: ./tools/jenkins-agent
+      context: ../../tools/jenkins-agent
       tags: ["orgflow/jenkins-agent:24.04-v1"]
     container_name: of-jenkins-agent
     restart: unless-stopped

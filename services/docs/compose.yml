@@ -12,8 +12,9 @@
 services:
   docs:
     build:
-      context: .
-      dockerfile: services/docs/Dockerfile
+      # mkdocs.yml 与 docs/ 都在仓根，上下文必须是仓根（相对本片段用 ../..）
+      context: ../..
+      dockerfile: Dockerfile
     container_name: of-docs
     restart: unless-stopped
     entrypoint: ["/bin/sh", "-c"]

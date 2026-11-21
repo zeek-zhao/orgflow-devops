@@ -9,7 +9,7 @@
 services:
   jenkins:
     build:
-      context: ./services/jenkins
+      context: ../../services/jenkins
       tags: ["orgflow/jenkins:24.04-v1"]
     container_name: of-jenkins
     restart: unless-stopped

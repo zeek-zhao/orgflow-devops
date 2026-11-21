@@ -7,7 +7,7 @@
 services:
   dnsmasq:
     build:
-      context: ./services/dnsmasq
+      context: ../../services/dnsmasq
       tags: ["orgflow/dnsmasq:24.04-v1"]
     container_name: of-dnsmasq
     restart: unless-stopped
