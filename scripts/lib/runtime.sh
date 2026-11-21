@@ -76,6 +76,11 @@ orgflow_service_field() {
   orgflow_py service-field "$@"
 }
 
+# compose 里登记的服务名（不含 tools / external）
+orgflow_services() {
+  orgflow_py services
+}
+
 orgflow_container() {
   orgflow_py container "$@"
 }
@@ -174,6 +179,7 @@ orgflow_wait_healthy() {
       echo "  $svc: 等待健康超时（${timeout}s），最后状态 $status" >&2
       return 1
     fi
-    sleep 3
+    # 轮询间隔可调：测试与 CI 里 mock 的健康状态是瞬时的，sleep 3 会白等
+    sleep "${ORGROFLOW_POLL_INTERVAL:-3}"
   done
 }

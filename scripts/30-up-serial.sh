@@ -40,14 +40,22 @@ fi
 orgflow_export_runtime_env
 
 echo "== 串行启动（$([ -n "$target" ] && echo "单服务 $target" || echo "${#order[@]} 个服务")）=="
-for svc in $order; do
+for svc in "${order[@]}"; do
+  up_log="$(mktemp)"
+  trap 'rm -f "$up_log"' EXIT
   wait_for="$(orgflow_service_field "$svc" health_wait 2>/dev/null || true)"
   wait_for="${HEALTH_TIMEOUT:-${wait_for:-120}}"
   echo "-- [$svc] up（健康超时 ${wait_for}s）"
-  if ! "${COMPOSE[@]}" up -d --no-deps "$BUILD_FLAG" --quiet-pull "$svc" 2>&1 | orgflow_redact; then
+  # ★ 不能写成 `if ! compose up ... | orgflow_redact`：管道退出码是 redact 的，
+  #   docker 的 23/125 会被吞成 1，真机上被误读成「参数写错」。先落盘再脱敏输出。
+  "${COMPOSE[@]}" up -d --no-deps "$BUILD_FLAG" --quiet-pull "$svc" >"$up_log" 2>&1 && up_rc=0 || up_rc=$?
+  if [ "$up_rc" -ne 0 ]; then
+    orgflow_redact <"$up_log" >&2
     orgflow_diagnose "$svc"
-    orgflow_fail "$svc 启动失败（拉取/构建阶段）"
+    echo "$svc 启动失败（拉取/构建阶段），compose 退出码 $up_rc" >&2
+    exit "$up_rc"
   fi
+  orgflow_redact <"$up_log"
   if ! orgflow_wait_healthy "$svc" "$wait_for"; then
     orgflow_diagnose "$svc"
     orgflow_fail "$svc 未在 ${wait_for}s 内变成 healthy"

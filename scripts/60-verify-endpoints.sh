@@ -37,7 +37,8 @@ check() {   # check <层> <描述> <期望|分隔> <实际>
   if [[ "|${expected}|" == *"|${actual}|"* ]]; then
     printf '  ✓ [%s] %s = %s（期望 %s）\n' "$layer" "$label" "$actual" "$expected"
   else
-    printf '  ✗ [%s] %s = %s（期望 %s）\n' "$layer" "$label" "$actual" "$expected"
+    # 失败逐项也走 stderr：只留汇总行的话，调用方只看到「失败 N 项」，不知道是哪项
+    printf '  ✗ [%s] %s = %s（期望 %s）\n' "$layer" "$label" "$actual" "$expected" >&2
     fails=$((fails + 1))
   fi
 }
@@ -61,7 +62,7 @@ for mapping in "HTTP ${HTTP_PORT}" "HTTPS ${HTTPS_PORT}"; do
   code="$(curl -sS --connect-timeout 3 --max-time 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/" 2>/dev/null || echo 000)"
   # HTTP 端口对任意 Host 都是 308（跳 https）；用 -k 直接打 https 端口拿 200/308 都算通
   if [ "$code" = "000" ]; then
-    printf '  ✗ [宿主机] %s 端口 %s 不可达\n' "$label" "$port"
+    printf '  ✗ [宿主机] %s 端口 %s 不可达\n' "$label" "$port" >&2
     fails=$((fails + 1))
   else
     printf '  ✓ [宿主机] %s 端口 %s 可连（%s）\n' "$label" "$port" "$code"
@@ -91,7 +92,7 @@ for check_spec in \
   read -r sub path expected <<< "$check_spec"
   actual="$(gw "$sub" "$path")"
   if [ "$actual" = "000" ]; then
-    printf '  ✗ [域名层] %s%s 连接失败（宿主端口 %s）\n' "$sub" "$path" "$HTTPS_PORT"
+    printf '  ✗ [域名层] %s%s 连接失败（宿主端口 %s）\n' "$sub" "$path" "$HTTPS_PORT" >&2
     fails=$((fails + 1))
     continue
   fi
