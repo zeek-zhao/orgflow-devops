@@ -178,6 +178,7 @@ test: check-jenkins-image
 	@python3 scripts/test_service_doc_sections.py
 	@python3 scripts/test_job_pipelines.py
 	@python3 scripts/test_config.py
+	@python3 scripts/test_script_modes.py
 	@python3 scripts/migrate_identity.py --verify
 	@python3 scripts/test_ldif_passwords.py
 	@python3 scripts/test_ldap_set_passwords.py

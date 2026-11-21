@@ -5,7 +5,7 @@
 services:
   router:
     build:
-      context: ./services/router
+      context: ../../services/router
       tags: ["orgflow/router:24.04-v1"]
     container_name: of-router
     restart: unless-stopped
