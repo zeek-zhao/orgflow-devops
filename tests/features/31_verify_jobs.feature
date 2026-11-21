@@ -22,10 +22,10 @@ Feature: verify-service 任务模板
     Then 引用 verifyService 且带 DRY_RUN
 
   @REQ-M0-B0
-  Scenario: verifyService: deployable 白名单与 deploy.sh 的 case 完全一致
-    Given 共享库与 deploy.sh 就绪
+  Scenario: verifyService: deployable 白名单与 config/services.yml 完全一致
+    Given 共享库与 config/services.yml 就绪
     When 对照 deployable 白名单
-    Then 与 deploy.sh case 完全一致
+    Then 与 config/services.yml 的服务登记表完全一致
 
   @REQ-M0-B0
   @REQ-M0-D5

@@ -96,7 +96,7 @@ straight to:
 | Why domain-based routing | [ADR-13](docs/records/ADR-13-域名路由.md) |
 | Backup and restore drills | [备份与恢复](docs/engineering/备份与恢复.md) |
 | What we redistribute and under which terms | [开源合规](docs/records/开源合规.md) + [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md) |
-| Which docs exist, and how they're governed | [文档地图](docs/文档地图.md) · [文档登记册](docs/文档登记册.md) · [文档规范](docs/engineering/文档规范.md) |
+| Which docs exist, and how they're governed | [文档地图](docs/文档地图.md) · [文档登记册](docs/文档登记册.md) · [文档规范](docs/engineering/文档规范.md) · [站点入口页 index.md](docs/index.md) |
 | Known gaps and open findings | [问题索引](docs/project/问题索引.md) |
 
 ## Contributing
