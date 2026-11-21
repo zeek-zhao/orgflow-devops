@@ -37,8 +37,8 @@ services:
       # ★ 固定 sshd 的 host key（2026-11-01 真机验收踩到）。/etc/ssh 不持久化，
       #   每次重建 ssh-keygen -A 都会生成新 host key，而 JCasC 的 host key 校验
       #   见到变化就要人工点「Trust SSH Host Key」，节点直接离线、job 全 pending。
-      - ./secrets/agent_host_key:/etc/ssh/ssh_host_ed25519_key:ro
-      - ./secrets/agent_ssh_key.pub:/run/secrets/agent_ssh_pub:ro
+      - ../../secrets/agent_host_key:/etc/ssh/ssh_host_ed25519_key:ro
+      - ../../secrets/agent_ssh_key.pub:/run/secrets/agent_ssh_pub:ro
     expose:
       - "22"
     depends_on:

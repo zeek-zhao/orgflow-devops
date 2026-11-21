@@ -39,7 +39,7 @@ services:
       - NEXUS_ADMIN_PASSWORD=${NEXUS_ADMIN_PASSWORD}
     volumes:
       - jenkins_home:/var/jenkins_home
-      - ./config/jenkins.yaml:/var/jenkins_home/casc/jenkins.yaml:ro
+      - ../../config/jenkins.yaml:/var/jenkins_home/casc/jenkins.yaml:ro
     expose:
       - "8080"
     depends_on:

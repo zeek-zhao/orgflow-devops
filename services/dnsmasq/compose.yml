@@ -20,7 +20,9 @@ services:
       orgflow:
         ipv4_address: ${IP_DNSMASQ}
     healthcheck:
-      test: ["CMD-SHELL", "dig +short +time=2 +tries=1 jenkins.$$GATEWAY_DOMAIN @$$DNSMASQ_LISTEN_IP | grep -q ."]
+      # 查自己实际监听的地址：DNSMASQ_LISTEN_IP 是配置里的固定 IP，测试栈/改过 subnet
+      # 的部署里容器地址不是它，用配置值会永远 unhealthy（2026-11-22 实测 172.19.0.2）。
+      test: ["CMD-SHELL", "dig +short +time=2 +tries=1 jenkins.$$GATEWAY_DOMAIN @$(hostname -I | cut -d' ' -f1) | grep -q ."]
       interval: 10s
       timeout: 5s
       retries: 5
