@@ -36,6 +36,9 @@ ldap:
   admin_id: admin
   # 所有 LDAP 账号统一口令（2026-11-21 用户口径：不再随机生成，仓库存 {SSHA} 哈希）
   # service 段里的同名账号若目录里没有，make init 会按账号体系补建。
+  # 这里写明文是故意的：M0 是隔离环境的公司内网平台，口令必须可被运维直接查；
+  # 目录里存的仍是哈希，渲染出的 out/runtime.env 权限 0600 且不进 git。
+  # 脱敏门禁的白名单只豁免本文件这一条「口令明文」规则，其余规则照扫。
   password: "123456"
 
 mail:
@@ -53,6 +56,7 @@ jenkins:
 nexus:
   # Nexus 不在本轮 compose 里（#46）：由 Jenkins job nexus-deploy 部署
   admin_id: admin
+  # 与 ldap.password 同一个值：M0 的所有账号共用一套口令，运维只需记一个。
   password: "123456"
 
 oauth2:

@@ -26,6 +26,8 @@ while [ "$#" -gt 0 ]; do
     --push-jobs) PUSH_JOBS=1; shift ;;
     --service)
       [ "$#" -ge 2 ] && [ -n "$2" ] || orgflow_fail "--service 需要指定服务名"
+      # 传两次就等于静默丢掉一个：照最后一个跑完，运维以为另一个也部署了
+      [ -z "$SERVICE" ] || orgflow_fail "--service 只能指定一个服务（已给 $SERVICE，又给 $2）"
       SERVICE="$2"; shift 2 ;;
     *) orgflow_fail "未知参数: $1" ;;
   esac
@@ -37,7 +39,18 @@ if [ "$PUSH_JOBS" = 1 ]; then
 fi
 
 if [ -n "$SERVICE" ]; then
-  orgflow_container "$SERVICE" >/dev/null 2>&1 || orgflow_fail "不支持的服务: $SERVICE（可选值见 config/services.yml）"
+  # --service 只接受 compose 里的服务。orgflow_container 会连 tools/external
+  # 一起查，nexus 属于 external（#46 由 job nexus-deploy 用 docker run 拉起），
+  # 用它做过判据就会让 `--service nexus` 静默跑通一个"什么都没部署"的成功。
+  case " $(orgflow_services | tr '\n' ' ') " in
+    *" $SERVICE "*) ;;
+    *)
+      if [ "$SERVICE" = nexus ]; then
+        orgflow_fail "--service nexus 不支持（#46）：nexus 不在 compose 里，由 Jenkins job nexus-deploy 部署（bash scripts/70-nexus-deploy.sh）"
+      fi
+      orgflow_fail "不支持的服务: $SERVICE（可选值见 config/services.yml 的 services 段，或 make services）"
+      ;;
+  esac
 fi
 
 # 这两个开关在 ADR-13 之后就废弃了。保留成硬错误而不是静默忽略 ——
