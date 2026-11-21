@@ -268,6 +268,11 @@ def main() -> int:
 
     cfg = load()
     services = load_services()
+    if len(sys.argv) > 1 and sys.argv[1] == "env-keys":
+        # 给 harness 用：compose 需要的全部变量名（空格分隔），配合
+        # 10-render-config.sh 的 RUNTIME_ENV_KEYS 只渲染测试栈要的键。
+        print(" ".join(env_pairs(cfg, services)))
+        return 0
     if len(sys.argv) > 1 and sys.argv[1] == "env-ldap":
         # 给 harness 用：ldap 的 healthcheck 需要这三个键做 bind + base 搜索，
         # 而测试栈的 env 文件来自 .env.example（没有它们）。一行一个 KEY<TAB>值，

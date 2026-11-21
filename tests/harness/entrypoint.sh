@@ -92,60 +92,106 @@ done
 
 stage="preparing environment"
 umask 077
-# 始终用临时副本：下面要追加域名/端口覆盖，绝不能改仓库里的 .env
+#
+# 测试栈的 env 文件（/tmp/m0.env）**只有一个真源**：config/orgflow.yml +
+# config/services.yml，经 scripts/10-render-config.sh 渲染。
+#
+# 为什么不能拿 .env.example 当基础（2026-11-22 本地 DinD 实测）：它只有配置的
+# 一小部分 —— 没有 LDAP_BASE_DN / LDAP_ADMIN_DN（ldap healthcheck 拿空 DN 去
+# bind，容器日志 `op=0 BIND dn=""` + err 49，永久 unhealthy），也没有
+# NETWORK_SUBNET / IP_*（compose 把这些 ${VAR} 逐个插值成空串，网络与固定 IP
+# 全靠默认值，于是测试栈和真机的拓扑根本不是同一个）。
+#
+# 调用方显式提供了 .env（真机场景）时，只沿用它的【值】，不沿用它的文件：
+# 缺哪些键就让渲染补哪些，这样 CI 与真机走同一条链。渲染结果落在
+# /tmp/m0.env，绝不改仓库里的 .env。
 source_env=$M0_ENV_FILE
 M0_ENV_FILE=/tmp/m0.env
-if [[ -f $source_env ]]; then
-    cp "$source_env" "$M0_ENV_FILE"
-else
-    cp /repo/.env.example "$M0_ENV_FILE"
-    for key in LDAP_ADMIN_PASSWORD OAUTH2_CLIENT_SECRET OAUTH2_COOKIE_SECRET \
-               JENKINS_ADMIN_PASSWORD NEXUS_ADMIN_PASSWORD ORGFLOW_INITIAL_PASSWORD; do
-        secret=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
-        sed -i "s/^${key}=.*/${key}=${secret}/" "$M0_ENV_FILE"
-    done
+
+stage="rendering runtime config"
+bash /repo/scripts/10-render-config.sh >/tmp/render.log 2>&1 || {
+  cat /tmp/render.log >&2
+  echo "配置渲染失败（config/orgflow.yml / config/services.yml）" >&2
+  exit 1
+}
+umask 077
+cp /repo/out/runtime.env "$M0_ENV_FILE"
+chmod 600 "$M0_ENV_FILE"
+
+# 口令类键：调用方 .env 自己给了就覆盖（尊重「已有 .env 不擅自改」的约定）
+if [ -r "$source_env" ]; then
+  while IFS= read -r assignment; do
+    key=${assignment%%=*}
+    case $key in
+      *PASSWORD*|*SECRET*|*TOKEN*)
+        if grep -qE "^${key}=" "$M0_ENV_FILE"; then
+          python3 - "$M0_ENV_FILE" "$key" "$assignment" <<'PY'
+import pathlib, sys
+path, key, assignment = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = pathlib.Path(path).read_text(encoding="utf-8").splitlines()
+out = [assignment if line.startswith(key + "=") else line for line in lines]
+path.write_text("\n".join(out) + "\n", encoding="utf-8")
+PY
+          fi
+        ;;
+    esac
+  done < <(grep -E '^[A-Z_]+=.+' "$source_env" || true)
 fi
-# 老 .env（#46 之前生成的）没有 NEXUS_ADMIN_*。缺了就补一个随机密码：
-# 否则 JCasC 拿到空值、nexus-deploy 跳过改密，而「改密生效」那条断言
-# 会因为根本没测到而假绿。
-if ! grep -qE '^NEXUS_ADMIN_PASSWORD=.+' "$M0_ENV_FILE"; then
-    printf 'NEXUS_ADMIN_ID=admin\nNEXUS_ADMIN_PASSWORD=%s\n' \
-        "$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')" >> "$M0_ENV_FILE"
-fi
-# 追加覆盖（dotenv 后者生效）：测试栈固定域名与端口，不受调用方 .env 影响
+# 测试栈固定域名与端口：不受调用方配置影响（非特权端口，避免占宿主 80/443）
 cat >> "$M0_ENV_FILE" <<EOF
 GATEWAY_DOMAIN=$GATEWAY_DOMAIN
 GATEWAY_HTTP_PORT=$GW_HTTP_PORT
 GATEWAY_HTTPS_PORT=$GW_HTTPS_PORT
 EOF
 
-# LDAP_BASE_DN / LDAP_ADMIN_DN 由配置渲染得出（orgflow.yml → out/runtime.env），
-# 而测试栈的 env 文件是 .env.example 的拷贝 —— 里面没有这两个键。ldap 的
-# healthcheck 用它们做 bind + base 搜索，缺键时 DN 是空串，slapd 回
-# `ldap_bind: Invalid credentials (49)`（容器侧日志 `op=0 BIND dn=""`），
-# 整个栈卡在 ldap unhealthy（2026-11-22 本地 DinD 实测）。所以这里按同一
-# 份配置补齐，绝不硬编码 dc=...；配置与 .env.example 不一致时以配置为准。
-stage="completing ldap env"
-if ! python3 /repo/scripts/lib/config.py >/dev/null; then
-  echo "配置校验失败（config/orgflow.yml），无法补齐 ldap 的 DN 环境变量" >&2
+# 被测脚本（30-up-serial / 60-verify / backup…）自己会读 out/runtime.env，
+# 所以它必须就是测试栈真正在用的那份变量，否则「脚本读 80/443、栈发布在
+# 8080/8443」这种错位会以莫名其妙的自检失败出现。
+cp "$M0_ENV_FILE" /repo/out/runtime.env
+chmod 600 /repo/out/runtime.env
+echo "[harness] env 键数=$(grep -c '=' "$M0_ENV_FILE")" >&2
+if ! grep -qE '^LDAP_BASE_DN=.' "$M0_ENV_FILE"; then
+  echo "[harness] ✗ 测试栈 env 文件里没有 LDAP_BASE_DN（配置渲染有问题？）" >&2
   exit 1
 fi
-while IFS=$'\t' read -r key value; do
-  # 已有值就不覆盖：调用方 .env 自己给了 LDAP_BASE_DN 时以它为准
-  if ! grep -qE "^${key}=.+" "$M0_ENV_FILE"; then
-    # DN 带逗号，必须加引号：compose 的 dotenv 解析器遇到未加引号的逗号值
-    # 会放弃整份 env 载荷（实测裸跑会出现「所有键都变空」的连锁失败）
-    printf '%s="%s"\n' "$key" "$value" >> "$M0_ENV_FILE"
-  fi
-done < <(python3 /repo/scripts/lib/config.py env-ldap)
-# 上面 while 的退出码来自最后一次 grep；set -e 下这里不能靠它判断成败
-: 补齐完成
-for key in LDAP_BASE_DN LDAP_ADMIN_DN; do
-  if ! grep -qE "^${key}=.+" "$M0_ENV_FILE"; then
-    echo "配置渲染没有产出 $key（orgflow.yml 有问题？），ldap healthcheck 会因空 DN 失败" >&2
-    exit 1
-  fi
-done
+
+# 渲染产物必须覆盖 compose 里出现的每个 ${VAR}，否则 compose 会把它插值成空串
+# 而只打一行 warning —— 症状是「服务起来了但连不上」，排查成本极高。
+stage="checking rendered vars"
+missing=$(python3 - "$M0_ENV_FILE" <<'PY'
+import pathlib, re, sys
+env_file = pathlib.Path(sys.argv[1])
+have = set()
+for line in env_file.read_text(encoding="utf-8").splitlines():
+    match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)=", line)
+    if match:
+        have.add(match.group(1))
+needed = set()
+# 只扫 compose 文件：scripts/*.sh、.github/workflows/*.yml、docs 里也有 ${VAR}，
+# 但那些是 shell 变量或 CI 环境，不属于渲染产物要提供的键集（2026-11-22 实测：
+# 扫全仓会报出 BASE_SHA / GITHUB_REPOSITORY / ae 等一堆假缺口）。
+compose_files = [pathlib.Path("/repo/docker-compose.yml")]
+for line in compose_files[0].read_text(encoding="utf-8").splitlines():
+    match = re.match(r"^\s*-\s+([\w./-]+\.ya?ml)\s*$", line)
+    if match:
+        compose_files.append(pathlib.Path("/repo") / match.group(1))
+for path in compose_files:
+    if not path.exists():
+        continue
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.lstrip().startswith("#"):
+            continue
+        needed |= set(re.findall(r"\$\{([A-Za-z_][A-Za-z0-9_]*)", line))
+# compose 项目层面的变量由调用方环境提供，不算渲染缺口
+skip = {"COMPOSE_PROJECT_NAME", "DOCKER_GID", "JENKINS_AGENT_SSH_PRIVATE_KEY",
+        "JENKINS_AGENT_HOST_KEY", "KEEP"}
+print(" ".join(sorted(needed - have - skip)))
+PY
+)
+if [ -n "$missing" ]; then
+  echo "渲染产物缺少 compose 引用的变量：$missing" >&2
+  exit 1
+fi
 
 # agent 的 SSH 密钥必须在 compose up 之前生成：jenkins 与 jenkins-agent 都 bind 了
 # secrets/ 下的文件，文件不存在时 compose 直接报

@@ -24,13 +24,32 @@ IP="${NEXUS_IP:-172.31.0.21}"
 IMAGE="${NEXUS_IMAGE:-ghcr.io/zeek-zhao/orgflow-devops/mirror-nexus:3.92.2@sha256:a32ae23e0fdacccc4f2a9cbf3aa613388d11a1495d5dd66c639c8e84ad39b179}"
 ADMIN_ID="${NEXUS_ADMIN_ID:-admin}"
 ADMIN_PASSWORD="${NEXUS_ADMIN_PASSWORD:-}"
-# fallback: doc says the password lives only in the deploy machine's .env,
-# but running `bash scripts/70-nexus-deploy.sh` by hand has no env var set,
-# so the change-password step was silently skipped and setup-repos got 401.
-# Read it from the repo-root .env when unset (never printed); an explicit
-# env var still wins, so the Jenkins job path is unchanged.
+# 凭据来源顺序（M0 重构后）：环境变量 > out/runtime.env > .env。
+#   - 环境变量：Jenkins job `nexus-deploy` 走这条，行为不变。
+#   - out/runtime.env：**真机与 harness 的唯一真源**（config/orgflow.yml 经
+#     scripts/10-render-config.sh 渲染），由 `make deploy` 生成。
+#   - .env：旧部署的遗留文件，只在两者都没有时兜底；新部署不再产生它。
+# 为什么必须兜底到 runtime.env（2026-11-22 213 全新部署实测）：只读 .env 时，
+# 新部署树里没有 .env → 改密被静默跳过 → setup-repos 拿初始密码 401，
+# 而日志只有一句「NEXUS_ADMIN_PASSWORD 未设置」，看不出是凭据没读到。
+nexus_read_cred() {   # nexus_read_cred <KEY> <file>
+    local key=$1 file=$2 line value
+    [ -r "$file" ] || return 0
+    line="$(grep -E "^${key}=" "$file" 2>/dev/null | head -n 1)" || return 0
+    value="${line#*=}"
+    value="${value%\"}"
+    value="${value#\"}"
+    printf '%s' "$value"
+}
+if [ -z "$ADMIN_PASSWORD" ] && [ -f "$SCRIPT_DIR/../out/runtime.env" ]; then
+    ADMIN_PASSWORD="$(nexus_read_cred NEXUS_ADMIN_PASSWORD "$SCRIPT_DIR/../out/runtime.env")"
+fi
 if [ -z "$ADMIN_PASSWORD" ] && [ -f "$SCRIPT_DIR/../.env" ]; then
-    ADMIN_PASSWORD="$(sed -n 's/^NEXUS_ADMIN_PASSWORD=//p' "$SCRIPT_DIR/../.env" | head -n 1)"
+    ADMIN_PASSWORD="$(nexus_read_cred NEXUS_ADMIN_PASSWORD "$SCRIPT_DIR/../.env")"
+fi
+if [ -z "${NEXUS_ADMIN_ID:-}" ] && [ -f "$SCRIPT_DIR/../out/runtime.env" ]; then
+    ADMIN_ID="$(nexus_read_cred NEXUS_ADMIN_ID "$SCRIPT_DIR/../out/runtime.env")"
+    [ -n "$ADMIN_ID" ] || ADMIN_ID=admin
 fi
 READY_TIMEOUT="${NEXUS_READY_TIMEOUT:-300}"
 POLL_INTERVAL="${NEXUS_POLL_INTERVAL:-3}"
@@ -78,6 +97,13 @@ else
     # Caddy 的上游写的是 `nexus:8081`，少了这个别名网关直接 502。
     # --dns 172.31.0.2：与其余 compose 服务一致，走 dnsmasq。
     # 不写的话会退回 Docker 内嵌 DNS，解析不了 `*.org-devops.com` 这类网关域名。
+    # M0 的口令口径是「全平台一套 6 位数字口令」（config/orgflow.yml 里 ldap.nexus.password），
+    # 而 Nexus 3.92 内置校验器是 `PasswordValidator.DEFAULT_PASSWORD_REGEX = .{8,}`，
+    # 硬编码在 jar 里、REST 上没有可改的端点（2026-11-22 实测：PUT
+    # /security/security-password-policy → 404；解包 nexus-security jar 后
+    # 在 PasswordValidator.class 里找到那两个 @Value 属性）。
+    # 这两个属性是它唯一的官方覆盖面（Spring @Value，可被环境变量注入），
+    # 所以这里按配置放宽到 6 位，并把策略改动留在审计日志里。
     docker run -d \
         --name "$CONTAINER" \
         --restart unless-stopped \
@@ -86,6 +112,8 @@ else
         --ip "$IP" \
         --label orgflow.managed-by=nexus-deploy \
         --dns 172.31.0.2 \
+        -e "nexus.password.validator=.{${NEXUS_PASSWORD_MIN_LENGTH:-6},}" \
+        -e "nexus.password.validator.message=口令至少 ${NEXUS_PASSWORD_MIN_LENGTH:-6} 位（M0 公司内网统一口令口径，见 config/orgflow.yml）" \
         -v "$VOLUME:/nexus-data" \
         --health-cmd "curl -fsS http://localhost:8081/service/rest/v1/status || exit 1" \
         --health-interval 10s \
@@ -111,6 +139,38 @@ until docker exec "$CONTAINER" curl -fsS http://localhost:8081/service/rest/v1/s
 done
 log "REST API 已就绪"
 
+# ★ REST /status 只说明 Jetty 在听端口，不代表 admin realm 已经装载完。
+#   2026-11-22 harness 实测：/status 立刻 200，紧接着改密时 admin 账号还认不出来 →
+#   PUT change-password 返回 400，回退 JSON 又 415，看起来像「接口不对」，
+#   实际只是「早了几十秒」。这里用初始密码打一次 /status/check，
+#   认不出来就继续等，等到 deadline 再判失败。
+if [ -n "$ADMIN_PASSWORD" ]; then
+    initial_pw=""
+    if docker exec "$CONTAINER" test -f /nexus-data/admin.password 2>/dev/null; then
+        initial_pw="$(docker exec "$CONTAINER" cat /nexus-data/admin.password 2>/dev/null | tr -d '\r\n' || true)"
+    fi
+    probe_pw="${initial_pw:-$ADMIN_PASSWORD}"
+    if [ -n "$probe_pw" ]; then
+        log "等待 admin 账号可用（最多 ${READY_TIMEOUT}s）"
+        until [ "$(docker exec "$CONTAINER" curl -sS -o /dev/null -w '%{http_code}' \
+                     -u "$ADMIN_ID:$probe_pw" \
+                     http://localhost:8081/service/rest/v1/status/check 2>/dev/null)" = "200" ]; do
+            if (( SECONDS >= deadline )); then
+                # 认不出来也可能是「密码早就改过了」：再拿配置的密码试一次
+                if [ -n "$initial_pw" ] && [ "$probe_pw" != "$ADMIN_PASSWORD" ] \
+                   && [ "$(docker exec "$CONTAINER" curl -sS -o /dev/null -w '%{http_code}' \
+                            -u "$ADMIN_ID:$ADMIN_PASSWORD" \
+                            http://localhost:8081/service/rest/v1/status/check 2>/dev/null)" = "200" ]; then
+                    break
+                fi
+                fail "admin 账号在 ${READY_TIMEOUT}s 内仍不可用（初始密码与配置密码都认证失败）"
+            fi
+            sleep "$POLL_INTERVAL"
+        done
+        log "admin 账号可用"
+    fi
+fi
+
 # ---- 改密 ----
 #
 # Nexus 首次启动会生成 /nexus-data/admin.password，里面是随机初始密码，
@@ -126,8 +186,20 @@ else
     # 只用 `curl -f` 的话失败时只剩一句「改密请求失败」，
     # 401 / 404 / 405 的排查方向完全不同，不能全靠猜。
     #   api <curl 参数...> → stdout 是 body，最后一行是状态码
-    api() { docker exec "$CONTAINER" curl -sS "$@"; }
-    api_code() { printf '%s' "$1" | tail -n 1; }
+    #
+    # ★ 必须把响应体写进容器里的文件、只用 `-w` 把状态码打到 stdout。
+    #   2026-11-22 实测：`bash -x` 时 xtrace 的 `++ docker exec …` 会混进
+    #   命令替换的 stdout，`tail -n 1` 取到的是调试行而不是状态码 → 真实的
+    #   204 被误读成 400/415，于是「改密总是失败」。用文件承接 body 后，
+    #   这个函数对 `bash -x` 免疫（状态码是唯一的 stdout 输出）。
+    api_body=/tmp/.nexus-api-body
+    # 请求体不能走 `docker exec … --data-binary "$body"` 直接传参：密码里有
+    # 特殊字符或换行时会被 shell/exec 层改写。统一先落到容器内的文件再用 @file。
+    api_files=/tmp/orgflow-nexus-api
+    docker exec "$CONTAINER" mkdir -p "$api_files" 2>/dev/null || true
+    api_body_path() { printf '%s' "${api_body}"; }
+    api() { docker exec "$CONTAINER" curl -sS -o "$api_body" "$@"; }
+    api_body_text() { docker exec "$CONTAINER" sh -c "cat $api_body 2>/dev/null | head -c 400" || true; }
 
     # 用 /status/check 而不是 /security/users：后者要 nexus:users:read 权限，
     # 前者只要求「已认证」，判「这个密码能不能登录」更直接、更少前置条件。
@@ -159,23 +231,23 @@ else
         #   （CI 实测：415，然后回退到 PUT /security/users/{id} 又因为缺
         #   firstName/source/status 等必填字段报 400 —— 那条路本来就走不通）。
         #   所以这里按 text/plain 发；万一某个版本改成要 JSON，再试一次 JSON。
-        try_change() {   # try_change <content-type> <body>
+        try_change() {   # try_change <content-type> <body> → 只 echo 状态码
+            printf '%s' "$2" | docker exec -i "$CONTAINER" sh -c "cat > $api_files/new-pw"
             api -X PUT -u "$ADMIN_ID:$initial" -H "Content-Type: $1" \
-                --data-binary "$2" -w '\n%{http_code}' \
-                "http://localhost:8081/service/rest/v1/security/users/$ADMIN_ID/change-password" 2>&1 || true
+                -H 'Accept: application/json' --data-binary "@$api_files/new-pw" -w '%{http_code}' \
+                "http://localhost:8081/service/rest/v1/security/users/$ADMIN_ID/change-password" 2>/dev/null || true
         }
 
-        resp="$(try_change 'text/plain' "$ADMIN_PASSWORD")"
-        code="$(api_code "$resp")"
+        code="$(try_change 'text/plain' "$ADMIN_PASSWORD")"
         if [ "$code" != "204" ] && [ "$code" != "200" ]; then
-            log "text/plain 返回 $code，再试 application/json"
+            log "text/plain 返回 ${code:-无响应}，再试 application/json"
             escaped="$(printf '%s' "$ADMIN_PASSWORD" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
-            resp="$(try_change 'application/json' "{\"password\":\"$escaped\"}")"
-            code="$(api_code "$resp")"
+            json_body="{\""password"\":\"$escaped\"}"
+            code="$(try_change 'application/json' "$json_body")"
         fi
         case "$code" in
             200|204) ;;
-            *) fail "改密失败（HTTP ${code:-无响应}）：$(printf '%s' "$resp" | sed '$d' | head -c 400)" ;;
+            *) fail "改密失败（HTTP ${code:-无响应}）：$(api_body_text)" ;;
         esac
 
         # 删掉初始密码文件：留着它等于留一把随时能用的后门，

@@ -23,7 +23,12 @@ OUT_DIR="${OUT_DIR:-out}"
 mkdir -p "$OUT_DIR"
 
 echo "== 校验并渲染配置 =="
-python3 - "$OUT_DIR" <<'PY'
+# RUNTIME_ENV_KEYS：只渲染这些键（空格分隔）。测试栈用它把「定稿的 env 文件」
+# 直接变成渲染产物（out/runtime.env），避免出现「compose 用 A 文件、被测脚本
+# 用 B 文件」两套变量 —— 那样脚本里的端口与栈实际发布端口可能不一致。
+RUNTIME_ENV_KEYS="${RUNTIME_ENV_KEYS:-}"
+
+python3 - "$OUT_DIR" "$RUNTIME_ENV_KEYS" <<'PY'
 import os
 import pathlib
 import sys
@@ -33,9 +38,12 @@ import config as cfgmod  # noqa: E402
 from rendered_values import quote  # noqa: E402
 
 out_dir = pathlib.Path(sys.argv[1])
+only = set(sys.argv[2].split())
 cfg = cfgmod.load()
 services = cfgmod.load_services()
 pairs = cfgmod.env_pairs(cfg, services)
+if only:
+    pairs = {key: value for key, value in pairs.items() if key in only}
 
 target = out_dir / "runtime.env"
 lines = [

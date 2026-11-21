@@ -100,7 +100,11 @@ if args[0] == "inspect":
         expected = [f"{ref}@{digest}" for line in (self.root / "tests/images.lock").read_text().splitlines()
                     if not line.startswith("#") for _, ref, digest in [line.split("\t")]]
         self.assertEqual([call[-1] for call in self.calls() if call[0] == "pull"], expected)
-        self.assertEqual(self.calls()[-1], ["compose", "build", "router", "dnsmasq", "jenkins", "jenkins-agent"])
+        # docs（MkDocs 站点）不在这条清单里：它由独立的 docs.yml 工作流构建，
+        # 不进 images.yml 的 matrix（详见 tests/images.sh 与 docs/services/docs.md）。
+        # 这里的清单是「本地 ensure 会构建的自建镜像」，多一个少一个都要显式改。
+        self.assertEqual(self.calls()[-1],
+                         ["compose", "build", "router", "dnsmasq", "jenkins", "jenkins-agent", "docs"])
 
     def test_failed_pull_is_not_hidden(self):
         result = self.run_script("tests/images.sh", "ensure",

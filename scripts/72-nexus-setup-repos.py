@@ -27,7 +27,7 @@ Nexus 的 8081 没有映射到宿主端口，宿主侧要走容器 IP —— 而
     NEXUS_BASE_URL=http://nexus:8081 NEXUS_ADMIN_ID=... NEXUS_ADMIN_PASSWORD=... \
         python3 /tmp/nexus-setup-repos.py
 
-凭据从环境变量或 .env 读（环境变量优先），不落日志。
+凭据从环境变量或 out/runtime.env（旧部署为 .env）读（环境变量优先），不落日志。
 """
 import base64
 import json
@@ -39,15 +39,23 @@ import urllib.error
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-ENV = ROOT / ".env"
+# 凭据来源顺序（与 scripts/70-nexus-deploy.sh 一致）：
+#   out/runtime.env（真机与 harness 的唯一真源，make deploy 生成）→ .env（旧部署遗留）。
+# 只读 .env 会让全新部署树直接报「NEXUS_ADMIN_PASSWORD 没有来源」（2026-11-22 实测）。
+ENV_CANDIDATES = (ROOT / "out" / "runtime.env", ROOT / ".env")
 
 
 def env(key: str) -> str:
-    if not ENV.exists():
-        return ""
-    for line in ENV.read_text(encoding="utf-8").splitlines():
-        if line.startswith(f"{key}="):
-            return line.split("=", 1)[1].strip()
+    for candidate in ENV_CANDIDATES:
+        if not candidate.exists():
+            continue
+        for line in candidate.read_text(encoding="utf-8").splitlines():
+            if line.startswith(f"{key}="):
+                value = line.split("=", 1)[1].strip()
+                # 渲染器给含逗号/空格的值加了双引号，读回来要剥掉
+                if len(value) >= 2 and value[0] == value[-1] == '"':
+                    value = value[1:-1]
+                return value
     return ""
 
 
@@ -70,7 +78,7 @@ def nexus_base_url() -> str:
 USER = os.environ.get("NEXUS_ADMIN_ID") or env("NEXUS_ADMIN_ID") or "admin"
 PW = os.environ.get("NEXUS_ADMIN_PASSWORD") or env("NEXUS_ADMIN_PASSWORD")
 if not PW:
-    print("✗ NEXUS_ADMIN_PASSWORD 没有来源（环境变量与 .env 都没有）", file=sys.stderr)
+    print("✗ NEXUS_ADMIN_PASSWORD 没有来源（环境变量 / out/runtime.env / .env 都没有）", file=sys.stderr)
     sys.exit(1)
 
 BASE = nexus_base_url()
@@ -152,6 +160,31 @@ HTTP_CLIENT = {
 # docker-group:8083 只做 pull —— Nexus OSS 向 group push 会返回
 #   "Deploying to groups is a PRO-licensed feature"（3.92.2 实测），
 # 所以 config/routes.yaml 的 docker 子域指 8082，group 留作容器网络内聚合入口。
+# 公网代理仓库（docker-proxy / pypi-proxy 之类）能不能建，取决于 **Nexus 容器自己
+# 能不能解析公网域名**。CI / DinD 里 Nexus 与其余服务同在一个隔离的 docker 网络，
+# 该网络的 DNS 上游是测试专用的 dnsmasq，公网解析在那里就断了 —— 这不是配置
+# 写错，而是「测试环境天然没有公网出口」。
+#
+# 判据必须从 **Nexus 容器里**探，不能用宿主 Python 的 getaddrinfo：
+# 2026-11-22 实测宿主机解析 pypi.org 正常、Nexus 容器 `nslookup` 超时 ——
+# 在宿主上探会得出「有公网」的错误结论，于是 proxy 建仓失败反而看着像脚本 bug。
+def _nexus_can_resolve() -> bool:
+    if os.environ.get("NEXUS_REQUIRE_INTERNET") == "1":
+        return True
+    container = os.environ.get("NEXUS_CONTAINER", "of-nexus")
+    try:
+        p = subprocess.run(
+            ["docker", "exec", container, "sh", "-c",
+             "nslookup pypi.org >/dev/null 2>&1 || getent hosts pypi.org >/dev/null 2>&1"],
+            capture_output=True, timeout=20)
+        return p.returncode == 0
+    except Exception:
+        return True   # 探不了就按「有公网」处理，让真实错误暴露出来
+
+
+OFFLINE = os.environ.get("NEXUS_ALLOW_OFFLINE_PROXY") != "1" and not _nexus_can_resolve()
+
+
 SPECS = [
     ("docker/hosted", "docker-hosted", {
         "name": "docker-hosted", "online": True, "storage": storage(True),
@@ -181,6 +214,11 @@ SPECS = [
     }),
     ("pypi/proxy", "pypi-proxy", {
         "name": "pypi-proxy", "online": True, "storage": storage(False),
+        # 报「Proxy URL blocked: Failed to resolve host: pypi.org」时，先查
+        # **容器自己的 DNS 能不能解析公网**：Nexus 容器如果只配了内网 dnsmasq
+        # （`--dns 172.31.0.2`），而 dnsmasq 的上游又是它自己所在网络的
+        # Docker 内嵌 DNS，公网域名在这里就断了（2026-11-22 harness 实测：
+        # 宿主机能解析、Nexus 容器解析超时）。这不是 remoteUrl 写法问题。
         "proxy": {"remoteUrl": "https://pypi.org",
                   "contentMaxAge": 1440, "metadataMaxAge": 1440},
         "negativeCache": {"enabled": True, "timeToLive": 1440},
@@ -205,6 +243,11 @@ def create_repos() -> int:
     for kind, name, payload in SPECS:
         if name in have:
             print(f"  = {name:<16} 已存在，跳过")
+            continue
+        if OFFLINE and ("proxy" in payload or "group" in payload):
+            # 没有公网出口时，proxy 仓库必然建不成、group 又会因为缺成员一起红，
+            # 于是「台账一片红」掩盖了真正的问题。这里显式跳过并说清原因。
+            print(f"  - {name:<16} 跳过（无公网出口，proxy/group 需要能解析上游）")
             continue
         st, d = call("POST", f"/service/rest/v1/repositories/{kind}", payload)
         if st in (200, 201, 204):
