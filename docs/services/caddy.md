@@ -131,7 +131,7 @@ docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile
 网关机上先导出（幂等，会同时把安装脚本放进 out/ca）：
 
 ```bash
-bash scripts/ca-install.sh --export
+bash scripts/21-ca-install.sh --export
 ```
 
 局域网 Linux 机器一条命令（脚本 = 拉证书 + 装信任库 + 校验三步）：

@@ -7,7 +7,7 @@
 // 为什么单独一个 step，而不是并进 deployService：
 //   Nexus 不在 docker-compose.yml 里了。`deployService` 走的是
 //   `deploy.sh --service <名字>` → `compose up`，这条路对 nexus 已经不成立；
-//   它现在由 scripts/nexus-deploy.sh 用 docker run 拉起并改密。
+//   它现在由 scripts/70-nexus-deploy.sh 用 docker run 拉起并改密。
 //   两者的失败模式、幂等语义、凭据都不一样，硬塞进一个 step 只会让两边都难读。
 def call(Map cfg = [:]) {
     def environment = cfg.environment ?: 'dev'
@@ -20,7 +20,7 @@ def call(Map cfg = [:]) {
     def dryRun = cfg.dryRun == true
 
     if (dryRun) {
-        echo "DRY_RUN: ENV_NAME=${environment} bash scripts/nexus-deploy.sh"
+        echo "DRY_RUN: ENV_NAME=${environment} bash scripts/70-nexus-deploy.sh"
         return
     }
 
@@ -33,7 +33,7 @@ def call(Map cfg = [:]) {
             sh '''
                 set +x
                 set -eu
-                bash scripts/nexus-deploy.sh
+                bash scripts/70-nexus-deploy.sh
             '''
         }
     }

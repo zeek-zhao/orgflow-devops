@@ -1,6 +1,7 @@
 import configparser
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -21,18 +22,25 @@ class JobScriptTests(unittest.TestCase):
                           "tests", "bin"):
             (self.root / directory).mkdir(parents=True, exist_ok=True)
         for name in (
-            "scripts/gen-jjb-conf.sh", "scripts/deploy.sh", "scripts/backup.sh",
-            "scripts/backup-common.sh", "scripts/render-dex.sh",
+            "scripts/13-gen-jjb-conf.sh", "scripts/50-deploy.sh", "scripts/61-backup.sh",
+            "scripts/10-render-config.sh", "scripts/20-gen-ca.sh",
+            "scripts/30-up-serial.sh", "scripts/60-verify-endpoints.sh",
+            "scripts/lib/config.py", "scripts/lib/runtime.sh",
+            "config/services.yml",
+            "scripts/lib/backup-common.sh", "scripts/12-render-dex.sh",
             # backup.sh 对 nexus 包做内容级门禁（#93），临时根里必须也有这个脚本，
             # 否则 --all 备份会在「找不到 check_nexus_archive.py」处失败。
             "scripts/check_nexus_archive.py",
             # deploy.sh 在任何 compose 调用前都会先备好 agent 密钥（#45）
-            "scripts/gen-agent-key.sh",
+            "scripts/40-gen-agent-key.sh",
+            "config/orgflow.yml",
             "config/jenkins_jobs.ini.tpl", "config/routes.yaml",
             "services/router/render.py", "services/auth/dex/config.yaml.tmpl",
             "tests/images.lock",
         ):
-            shutil.copyfile(ROOT / name, self.root / name)
+            target = self.root / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / name, target)
         self.dotenv = self.root / ".env"
         self.dotenv.write_text(
             "JENKINS_URL=https://jenkins.org-devops.com/\n"
@@ -97,6 +105,18 @@ with open(os.environ["JOB_TEST_LOG"], "a") as log:
 if config is not None:
     print(json.dumps(config))
     sys.exit(0)
+# 30-up-serial 等健康：先 ps -aq 拿容器 id，再 inspect 读状态
+if args[:2] == ["ps", "-aq"]:
+    if os.environ.get("JOB_TEST_STATUS", "0") != "0":
+        print("")
+    else:
+        print("cid-of")
+    sys.exit(0)
+if args[:1] == ["inspect"]:
+    if os.environ.get("JOB_TEST_STATUS", "0") != "0":
+        sys.exit(1)
+    print("running healthy")
+    sys.exit(0)
 if args[:2] == ["volume", "inspect"]:
     sys.exit(int(os.environ.get("JOB_TEST_INSPECT_STATUS", "0")))
 if os.environ.get("JOB_TEST_STATUS", "0") == "0" and args[:1] == ["run"]:
@@ -140,7 +160,7 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
         return [call for call in self.commands() if "config" not in call["args"]]
 
     def test_conf_literals_permissions_and_no_execution(self):
-        result = self.run_script("gen-jjb-conf")
+        result = self.run_script("13-gen-jjb-conf")
         self.assertEqual(result.returncode, 0, result.stderr)
         path = self.root / ".jjb/jenkins_jobs.ini"
         parser = configparser.ConfigParser()
@@ -153,13 +173,13 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
             "JENKINS_URL=http://localhost\nJENKINS_ADMIN_ID=admin\n"
             "JENKINS_ADMIN_PASSWORD=$(touch injected)\n"
         )
-        self.assertEqual(self.run_script("gen-jjb-conf").returncode, 0)
+        self.assertEqual(self.run_script("13-gen-jjb-conf").returncode, 0)
         self.assertFalse((self.root / "injected").exists())
 
     def test_conf_url_defaults_to_internal_jenkins(self):
         """#30：JJB 走 compose 内网直连。没有 JJB_JENKINS_URL 的旧 .env
         （甚至带着对外地址 JENKINS_URL）也必须生成内网地址，不再要求宿主解析域名。"""
-        result = self.run_script("gen-jjb-conf")
+        result = self.run_script("13-gen-jjb-conf")
         self.assertEqual(result.returncode, 0, result.stderr)
         parser = configparser.ConfigParser()
         parser.read(self.root / ".jjb/jenkins_jobs.ini")
@@ -171,13 +191,13 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
             "JENKINS_URL=https://jenkins.org-devops.com/\n"
             "JENKINS_ADMIN_ID=admin\nJENKINS_ADMIN_PASSWORD=secret\n"
         )
-        self.assertEqual(self.run_script("gen-jjb-conf").returncode, 0)
+        self.assertEqual(self.run_script("13-gen-jjb-conf").returncode, 0)
         parser = configparser.ConfigParser()
         parser.read(self.root / ".jjb/jenkins_jobs.ini")
         self.assertEqual(parser["jenkins"]["url"], "http://jjb-direct:8080/")
 
     def test_conf_missing_or_empty_variables_does_not_replace_previous(self):
-        self.assertEqual(self.run_script("gen-jjb-conf").returncode, 0)
+        self.assertEqual(self.run_script("13-gen-jjb-conf").returncode, 0)
         path = self.root / ".jjb/jenkins_jobs.ini"
         previous = path.read_bytes()
         for content in (
@@ -187,12 +207,12 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
         ):
             with self.subTest(content=content):
                 self.dotenv.write_text(content)
-                result = self.run_script("gen-jjb-conf")
+                result = self.run_script("13-gen-jjb-conf")
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("缺少必填变量", result.stderr)
                 self.assertEqual(path.read_bytes(), previous)
         self.dotenv.unlink()
-        self.assertNotEqual(self.run_script("gen-jjb-conf").returncode, 0)
+        self.assertNotEqual(self.run_script("13-gen-jjb-conf").returncode, 0)
 
     def test_conf_ldap_service_account_makes_jobs_work_out_of_the_box(self):
         """#140 / #86：全新部署的 .env 只有 ORGFLOW_INITIAL_PASSWORD，
@@ -203,7 +223,7 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
             "JENKINS_URL=https://jenkins.org-devops.com/\n"
             "ORGFLOW_INITIAL_PASSWORD=TESTONLY_INITIAL_PW_140\n"
         )
-        result = self.run_script("gen-jjb-conf")
+        result = self.run_script("13-gen-jjb-conf")
         self.assertEqual(result.returncode, 0, result.stderr)
         parser = configparser.ConfigParser()
         parser.read(self.root / ".jjb/jenkins_jobs.ini")
@@ -219,7 +239,7 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
             "JJB_USER=custom-admin\n"
             "JJB_PASSWORD=TESTONLY_CUSTOM_PW_140\n"
         )
-        result = self.run_script("gen-jjb-conf")
+        result = self.run_script("13-gen-jjb-conf")
         self.assertEqual(result.returncode, 0, result.stderr)
         parser = configparser.ConfigParser()
         parser.read(self.root / ".jjb/jenkins_jobs.ini")
@@ -229,25 +249,23 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
     def test_conf_without_any_credentials_fails_closed(self):
         """既没有初始口令也没有 JENKINS_ADMIN_* 时必须失败，不能放行空凭据。"""
         self.dotenv.write_text("JENKINS_URL=https://jenkins.org-devops.com/\n")
-        result = self.run_script("gen-jjb-conf")
+        result = self.run_script("13-gen-jjb-conf")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("缺少必填变量", result.stderr)
     def test_deploy_selected_service(self):
-        # #46：SERVICE_VERSION 已停用（唯一支持版本覆盖的 nexus 移出了 compose），
-        # 单服务部署只按服务名走。
-        result = self.run_script("deploy", "--service", "caddy")
+        # 2026-11 重构后 --service 走 30-up-serial：只起这一个服务，而且必须
+        # 带 --no-deps（否则 compose 会把它的依赖一起拉起来，绕开 start_order）。
+        result = self.run_script("50-deploy", "--service", "caddy")
         self.assertEqual(result.returncode, 0, result.stderr)
-        commands = self.deploy_calls()
-        self.assertEqual(commands[0]["args"], [
-            "compose", "--env-file", ".env", "up", "-d", "--no-deps", "caddy",
-        ])
-        self.assertIsNone(commands[0]["version"])
-        self.assertEqual(commands[1]["args"][-2:], ["ps", "caddy"])
+        ups = [call for call in self.commands() if "up" in call["args"]]
+        self.assertEqual(len(ups), 1, self.commands())
+        self.assertIn("--no-deps", ups[0]["args"])
+        self.assertEqual(ups[0]["args"][-1], "caddy")
 
     def test_deploy_rejects_service_version(self):
         # 传了却什么都不发生，是排查时最贵的一种"成功"
         result = self.run_script(
-            "deploy", "--service", "caddy", SERVICE_VERSION="3.92.2",
+            "50-deploy", "--service", "caddy", SERVICE_VERSION="3.92.2",
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("SERVICE_VERSION 已停用", result.stderr)
@@ -256,30 +274,30 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
 
     def test_deploy_rejects_nexus(self):
         # #46：nexus 移出 compose，必须指向 job，而不是静默 no-op
-        result = self.run_script("deploy", "--service", "nexus")
+        result = self.run_script("50-deploy", "--service", "nexus")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("nexus-deploy", result.stderr)
         self.assertFalse(self.log.exists())
 
-    def test_deploy_environment_file_carries_the_gateway_port(self):
-        # ADR-13 起端口不再是部署参数：唯一的入口是环境文件里的 GATEWAY_HTTP_PORT
-        (self.root / ".env.staging").write_text(
-            self.dotenv.read_text() + "GATEWAY_HTTP_PORT=8088\n"
+    def test_runtime_env_carries_the_gateway_port(self):
+        # 端口不再是部署参数，也不是 .env：唯一的入口是 config/orgflow.yml，
+        # 渲染成 out/runtime.env 之后 compose 才看得到。
+        config = self.root / "config/orgflow.yml"
+        config.write_text(
+            re.sub(r"(?m)^(\s*http_port:\s*)\d+", r"\g<1>8088", config.read_text()),
+            encoding="utf-8",
         )
-        result = self.run_script(
-            "deploy", "--service", "caddy", ENV_NAME="staging",
-        )
+        result = self.run_script("50-deploy", "--service", "caddy")
         self.assertEqual(result.returncode, 0, result.stderr)
-        first = self.commands()[0]
-        self.assertEqual(first["args"][2], ".env.staging")
-        self.assertEqual(first["port"], "8088")
+        rendered = (self.root / "out/runtime.env").read_text()
+        self.assertIn("GATEWAY_HTTP_PORT=8088", rendered)
 
     def test_deploy_invalid_parameters_fail_before_docker(self):
         for args, env in (
             (["--service"], {}),
             (["--unknown"], {}),
             (["--service", "not-a-service"], {}),
-            (["--service", "jenkins"], {"ENV_NAME": "prod"}),
+            (["--service", "jenkins-agent", "--service", "caddy"], {}),
             (["--service", "caddy"], {"SERVICE_PORT": "0"}),
             (["--service", "caddy"], {"SERVICE_PORT": "65536"}),
             (["--service", "jenkins"], {"SERVICE_PORT": "8088"}),
@@ -289,12 +307,15 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
             (["--service", "caddy"], {"SERVICE_DOMAIN": "example.test"}),
         ):
             with self.subTest(args=args, env=env):
-                result = self.run_script("deploy", *args, **env)
+                # 每条子用例都从干净状态开始：上一条跑过之后日志文件就在了，
+                # 不清掉的话「一条命令都没跑」这条断言永远为假。
+                self.log.unlink(missing_ok=True)
+                result = self.run_script("50-deploy", *args, **env)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse(self.log.exists())
 
     def test_push_jobs_only_invokes_make(self):
-        result = self.run_script("deploy", "--push-jobs")
+        result = self.run_script("50-deploy", "--push-jobs")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.commands(), [{
             "tool": "make", "args": ["jobs"], "version": None, "port": None,
@@ -303,12 +324,11 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
 
     def test_deploy_docker_failure_is_fatal(self):
         result = self.run_script(
-            "deploy", "--service", "router", JOB_TEST_STATUS="23",
+            "50-deploy", "--service", "router", JOB_TEST_STATUS="23",
         )
-        # compose config 探测成功，真正的 up 失败：退出码必须原样透出
-        self.assertEqual(result.returncode, 23)
-        self.assertEqual(len(self.commands()), 2)
-        self.assertIn("config", self.commands()[0]["args"])
+        # 渲染成功、真正的 up 失败：退出码必须原样透出，不能变成 1（1 会被误认成参数错）
+        self.assertEqual(result.returncode, 23, result.stderr)
+        self.assertIn("up", [arg for call in self.commands() for arg in call["args"]])
 
     def test_backup_selected_service_and_retention_scope(self):
         directory = self.root / "out/backups"
@@ -318,7 +338,7 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
             path.touch()
             os.utime(path, (0, 0))
         result = self.run_script(
-            "backup", "--service", "ldap", BACKUP_RETENTION_DAYS="1",
+            "61-backup", "--service", "ldap", BACKUP_RETENTION_DAYS="1",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         commands = self.commands()
@@ -331,13 +351,13 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
         self.assertTrue((directory / "other.tgz").exists())
 
     def test_backup_all_volumes(self):
-        result = self.run_script("backup", "--all")
+        result = self.run_script("61-backup", "--all")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(self.commands()), 9)
 
     def test_backup_nexus_rejects_database_only_archive(self):
         """#93 反证：只备 db 不备 blob store 的包必须被判红且不发布。"""
-        result = self.run_script("backup", "--service", "nexus",
+        result = self.run_script("61-backup", "--service", "nexus",
                                  JOB_TEST_NEXUS_DB_ONLY="1")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("内容不完整", result.stderr)
@@ -354,7 +374,7 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
                 old = directory / "ldap-old.tgz"
                 old.touch()
                 os.utime(old, (0, 0))
-                result = self.run_script("backup", "--service", "ldap", **env)
+                result = self.run_script("61-backup", "--service", "ldap", **env)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertTrue(old.exists())
                 self.log.unlink()
@@ -370,7 +390,7 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
             (["--all"], {"BACKUP_RETENTION_DAYS": "7; echo bad"}),
         ):
             with self.subTest(args=args, env=env):
-                result = self.run_script("backup", *args, **env)
+                result = self.run_script("61-backup", *args, **env)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse(self.log.exists())
 
@@ -391,7 +411,7 @@ class NexusJobDefinitionTests(unittest.TestCase):
             rows[name] = (ref, digest)
         ref, digest = rows["nexus"]
         tag = ref.split(":", 1)[1]
-        script = (ROOT / "scripts/nexus-deploy.sh").read_text(encoding="utf-8")
+        script = (ROOT / "scripts/70-nexus-deploy.sh").read_text(encoding="utf-8")
         # 213 拉不到 Docker Hub，所以脚本必须指向 GHCR 的 mirror 包；
         # 但 digest 必须和 images.lock 一致，否则「nexus 跑的是哪个版本」有两个真源。
         self.assertIn(f"mirror-nexus:{tag}@{digest}", script)
@@ -416,11 +436,13 @@ class NexusJobDefinitionTests(unittest.TestCase):
 
     def test_network_and_volume_names_stay_aligned(self):
         compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
-        script = (ROOT / "scripts/nexus-deploy.sh").read_text(encoding="utf-8")
-        backup = (ROOT / "scripts/backup-common.sh").read_text(encoding="utf-8")
-        # compose 显式把网络命名成 orgflow（不是默认的 <project>_orgflow），
-        # 所以脚本里写 orgflow 是对的；哪天改成默认命名，这条会红。
-        self.assertIn("  orgflow:\n    name: orgflow\n", compose)
+        script = (ROOT / "scripts/70-nexus-deploy.sh").read_text(encoding="utf-8")
+        backup = (ROOT / "scripts/lib/backup-common.sh").read_text(encoding="utf-8")
+        # 网络名来自 orgflow.yml（渲染成 NETWORK_NAME），不再是手写常量：
+        # 断言的是「网络名有单一真源且默认值就是 orgflow」，而不是把字面量钉死在 compose 里。
+        self.assertIn("name: ${NETWORK_NAME", compose)
+        config = (ROOT / "config/orgflow.yml").read_text(encoding="utf-8")
+        self.assertRegex(config, r"network:\n(?:.*\n)*?\s+name:\s*orgflow\n")
         # 卷名 = <项目名>_nexus_data，三处必须一致
         self.assertIn("name: orgflow-devops\n", compose)
         self.assertIn("orgflow-devops_nexus_data", script)

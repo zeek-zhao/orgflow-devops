@@ -25,7 +25,7 @@ oauth2-proxy **7.x 已移除 LDAP provider**。实测 v7.3.0、v7.4.0、v7.6.0
 M0 的浏览器入口是 `https://<subdomain>.<GATEWAY_DOMAIN>`（默认
 `org-devops.com`），Dex issuer 为 `https://dex.<domain>/dex`，
 oauth2-proxy 回调为 `https://auth.<domain>/oauth2/callback`，client ID 为 `jenkins`。
-Dex 配置由 `services/auth/dex/config.yaml.tmpl` + `scripts/render-dex.sh` 按当前域名
+Dex 配置由 `services/auth/dex/config.yaml.tmpl` + `scripts/12-render-dex.sh` 按当前域名
 渲染到 `out/dex/config.yaml`（dex 是 scratch 镜像，无法启动期渲染）。
 更换域名时改 `.env` 的 `GATEWAY_DOMAIN` 并重新 `make deploy`，渲染会自动同步
 issuer、redirectURIs、oauth2-proxy 端点和 whitelist。
@@ -124,10 +124,10 @@ LDAP 入口。重建目录前，用下面任一方式设定口令（口令只打
 
 ```bash
 # 随机生成 32 字符，打印一次 —— 记进部署机 .env 的 ORGFLOW_INITIAL_PASSWORD
-python scripts/gen-ldif-passwords.py
+python scripts/11-gen-ldif-passwords.py
 
 # 自己指定（≥12 字符）
-ORGFLOW_INITIAL_PASSWORD='...' python scripts/gen-ldif-passwords.py
+ORGFLOW_INITIAL_PASSWORD='...' python scripts/11-gen-ldif-passwords.py
 ```
 
 脚本会给每个账号生成独立 salt，所以同一口令在目录里不会出现相同哈希（看哈希无法
@@ -141,7 +141,7 @@ ORGFLOW_INITIAL_PASSWORD='...' python scripts/gen-ldif-passwords.py
 访问 `https://jenkins.<domain>/`，依次跳转 oauth2-proxy（`auth.<domain>`）、Dex 的
 OpenLDAP 登录页。默认导入账号为 `svc-platform-admin`（DN：
 `uid=svc-platform-admin,ou=users,dc=devops,dc=com`），初始口令是
-`scripts/gen-ldif-passwords.py` 设定/打印的那个值（见上节），部署后**立即改密**。若出现授权确认页，按提示同意。OIDC 回调
+`scripts/11-gen-ldif-passwords.py` 设定/打印的那个值（见上节），部署后**立即改密**。若出现授权确认页，按提示同意。OIDC 回调
 `https://auth.<domain>/oauth2/callback` 写入会话 cookie 后返回 Jenkins。
 Jenkins 未启动时，认证成功后的最终上游请求会返回 502，而不是登录失败。
 

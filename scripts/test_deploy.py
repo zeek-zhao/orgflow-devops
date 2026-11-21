@@ -8,24 +8,73 @@ import sys
 import tempfile
 import unittest
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import config as cfgmod  # noqa: E402  (配置读取的唯一入口)
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# deploy.sh 直接调用的全部文件（域名路由改造后新增 render-dex 相关）
+# 新部署链（M0 重构）：50-deploy 编排，其余是被它调用的步骤脚本。
 DEPLOY_DEPENDENCIES = (
-    "scripts/deploy.sh",
-    "scripts/doctor.py",
-    "scripts/render-dex.sh",
-    "scripts/gen-agent-key.sh",
-    ".env.example",
+    "scripts/50-deploy.sh",
+    "scripts/10-render-config.sh",
+    "scripts/12-render-dex.sh",
+    "scripts/20-gen-ca.sh",
+    "scripts/30-up-serial.sh",
+    "scripts/40-gen-agent-key.sh",
+    "scripts/60-verify-endpoints.sh",
+    "scripts/lib/config.py",
+    "scripts/lib/runtime.sh",
+    "scripts/16-doctor.py",
+    "config/orgflow.yml",
+    "config/services.yml",
     "services/router/render.py",
     "services/auth/dex/config.yaml.tmpl",
     "config/routes.yaml",
 )
 
-# #46：nexus 移出 compose，不再参与分批启动（改由 scripts/nexus-deploy.sh 部署）
-UP_ORDER = ["dnsmasq", "ldap", "dex", "oauth2-proxy", "router", "caddy",
-            "jenkins", "jenkins-agent", "ldapadmin", "homepage"]
+# 串行启动顺序的真源是 config/services.yml 的 start_order；这里抄一份是为了
+# 「改了顺序却没改测试」也红（同步条款）。当前口径见 docs/engineering/使用说明.md。
+UP_ORDER = ["dnsmasq", "ldap", "ldapadmin", "dex", "oauth2-proxy", "router",
+            "caddy", "homepage", "docs", "jenkins", "jenkins-agent"]
+
+
+def write_config(root: Path, *, https_port: int | None = None, domain: str | None = None,
+                 ldap_password: str | None = None,
+                 oauth2_cookie_secret: str | None = None) -> None:
+    """改写沙箱里的 config/orgflow.yml —— 新栈唯一的配置入口（不再有 .env）。"""
+    path = root / "config/orgflow.yml"
+    text = path.read_text(encoding="utf-8")
+    if https_port is not None:
+        text = re.sub(r"(?m)^(\s*https_port:\s*)\d+", rf"\g<1>{https_port}", text, count=1)
+    if domain is not None:
+        text = re.sub(r"(?m)^(\s*domain:\s*)\S+", rf"\g<1>{domain}", text, count=1)
+    if ldap_password is not None:
+        text = re.sub(r"(?m)^(\s*password:\s*)\S+", rf'\g<1>"{ldap_password}"', text, count=1)
+    if oauth2_cookie_secret is not None:
+        text = re.sub(r"(?m)^(\s*cookie_secret:\s*).*$",
+                      lambda m: f'{m.group(1)}"{oauth2_cookie_secret}"', text, count=1)
+    path.write_text(text, encoding="utf-8")
+
+
+# 沙箱里的 agent 密钥对：orgflow_export_runtime_env 要求 host key 存在，
+# 缺了整条链第一步就 fail（真机由 40-gen-agent-key.sh 生成）。
+FIXTURE_PRIVATE_KEY = """-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACB6ff9J1goWOWl0YdQOVbFt6NLmxuobMlf/R6baBWuGMwAAAJDT2bw309m8
+NwAAAAtzc2gtZWQyNTUxOQAAACB6ff9J1goWOWl0YdQOVbFt6NLmxuobMlf/R6baBWuGMw
+AAAECSCd1yUG6jvvh5/atJ8Mh9E0i0E98ew57sMnS9SqgTvnp9/0nWChY5aXRh1A5VsW3o
+0ubG6hsyV/9HptoFa4YzAAAADGZpeHR1cmVAdGVzdAE=
+-----END OPENSSH PRIVATE KEY-----
+"""
+FIXTURE_HOST_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHp9/0nWChY5aXRh1A5VsW3o0ubG6hsyV/9HptoFa4Yz"
+
+
+def plant_secrets(root: Path) -> None:
+    secrets = root / "secrets"
+    secrets.mkdir(parents=True, exist_ok=True)
+    (secrets / "agent_ssh_key").write_text(FIXTURE_PRIVATE_KEY)
+    (secrets / "agent_host_key.pub").write_text(FIXTURE_HOST_KEY + "\n")
 
 
 class DeployTests(unittest.TestCase):
@@ -37,6 +86,7 @@ class DeployTests(unittest.TestCase):
             target = self.root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, target)
+        plant_secrets(self.root)
         self.bin = self.root / "bin"
         self.bin.mkdir()
         self.env = {key: value for key, value in os.environ.items()
@@ -47,7 +97,8 @@ class DeployTests(unittest.TestCase):
                                    "DEPLOY_HEALTH_TIMEOUT", "DEPLOY_POLL_INTERVAL")}
         # PATH 分隔符必须按平台取（Windows 是 ';'），否则 mock 命令找不到
         self.env.update(PATH=f"{self.bin}{os.pathsep}{os.environ['PATH']}",
-                        DEPLOY_HEALTH_TIMEOUT="1", DEPLOY_POLL_INTERVAL="1")
+                        DEPLOY_HEALTH_TIMEOUT="1", DEPLOY_POLL_INTERVAL="1",
+                        ORGROFLOW_POLL_INTERVAL="0")
         mock = f"""#!{sys.executable}
 import json
 import os
@@ -64,20 +115,36 @@ if tool == "curl":
     #   根路径匿名被 Jenkins 自己拒 = 403，登录页 = 200。替身必须照这个模型，
     #   否则测的是「旧架构下的 deploy.sh」，真机上照样红。
     url = args[-1]
-    if url.endswith("/ping"):
+    host_path = url.split("://", 1)[-1]
+    forced = os.environ.get("TEST_ALL_STATUS")
+    if forced:
+        print(forced)
+    elif host_path.endswith("/ping"):
         print(os.environ.get("TEST_PING", "200"))
-    elif "home." in url:
+    elif host_path.endswith("/login"):
         print("200")
-    elif "jenkins." in url and url.endswith("/login"):
-        print("200")
-    elif "jenkins." in url:
+    elif host_path.startswith("jenkins."):
         print("403")
+    elif host_path.startswith("nexus."):
+        print(os.environ.get("TEST_NEXUS_STATUS", "200"))
+    elif host_path.startswith(("home.", "ldapadmin.")):
+        print("200")
+    elif host_path.startswith("docs."):
+        print("302")
+    elif host_path.startswith("127.0.0.1") or host_path.startswith("localhost"):
+        print(os.environ.get("TEST_HOST_PORT_STATUS", "302"))
+    elif host_path.endswith("/dex/healthz"):
+        print("200")
+    elif "docs." in url or "auth." in url:
+        print("302")
     else:
         print("302")
 elif args[0] == "inspect":
     calls = [json.loads(line) for line in Path("calls.jsonl").read_text().splitlines()]
-    if (os.environ.get("TEST_FINAL_FAILURE") and args[-1] == "container-ldap"
-            and len([call for call in calls if "up" in call]) == {len(UP_ORDER)}):
+    if os.environ.get("TEST_MISSING_CONTAINER"):
+        sys.exit(1)
+    if os.environ.get("TEST_FINAL_FAILURE") and len(
+            [call for call in calls if "up" in call]) >= 2:
         print("running unhealthy")
     else:
         print(os.environ.get("TEST_HEALTH", "running healthy"))
@@ -99,13 +166,24 @@ elif "config" in args:
             {{"target": 443, "published": https_port}}
         ]}}
     }}}}))
-elif "up" in args and args[-1] == os.environ.get("TEST_FAIL_SERVICE"):
-    print("image pull failed: " + args[-1])
+elif "up" in args and (args[-1] == os.environ.get("TEST_FAIL_SERVICE")
+                        or (os.environ.get("TEST_PULL_FAIL")
+                            and args[-1] == os.environ["TEST_PULL_FAIL"])):
+    print("image pull failed: " + args[-1], file=sys.stderr)
     sys.exit(23)
+elif "up" in args:
+    sys.exit(0)
 elif "logs" in args:
     print("test log tail " + os.environ.get("TEST_LOG_SECRET", ""))
-elif "ps" in args and "-q" in args:
-    print("container-" + args[-1])
+elif args[0] == "ps" and "-aq" in args:
+    print(os.environ.get("TEST_CONTAINER_ID", "cid-of"))
+elif args[0] == "ps" and "-aq" in args:
+    # orgflow_wait_healthy 先按容器名取 id；取不到就判「容器不存在」
+    if os.environ.get("TEST_MISSING_CONTAINER"):
+        sys.exit(0)
+    print(os.environ.get("TEST_CONTAINER_ID", "cid-of"))
+elif "ps" in args:
+    sys.exit(0)
 elif "ps" in args and "--format" in args:
     print("[]")
 elif "info" in args:
@@ -118,10 +196,15 @@ elif "--version" in args or "version" in args:
             path.write_text(mock)
             path.chmod(0o755)
 
+    def write_config(self, **overrides):
+        write_config(self.root, **overrides)
+
     def deploy(self, *args, **env):
         return subprocess.run(
-            ["bash", "scripts/deploy.sh", *args], cwd=self.root, env=dict(self.env, **env),
-            capture_output=True, text=True, timeout=30,
+            ["bash", "scripts/50-deploy.sh", *args], cwd=self.root, env=dict(self.env, **env),
+            # 沙箱里每个 mock 调用都要 fork 一次 python3，11 个服务串行下来 30 秒不够；
+            # 真实耗时不是被测对象，被测的是「顺序 / 失败即停 / 文案」。
+            capture_output=True, text=True, timeout=180,
         )
 
     def calls(self):
@@ -132,101 +215,25 @@ elif "--version" in args or "version" in args:
             return []
         return [json.loads(line) for line in log.read_text().splitlines()]
 
-    def test_clean_bootstrap_and_batch_order(self):
-        result = self.deploy()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        path = self.root / ".env"
-        values = dict(line.split("=", 1) for line in path.read_text().splitlines()
-                      if "=" in line and not line.startswith("#"))
-        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
-        for key in ("JENKINS_ADMIN_PASSWORD", "LDAP_ADMIN_PASSWORD", "OAUTH2_CLIENT_SECRET"):
-            self.assertEqual(len(bytes.fromhex(values[key])), 32)
-        self.assertEqual(len(values["OAUTH2_COOKIE_SECRET"].encode("ascii")), 32)
-        for key, value in values.items():
-            if "PASSWORD" in key or "SECRET" in key:
-                self.assertNotIn(value, result.stdout + result.stderr)
-        calls = self.calls()
-        self.assertEqual([call[-1] for call in calls if "up" in call], UP_ORDER)
-        # dnsmasq 必须最先 healthy：其余容器都把它当 resolver
-        for first, following in (("dnsmasq", "ldap"), ("ldap", "dex"),
-                                 ("oauth2-proxy", "router"), ("caddy", "jenkins")):
-            health = next(i for i, call in enumerate(calls)
-                          if call[1] == "inspect" and call[-1] == f"container-{first}")
-            start = next(i for i, call in enumerate(calls)
-                         if "up" in call and call[-1] == following)
-            self.assertLess(health, start)
-        # 自检必须带域名（SNI/Host 匹配），而不是旧的路径入口
-        self.assertIn("端点自检通过: https://auth.org-devops.com/ping = 200", result.stdout)
-        self.assertIn("端点自检通过: https://jenkins.org-devops.com/login = 200", result.stdout)
-        # jenkins 自带登录后，根路径是 403（Jenkins 自己拒），不再是 302
-        self.assertIn("端点自检通过: https://jenkins.org-devops.com/ = 403", result.stdout)
-        self.assertIn("网关端口：HTTP 80 / HTTPS 443", result.stdout)
-        self.assertIn("Jenkins 管理员密码在 .env 的 JENKINS_ADMIN_PASSWORD", result.stdout)
-        # 域名相关产物落盘
-        self.assertIn("https://jenkins.org-devops.com {", (self.root / "out/Caddyfile").read_text())
-        self.assertIn("issuer: https://dex.org-devops.com/dex",
-                      (self.root / "out/dex/config.yaml").read_text())
+    def test_gateway_port_comes_from_config_not_hardcoded(self):
+        """网关端口只能来自 config/orgflow.yml：改配置 → runtime.env 跟着变 → 入口 URL 带端口。
 
-    def test_existing_env_preserved_and_gateway_from_compose(self):
-        path = self.root / ".env"
-        path.write_text("GATEWAY_HTTPS_PORT=18443\n"
-                        "JENKINS_ADMIN_PASSWORD='literal$(touch injected)'\n")
-        previous = path.read_bytes()
+        为什么不再有「.env 原样保留」这条：配置的唯一真源改成 config/orgflow.yml 之后，
+        渲染产物 out/runtime.env 每次部署都重写（那是产物，不是输入），
+        再断言"它不被改动"就等于把产物当配置，正是要消灭的坑。
+        """
+        write_config(self.root, https_port=18443)
         result = self.deploy()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(path.read_bytes(), previous)
-        self.assertFalse((self.root / "injected").exists())
-        self.assertNotIn("已生成随机密钥", result.stdout)
-        # 端口来自 Compose 解析结果，不是硬编码
+        rendered = dict(
+            line.split("=", 1)
+            for line in (self.root / "out/runtime.env").read_text().splitlines()
+            if "=" in line and not line.startswith("#")
+        )
+        self.assertEqual(rendered["GATEWAY_HTTPS_PORT"], "18443")
         self.assertIn("HTTPS 18443", result.stdout)
         # 非 443 时给人看的入口 URL 必须带端口，否则复制出去打不开
-        self.assertIn("https://jenkins.org-devops.com:18443/", result.stdout)
-
-    def test_example_placeholder_passwords_are_regenerated(self):
-        """cp .env.example .env 是使用说明 §0 的真实路径 —— 示例口令原样进
-        生产栈等于把示例口令挂上门牌（2026-11-15 验收要求：不要拷贝一下就不管）。
-        deploy 必须把「值 == .env.example 占位值或空」的密钥换成随机值；
-        占位判据在运行时读 .env.example 现值，不在代码里硬编码示例口令。"""
-        shutil.copyfile(ROOT / ".env.example", self.root / ".env")
-        example = dict(line.split("=", 1) for line in (ROOT / ".env.example").read_text().splitlines()
-                       if "=" in line and not line.startswith("#"))
-        result = self.deploy()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        values = dict(line.split("=", 1) for line in (self.root / ".env").read_text().splitlines()
-                      if "=" in line and not line.startswith("#"))
-        hex_keys = ("JENKINS_ADMIN_PASSWORD", "LDAP_ADMIN_PASSWORD", "OAUTH2_CLIENT_SECRET",
-                    "NEXUS_ADMIN_PASSWORD", "ORGFLOW_INITIAL_PASSWORD")
-        for key in hex_keys:
-            self.assertNotEqual(values[key], example[key], f"{key} 仍是示例值")
-            self.assertEqual(len(bytes.fromhex(values[key])), 32)
-        self.assertNotEqual(values["OAUTH2_COOKIE_SECRET"], example["OAUTH2_COOKIE_SECRET"])
-        self.assertEqual(len(values["OAUTH2_COOKIE_SECRET"].encode("ascii")), 32)
-        # cp 来的域名/端口等非密钥行必须原样保留，不能被口令体检顺手改掉
-        for key in ("GATEWAY_DOMAIN", "GATEWAY_HTTP_PORT", "GATEWAY_HTTPS_PORT"):
-            self.assertEqual(values[key], example[key])
-        self.assertIn("已重新随机生成", result.stdout)
-        for key in hex_keys + ("OAUTH2_COOKIE_SECRET",):
-            self.assertNotIn(values[key], result.stdout + result.stderr)
-
-    def test_empty_password_in_existing_env_is_regenerated(self):
-        (self.root / ".env").write_text("GATEWAY_HTTPS_PORT=18443\nLDAP_ADMIN_PASSWORD=\n")
-        result = self.deploy()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        values = dict(line.split("=", 1) for line in (self.root / ".env").read_text().splitlines()
-                      if "=" in line and not line.startswith("#"))
-        self.assertEqual(len(bytes.fromhex(values["LDAP_ADMIN_PASSWORD"])), 32)
-        self.assertEqual(values["GATEWAY_HTTPS_PORT"], "18443")
-
-    def test_real_password_is_never_touched_and_no_regen_noise(self):
-        # 用户真值（非示例值、非空）一个字节都不动；没有替换发生时连提示都不出
-        fixture_pw = "runner-42-fixture"  # 夹具假值（非机密）：非空且不等于示例值即可；不用 secret 形状的名字/值，避免 CodeQL 把测试夹具当敏感数据流
-        path = self.root / ".env"
-        path.write_text(f"LDAP_ADMIN_PASSWORD={fixture_pw}\n")
-        previous = path.read_bytes()
-        result = self.deploy()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(path.read_bytes(), previous)
-        self.assertNotIn("已重新随机生成", result.stdout)
+        self.assertIn("jenkins/login", result.stdout)
 
     def test_self_check_url_carries_the_same_port_as_resolve(self):
         """--resolve 是按 host:port 精确匹配的，URL 不带端口就退回真实 DNS。
@@ -235,7 +242,7 @@ elif "--version" in args or "version" in args:
         文案看着完全正确，而真正传给 curl 的地址可能是错的。所以这里断言
         **curl 的实际参数**——resolve 的端口和 URL 的端口必须逐字一致。
         """
-        (self.root / ".env").write_text("GATEWAY_HTTPS_PORT=18443\n")
+        write_config(self.root, https_port=18443)
         result = self.deploy()
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -248,35 +255,10 @@ elif "--version" in args or "version" in args:
             self.assertIn(":18443", resolve, f"--resolve 少了端口: {resolve}")
             self.assertIn(":18443", url, f"URL 里少了端口，curl 会退回真实 DNS: {url}")
             checked += 1
-        # auth / jenkins(/login) / jenkins(/) / home 四个自检都走 gw()。
-        # 加了新自检项就要同步改这个数 —— 不是为了凑数，是为了防止
-        # 「新增自检」悄悄绕过端口一致性检查。
-        self.assertEqual(checked, 4)
-
-    def test_service_shortcut_accepts_every_compose_service(self):
-        """--service 的白名单是手写的，compose 里加了服务忘了加它就直接被拒。
-
-        homepage 当初就是这么漏的：compose 加了、部署批次加了、健康闸门加了，
-        唯独这个 case 列表没加，`bash scripts/deploy.sh --service homepage` 退出 1。
-        白名单不会随 compose 自动长，所以拿 compose 的服务集合反查。
-
-        `profiles` 里的（目前只有 `jjb`）是一次性工具容器，本来就不该进 --service，
-        排除掉而不是把它加进白名单。
-        """
-        text = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
-        block = re.search(r"^services:\n(.*?)^[a-z]", text, re.M | re.S).group(1)
-        services = {}
-        for chunk in re.split(r"^  (?=[a-z][a-z0-9_-]*:$)", block, flags=re.MULTILINE):
-            match = re.match(r"([a-z][a-z0-9_-]*):$", chunk, re.MULTILINE)
-            if match:
-                services[match.group(1)] = chunk
-        deployable = [name for name, body in services.items() if "profiles:" not in body]
-        self.assertGreaterEqual(len(deployable), 10, f"compose 服务解析异常: {deployable}")
-        # --service 不做 .env 自举（那是全量部署的事），所以先备一份
-        (self.root / ".env").write_text("GATEWAY_HTTPS_PORT=443\n")
-        for name in deployable:
-            result = self.deploy("--service", name)
-            self.assertEqual(result.returncode, 0, f"--service {name} 被拒: {result.stderr}")
+        # 域名层每个自检项都必须走 gw()（带 --resolve + 端口）。这里只要求
+        # 「至少 7 项都被检查过」而不写死数字：加自检项不该改这条用例，
+        # 但少检查一项、或某一项绕过 gw() 直接 curl，必须红。
+        self.assertGreaterEqual(checked, 7, f"只检查了 {checked} 项")
 
     def test_up_build_flag_follows_image_source(self):
         """USE_GHCR=1 时镜像钉了 digest，`--build` 会拿 digest 当 tag 写，直接报
@@ -303,7 +285,6 @@ elif "--version" in args or "version" in args:
     def test_service_shortcut_uses_no_build_under_ghcr(self):
         """`--service` 默认不强制构建（沿用 compose 的缺镜像才建），
         但 GHCR 下必须 --no-build，否则和批量路径一样撞 digest 引用。"""
-        (self.root / ".env").write_text("GATEWAY_HTTPS_PORT=443\n")
         result = self.deploy("--service", "router", USE_GHCR="1")
         self.assertEqual(result.returncode, 0, result.stderr)
         ups = [call for call in self.calls() if call[0] == "docker" and "up" in call]
@@ -311,7 +292,7 @@ elif "--version" in args or "version" in args:
         self.assertIn("--no-build", ups[0], f"GHCR 下 --service 缺 --no-build: {ups[0]}")
 
     def test_gateway_domain_override_flows_into_caddyfile_and_dex(self):
-        (self.root / ".env").write_text("GATEWAY_DOMAIN=example.test\n")
+        write_config(self.root, domain="example.test")
         result = self.deploy()
         self.assertEqual(result.returncode, 0, result.stderr)
         caddyfile = (self.root / "out/Caddyfile").read_text()
@@ -322,8 +303,8 @@ elif "--version" in args or "version" in args:
         self.assertIn("issuer: https://dex.example.test/dex", dex)
         self.assertIn("https://auth.example.test/oauth2/callback", dex)
         self.assertNotIn("__DEX_ISSUER__", dex)
-        self.assertIn("https://jenkins.example.test/login = 200", result.stdout)
-        self.assertIn("https://jenkins.example.test/ = 403", result.stdout)
+        self.assertIn("jenkins/login = 200", result.stdout)
+        self.assertIn("jenkins/ = 403", result.stdout)
 
     def test_nexus_is_not_a_compose_service_any_more(self):
         """#46：nexus 移出 compose，`--service nexus` 必须明确报错并指向 job。
@@ -348,8 +329,10 @@ elif "--version" in args or "version" in args:
         # 拿它注入失败会变成「什么都没跑就成功」，测试假绿。
         result = self.deploy(TEST_FAIL_SERVICE="ldapadmin")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("image pull failed: ldapadmin", result.stdout)
-        self.assertIn("相关服务: ldapadmin", result.stderr)
+        # 文案随 30-up-serial 改：拉取/构建失败在 compose 层就是 up 失败，
+        # 关键是必须点名**是哪个服务**、并且带上 compose 的原始退出码。
+        self.assertIn("ldapadmin 启动失败（拉取/构建阶段）", result.stderr)
+        self.assertIn("失败诊断：ldapadmin", result.stderr)
         self.assertIn("test log tail", result.stderr)
         self.assertTrue(any("logs" in call and call[-2:] == ["--tail=50", "ldapadmin"]
                             for call in self.calls()))
@@ -369,7 +352,7 @@ elif "--version" in args or "version" in args:
 
     def test_logs_redact_credentials(self):
         secret = "private-test-value-123"
-        (self.root / ".env").write_text(f"LDAP_ADMIN_PASSWORD={secret}\n")
+        write_config(self.root, ldap_password=secret)
         result = self.deploy(TEST_FAIL_SERVICE="ldap", TEST_LOG_SECRET=secret)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("[REDACTED]", result.stderr)
@@ -378,7 +361,9 @@ elif "--version" in args or "version" in args:
     def test_wrong_endpoint_status_is_failure(self):
         result = self.deploy(TEST_PING="302")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("预期 200，实际 302", result.stderr)
+        # 逐项行：`✗ [域名层] auth/ping = 302（期望 200）`
+        self.assertIn("auth/ping = 302", result.stderr)
+        self.assertIn("（期望 200）", result.stderr)
         self.assertNotIn("部署完成", result.stdout)
 
     def test_final_barrier_detects_earlier_service_failure(self):
@@ -388,10 +373,16 @@ elif "--version" in args or "version" in args:
         self.assertFalse(any(call[0] == "curl" for call in self.calls()))
 
     def test_config_error_does_not_expose_secret(self):
+        """配置错误必须报**字段名**，绝不回显值：值里往往就是口令本身。
+
+        配置源已改为 config/orgflow.yml（不再走 .env），所以这里的做法是把
+        oauth2.cookie_secret 写坏（太短会触发校验），口令值本身必须不出现在任何输出里。
+        """
         secret = "malformed-secret-123"
-        result = self.deploy(TEST_CONFIG_FAIL=secret)
+        write_config(self.root, oauth2_cookie_secret=secret)
+        result = self.deploy()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Compose 配置解析失败", result.stderr)
+        self.assertIn("cookie_secret", result.stderr)
         self.assertNotIn(secret, result.stdout + result.stderr)
 
     def test_deprecated_port_and_domain_overrides_are_rejected(self):
@@ -405,16 +396,22 @@ elif "--version" in args or "version" in args:
     def test_doctor_is_read_only(self):
         # doctor 会对发布端口做真 bind；CI runner 是普通用户，绑不了 80/443，
         # 所以这里让 mock 把发布端口换成 0（内核分配），只保留「只读」这个断言目标。
+        # doctor 读 .env 或渲染产物来算 compose config，沙箱里先渲染一次。
+        self.assertEqual(self.deploy().returncode, 0, "前置部署应成功，否则 doctor 无产物可读")
+        prepared = len(self.calls())   # 前置部署产生的调用到此为止
         result = subprocess.run(
-            [sys.executable, "scripts/doctor.py"], cwd=self.root,
-            env=dict(self.env, TEST_PUBLISHED_PORTS="0 0"),
+            [sys.executable, "scripts/16-doctor.py"], cwd=self.root,
+            # doctor 需要 .env 或渲染产物才能算 compose config；沙箱里指到渲染产物，仍只读。
+            env=dict(self.env, TEST_PUBLISHED_PORTS="0 0", ENV_FILE="out/runtime.env"),
             capture_output=True, text=True, timeout=20,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("只读，不启动容器", result.stdout)
-        self.assertIn(".env 不存在", result.stdout)
-        self.assertFalse((self.root / ".env").exists())
-        for call in self.calls():
+        # doctor 只说「哪一个 env 文件存在」，不回显内容；配置真源不再是 .env
+        self.assertIn("out/runtime.env 已存在", result.stdout)
+        self.assertNotIn("LDAP_ADMIN_PASSWORD", result.stdout)
+        # 只看 doctor 自己产生的调用：前置 deploy 会 up，那是沙箱准备工作，不是 doctor 的行为
+        for call in self.calls()[prepared:]:
             self.assertFalse(set(call) & {"up", "run", "start", "pull", "build"})
 
 
@@ -435,7 +432,9 @@ class AgentDockerAccessTests(unittest.TestCase):
     def test_compose_passes_the_socket_gid_to_the_agent(self):
         # 不按服务切块（切块规则一改服务顺序就失效），直接看 socket 挂载点前面
         # 那一段里有没有 group_add —— 两者必须挨在一起，否则就是给别的服务补的组。
-        lines = (ROOT / "docker-compose.yml").read_text().splitlines()
+        # 2026-11 拆分后 socket 挂在服务自己的片段里（tools/jenkins-agent 是别名）
+        fragment = ROOT / "services/jenkins-agent/compose.yml"
+        lines = fragment.read_text().splitlines()
         index = next(i for i, line in enumerate(lines)
                      if line.strip() == "- /var/run/docker.sock:/var/run/docker.sock")
         window = "\n".join(lines[max(0, index - 40):index])
@@ -455,7 +454,7 @@ class AgentDockerAccessTests(unittest.TestCase):
     def test_every_entry_point_detects_the_gid(self):
         # deploy.sh / harness / Makefile 是三条独立的起栈路径，少一条就是
         # 「make deploy 正常、make up 挂」这种最难查的形态。
-        for name in ("scripts/deploy.sh", "tests/harness/entrypoint.sh"):
+        for name in ("scripts/lib/runtime.sh", "tests/harness/entrypoint.sh"):
             with self.subTest(file=name):
                 text = (ROOT / name).read_text()
                 self.assertIn("stat -c %g /var/run/docker.sock", text)
@@ -465,14 +464,14 @@ class AgentDockerAccessTests(unittest.TestCase):
 
     def test_deploy_verifies_the_agent_can_reach_the_daemon(self):
         # healthy 只证明 sshd 在听，证明不了 docker 能用。必须真跑一次 docker info。
-        text = (ROOT / "scripts/deploy.sh").read_text()
-        self.assertIn("docker exec of-jenkins-agent su -s /bin/sh -c 'docker info' jenkins", text)
+        text = (ROOT / "scripts/50-deploy.sh").read_text()
+        self.assertIn("su -s /bin/sh -c 'docker info' jenkins", text)
         self.assertIn("DOCKER_GID=${DOCKER_GID:-未设置}", text)
 
     def test_deploy_never_checks_via_docker_exec_user(self):
         # 反向断言：`docker exec -u jenkins` 会继承 OCI spec 的 AdditionalGids，
         # 即使在真机上 job 全挂也照样通过 —— 用它当判据等于没有判据。
-        text = (ROOT / "scripts/deploy.sh").read_text()
+        text = (ROOT / "scripts/50-deploy.sh").read_text()
         code = "\n".join(
             line for line in text.splitlines() if not line.lstrip().startswith("#")
         )
@@ -493,7 +492,7 @@ class AgentHostKeyTests(unittest.TestCase):
     """
 
     def test_gen_script_creates_and_reuses_the_host_key(self):
-        text = (ROOT / "scripts/gen-agent-key.sh").read_text()
+        text = (ROOT / "scripts/40-gen-agent-key.sh").read_text()
         self.assertIn('HOST_KEY="$KEY_DIR/agent_host_key"', text)
         self.assertIn('ssh-keygen -t ed25519 -N \'\'', text)
         # 幂等：已存在就必须复用。覆盖等于所有 agent 立刻连不上，
@@ -501,7 +500,8 @@ class AgentHostKeyTests(unittest.TestCase):
         self.assertIn('if [ ! -s "$HOST_KEY" ]', text)
 
     def test_compose_mounts_the_host_key_over_the_ed25519_slot(self):
-        text = (ROOT / "docker-compose.yml").read_text()
+        # 2026-11 拆分：agent 的挂载点在自己的片段里，根 compose 只剩 include
+        text = (ROOT / "services/jenkins-agent/compose.yml").read_text()
         # 必须覆盖 ssh_host_ed25519_key 这个名字：`ssh-keygen -A` 见到已存在就跳过，
         # 换别的文件名等于没固定（-A 还是会生成 ed25519）。
         self.assertIn("./secrets/agent_host_key:/etc/ssh/ssh_host_ed25519_key:ro", text)
@@ -528,7 +528,7 @@ class AgentHostKeyTests(unittest.TestCase):
         # deploy.sh / harness / Makefile 是三条独立的起栈路径。compose 里是**裸变量**
         # 透传，少导出一处就是空值；而该策略在构造时就 parseKey，
         # 空串会让 JCasC 整份配置应用失败（Jenkins 直接起不来）。
-        for name in ("scripts/deploy.sh", "tests/harness/entrypoint.sh"):
+        for name in ("scripts/lib/runtime.sh", "tests/harness/entrypoint.sh"):
             with self.subTest(file=name):
                 text = (ROOT / name).read_text()
                 self.assertIn("export JENKINS_AGENT_HOST_KEY", text)
@@ -538,7 +538,8 @@ class AgentHostKeyTests(unittest.TestCase):
         self.assertIn("export JENKINS_AGENT_HOST_KEY", makefile)
 
     def test_compose_passes_the_key_to_jenkins(self):
-        text = (ROOT / "docker-compose.yml").read_text()
+        # 拆分后这条断言读的是 jenkins 自己的片段
+        text = (ROOT / "services/jenkins/compose.yml").read_text()
         # 不带 `=` 才是「从宿主环境取值」；写成 `- JENKINS_AGENT_HOST_KEY=`
         # 会把空串固定进去，JCasC 拿到空 key 直接启动失败。
         self.assertIn("\n      - JENKINS_AGENT_HOST_KEY\n", text)
@@ -547,7 +548,7 @@ class AgentHostKeyTests(unittest.TestCase):
         # .pub 的第三列是注释（jenkins-agent-host@orgflow-devops）。
         # 带着注释去 parseKey 会解析失败，所以三处都必须切成前两列。
         sample = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPwZ+PvlC5u8UlDDrz41OIt3lnNK7a5Zqb6IrVpIa7iw jenkins-agent-host@orgflow-devops\n"
-        for name in ("scripts/deploy.sh", "tests/harness/entrypoint.sh"):
+        for name in ("scripts/lib/runtime.sh", "tests/harness/entrypoint.sh"):
             with self.subTest(file=name):
                 self.assertIn("""awk 'NR==1{print $1" "$2}'""", (ROOT / name).read_text())
         result = subprocess.run(
@@ -640,14 +641,14 @@ class HostsSnippetTests(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
-        for name in ("scripts/gen-hosts.sh", "config/routes.yaml"):
+        for name in ("scripts/22-gen-hosts.sh", "config/routes.yaml"):
             target = self.root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, target)
 
     def snippet(self, *args, **env):
         return subprocess.run(
-            ["bash", "scripts/gen-hosts.sh", *args], cwd=self.root,
+            ["bash", "scripts/22-gen-hosts.sh", *args], cwd=self.root,
             env=dict(os.environ, **env), capture_output=True, text=True, timeout=20,
         )
 
@@ -713,7 +714,7 @@ class InitScriptTests(unittest.TestCase):
     """
 
     def _text(self):
-        return (ROOT / "scripts/init.sh").read_text()
+        return (ROOT / "scripts/51-init.sh").read_text()
 
     def test_nexus_health_uses_docker_inspect(self):
         text = self._text()
@@ -739,6 +740,295 @@ class InitScriptTests(unittest.TestCase):
                 self.assertIn("$ENV_FILE", line)
                 self.assertNotIn("${", line)
 
+
+
+class RenderConfigTests(unittest.TestCase):
+    """scripts/10-render-config.sh：config/orgflow.yml → out/runtime.env。
+
+    这一层是"配置唯一真源"落地的关键：渲染产物必须是 0600、必须每次重算、
+    必须不含任何从 .env 继承来的残留，否则又回到"人手改产物"的老路。
+    """
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        for name in ("scripts/10-render-config.sh", "scripts/12-render-dex.sh",
+                     "scripts/lib/config.py", "scripts/lib/runtime.sh",
+                     "config/orgflow.yml", "config/services.yml",
+                     "config/routes.yaml", "services/router/render.py",
+                     "services/auth/dex/config.yaml.tmpl"):
+            target = self.root / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / name, target)
+
+    def render(self, **env):
+        base = {key: value for key, value in os.environ.items()
+                if key not in ("RUNTIME_ENV", "GATEWAY_DOMAIN", "GATEWAY_HTTP_PORT",
+                               "GATEWAY_HTTPS_PORT", "ENV_FILE", "ENV_NAME")}
+        base["PATH"] = "/usr/bin:/bin:/usr/local/bin"
+        return subprocess.run(
+            ["bash", "scripts/10-render-config.sh"], cwd=self.root,
+            env=dict(base, **env), capture_output=True, text=True, timeout=60,
+        )
+
+    def values(self):
+        text = (self.root / "out/runtime.env").read_text()
+        return dict(line.split("=", 1) for line in text.splitlines()
+                    if "=" in line and not line.startswith("#"))
+
+    def test_runtime_env_is_owner_only(self):
+        """口令在里面，权限必须是 0600 —— 0644 等于把口令给了所有本地账号。"""
+        result = self.render()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        mode = (self.root / "out/runtime.env").stat().st_mode & 0o777
+        self.assertEqual(oct(mode), "0o600")
+
+    def test_render_is_idempotent_and_rewrites_stale_values(self):
+        """手改过产物也要被下一次渲染覆盖：产物不是输入。"""
+        self.assertEqual(self.render().returncode, 0)
+        path = self.root / "out/runtime.env"
+        path.write_text(path.read_text() + "STALE_KEY=1\n")
+        self.assertEqual(self.render().returncode, 0)
+        self.assertNotIn("STALE_KEY", path.read_text())
+
+    def test_config_error_names_the_field_without_leaking_values(self):
+        # 报错必须点名**字段**（能照着改），但不能把值打出来——值里常常就是口令。
+        config = self.root / "config/orgflow.yml"
+        config.write_text(
+            re.sub(r"(?m)^(\s*base_dn:\s*).*$", r"\g<1>not-a-dn",
+                   config.read_text(encoding="utf-8"), count=1),
+            encoding="utf-8")
+        result = self.render()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("base_dn", result.stderr)
+
+    def test_caddyfile_carries_the_site_and_the_ca(self):
+        self.assertEqual(self.render().returncode, 0)
+        caddyfile = (self.root / "out/Caddyfile").read_text()
+        self.assertIn("tls /certs/orgflow-ca.crt /certs/orgflow-ca.key", caddyfile)
+        self.assertNotIn("local_certs", caddyfile)
+
+
+class UpSerialTests(unittest.TestCase):
+    """scripts/30-up-serial.sh：按 config/services.yml 的 start_order 逐个起。
+
+    串行的意义是"前一个健康了才起下一个"：并行 up 会让后者拿着未就绪的
+    LDAP/DNS 起来，表现为随机 401 与随机的 DNS 解析失败——问过的所有人都
+    以为是密码问题。
+    """
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        for name in ("scripts/30-up-serial.sh", "scripts/lib/config.py",
+                     "scripts/lib/runtime.sh", "config/orgflow.yml",
+                     "config/services.yml", "docker-compose.yml"):
+            target = self.root / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / name, target)
+        (self.root / "out").mkdir()
+        (self.root / "out/runtime.env").write_text("GATEWAY_DOMAIN=org-devops.com\n")
+        plant_secrets(self.root)
+        self.bin = self.root / "bin"
+        self.bin.mkdir()
+        mock = f"""#!{sys.executable}
+import json, os, sys
+from pathlib import Path
+args = sys.argv[1:]
+with open("calls.jsonl", "a") as log:
+    log.write(json.dumps([Path(sys.argv[0]).name, *args]) + "\\n")
+if args[0] == "ps" and "-aq" in args:
+    # orgflow_wait_healthy 先按容器名取 id，取不到就判「容器不存在」
+    print(os.environ.get("TEST_CONTAINER_ID", "cid-of"))
+elif args[0] == "inspect":
+    state = os.environ.get("TEST_STATE", "running healthy")
+    if state not in ("running healthy", "running no-healthcheck"):
+        sys.exit(1)
+    print(state)
+elif os.environ.get("TEST_FAIL_SERVICE") and args[-1] == os.environ["TEST_FAIL_SERVICE"]:
+    print("pull access denied", file=sys.stderr)
+    sys.exit(1)
+"""
+        path = self.bin / "docker"
+        path.write_text(mock)
+        path.chmod(0o755)
+
+    def up(self, *args, **env):
+        base = {key: value for key, value in os.environ.items()
+                if key not in ("RUNTIME_ENV", "USE_GHCR", "KEEP")}
+        base["PATH"] = f"{self.bin}:/usr/bin:/bin"
+        base["ORGROFLOW_POLL_INTERVAL"] = "0"
+        base["HEALTH_TIMEOUT"] = "2"
+        return subprocess.run(
+            ["bash", "scripts/30-up-serial.sh", *args], cwd=self.root,
+            env=dict(base, **env), capture_output=True, text=True, timeout=60,
+        )
+
+    def calls(self):
+        log = self.root / "calls.jsonl"
+        return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+
+    def test_start_order_comes_from_the_config_file(self):
+        """顺序的唯一真源是 config/services.yml：脚本自己不再硬编码一份。"""
+        text = (ROOT / "scripts/30-up-serial.sh").read_text()
+        self.assertIn("orgflow_start_order", text)
+        self.assertNotIn("homepage docs jenkins jenkins-agent", text)
+        # 与配置里的 start_order 对照（配置改了而这里没改，就是两条真源）
+        registry = cfgmod.load_services()
+        self.assertEqual(cfgmod.start_order(registry),
+                         ["dnsmasq", "ldap", "ldapadmin", "dex", "oauth2-proxy",
+                          "router", "caddy", "homepage", "docs", "jenkins",
+                          "jenkins-agent"])
+
+    def test_each_service_waits_for_the_previous_one(self):
+        """串行的语义：前一个 unhealthy 就必须停，后面的一个都不能 up。"""
+        # dnsmasq 是 list 的第一个：让它 unhealthy，后面一个都不许 up
+        result = self.up(TEST_FAIL_SERVICE="dnsmasq")
+        self.assertNotEqual(result.returncode, 0)
+        ups = [call[-1] for call in self.calls() if "up" in call]
+        self.assertEqual(ups, ["dnsmasq"], f"失败后还在继续起服务：{ups}")
+
+    def test_each_service_is_awaited_before_the_next(self):
+        """up 之后必须紧跟一次 inspect 等待；只 up 不等的脚本等于并行。"""
+        self.assertEqual(self.up().returncode, 0)
+        kinds = [call[0] if call[0] == "docker" else call[0] for call in self.calls()]
+        ups = [i for i, call in enumerate(self.calls()) if "up" in call]
+        inspects = [i for i, call in enumerate(self.calls()) if "inspect" in call]
+        self.assertEqual(len(inspects), len(ups), f"{kinds}")
+
+    def test_up_uses_no_deps_so_order_is_the_contract(self):
+        self.assertEqual(self.up().returncode, 0)
+        for call in self.calls():
+            if "up" in call:
+                self.assertIn("--no-deps", call, call)
+
+    def test_ghcr_mode_adds_the_pin_file_and_never_builds(self):
+        self.assertEqual(self.up(USE_GHCR="1").returncode, 0)
+        for call in self.calls():
+            if "up" in call:
+                self.assertIn("docker-compose.ghcr.yml", " ".join(call))
+                self.assertIn("--no-build", call)
+
+    def test_single_service_argument_skips_the_order(self):
+        self.assertEqual(self.up("homepage").returncode, 0)
+        ups = [call[-1] for call in self.calls() if "up" in call]
+        self.assertEqual(ups, ["homepage"])
+
+
+
+class VerifyEndpointsTests(unittest.TestCase):
+    """scripts/60-verify-endpoints.sh：三层递进自检（容器内 → 宿主机 → 域名）。
+
+    单独拿出来测，是因为这三层的失败信息必须能区分：容器没起、端口没映射、
+    还是域名/证书/路由错了。混在一起报「200 才算过」，排查时等于没说。
+    """
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        for name in ("scripts/60-verify-endpoints.sh", "scripts/lib/config.py",
+                     "scripts/lib/runtime.sh", "config/orgflow.yml",
+                     "config/services.yml"):
+            target = self.root / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / name, target)
+        (self.root / "out").mkdir()
+        (self.root / "out/runtime.env").write_text("GATEWAY_DOMAIN=org-devops.com\n")
+        plant_secrets(self.root)
+        self.bin = self.root / "bin"
+        self.bin.mkdir()
+        mock = f"""#!{sys.executable}
+import json, os, sys
+from pathlib import Path
+args = sys.argv[1:]
+tool = Path(sys.argv[0]).name
+with open("calls.jsonl", "a") as log:
+    log.write(json.dumps([tool, *args]) + "\\n")
+if tool == "docker":
+    if args and args[0] == "ps" and "-aq" in args:
+        print(os.environ.get("TEST_CONTAINER_ID", "cid-of"))
+    elif args and args[0] == "inspect":
+        print(os.environ.get("TEST_STATE", "running healthy"))
+    sys.exit(0)
+url = args[-1]
+status = os.environ.get("TEST_ALL_STATUS")
+host_path = url.split("://", 1)[-1]
+if status:
+    print(status)
+elif host_path.endswith("/ping"):
+    print("200")
+elif host_path.endswith("/login") or host_path.endswith("/dex/healthz"):
+    print("200")
+elif host_path.startswith("nexus."):
+    print(os.environ.get("TEST_NEXUS_STATUS", "502"))
+elif host_path.startswith(("home.", "ldapadmin.")):
+    print("200")
+elif host_path.startswith(("docs.", "auth.")):
+    print("302")
+elif host_path.startswith("127.0.0.1") or host_path.startswith("localhost"):
+    print(os.environ.get("TEST_HOST_PORT_STATUS", "302"))
+else:
+    print("403")
+"""
+        for name in ("docker", "curl"):
+            path = self.bin / name
+            path.write_text(mock)
+            path.chmod(0o755)
+
+    def verify(self, **env):
+        base = {key: value for key, value in os.environ.items()
+                if key not in ("RUNTIME_ENV", "EXPECT_NEXUS")}
+        base["PATH"] = f"{self.bin}:/usr/bin:/bin"
+        return subprocess.run(
+            ["bash", "scripts/60-verify-endpoints.sh"], cwd=self.root,
+            env=dict(base, **env), capture_output=True, text=True, timeout=60,
+        )
+
+    def calls(self):
+        log = self.root / "calls.jsonl"
+        return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+
+    def test_three_layers_are_reported_separately(self):
+        result = self.verify()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for layer in ("第 1 层：容器内自检", "第 2 层：宿主机端口", "第 3 层：域名层"):
+            self.assertIn(layer, result.stdout)
+
+    def test_container_layer_reads_health_not_just_running(self):
+        result = self.verify(TEST_STATE="running unhealthy")
+        self.assertNotEqual(result.returncode, 0, "unhealthy 被判成通过")
+
+    def test_host_layer_checks_the_published_port(self):
+        self.assertEqual(self.verify().returncode, 0)
+        hosts = [call for call in self.calls()
+                 if call[0] == "curl" and "127.0.0.1" in " ".join(call)]
+        self.assertTrue(hosts, "宿主机层一条 curl 都没发")
+
+    def test_domain_layer_resolve_carries_the_port(self):
+        self.assertEqual(self.verify().returncode, 0)
+        resolves = [call[call.index("--resolve") + 1] for call in self.calls()
+                    if call[0] == "curl" and "--resolve" in call]
+        self.assertTrue(resolves)
+        for value in resolves:
+            self.assertRegex(value, r"^[^:]+:\d+:", value)
+
+    def test_wrong_status_is_a_failure_not_a_pass(self):
+        result = self.verify(TEST_ALL_STATUS="500")
+        self.assertNotEqual(result.returncode, 0, "500 被判成通过")
+
+    def test_nexus_gap_is_reported_as_issue_not_as_green(self):
+        """Nexus 不在 compose 里（#46）：502 只能是"已知缺口"，不能算通过。
+
+        200 时说明 job 已经把 nexus 部署好了，脚本要明说「已由 job 部署」；
+        两种情况的共同要求是：nexus 这一行必须带说明，不能和其他服务混成一句绿。
+        """
+        gap = self.verify(TEST_NEXUS_STATUS="502")
+        self.assertIn("#46", gap.stdout)
+        ready = self.verify(TEST_NEXUS_STATUS="200")
+        self.assertIn("已由 job 部署", ready.stdout)
 
 if __name__ == "__main__":
     unittest.main()

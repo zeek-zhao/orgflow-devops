@@ -8,7 +8,7 @@ setup() {
     mkdir -p "$CA_DIR"
     # 导出当前内层 Caddy 的根证书 + 脚本（等价于在网关机跑 ca-install.sh --export）
     compose_cmd exec -T caddy cat /data/caddy/pki/authorities/local/root.crt > "$CA_DIR/root.crt"
-    cp "$M0_REPO/scripts/ca-install.sh" "$CA_DIR/ca-install.sh"
+    cp "$M0_REPO/scripts/21-ca-install.sh" "$CA_DIR/ca-install.sh"
     [ -s "$CA_DIR/root.crt" ]
 }
 

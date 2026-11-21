@@ -19,7 +19,7 @@ class ImageTests(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
-        for name in ("scripts/pin-images.sh", "tests/images.sh", "tests/images.lock",
+        for name in ("scripts/15-pin-images.sh", "tests/images.sh", "tests/images.lock",
                      "docker-compose.yml", "docker-compose.ghcr.yml",
                      ".github/workflows/mirror.yml"):
             target = self.root / name
@@ -112,13 +112,13 @@ if args[0] == "inspect":
         path = self.root / "docker-compose.ghcr.yml"
         original = path.read_text()
         lock = (self.root / "tests/images.lock").read_bytes()
-        result = self.run_script("scripts/pin-images.sh")
+        result = self.run_script("scripts/15-pin-images.sh")
         self.assertEqual(result.returncode, 0, result.stderr)
         first = path.read_bytes()
         # jenkins / jenkins-agent 都是自建（#44 / #45），从「mirror 上游」改成「自建」后
         # 它们从保留列表挪到回写列表：上游 digest 不再适用，digest 只能由 images.yml 构建后回写。
         # nexus 已不在 .ghcr.yml 里（#46：移出 compose，镜像 digest 由
-        # scripts/nexus-deploy.sh 持有），所以它不再属于「保留不动的 upstream 块」。
+        # scripts/70-nexus-deploy.sh 持有），所以它不再属于「保留不动的 upstream 块」。
         for name in ("caddy", "ldap", "ldapadmin", "dex", "oauth2-proxy"):
             pattern = rf"^  {name}:\n    image: [^\n]+\n"
             self.assertEqual(re.search(pattern, path.read_text(), re.MULTILINE).group(),
@@ -129,7 +129,7 @@ if args[0] == "inspect":
             tag = "24.04-v3" if name == "jenkins" else "24.04-v1"
             self.assertIn(f"/{name}:{tag}@{DIGEST}", path.read_text())
         self.assertIn("x-m0-test-image:", path.read_text())
-        result = self.run_script("scripts/pin-images.sh")
+        result = self.run_script("scripts/15-pin-images.sh")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(path.read_bytes(), first)
         self.assertEqual((self.root / "tests/images.lock").read_bytes(), lock)
@@ -144,7 +144,7 @@ if args[0] == "inspect":
         self.assertIn("# pinned-at: " + "a" * 40, path.read_text())
 
     def test_explicit_sha_tag_supports_premerge_acceptance(self):
-        result = self.run_script("scripts/pin-images.sh", IMAGES_TAG="sha-ba5e76e")
+        result = self.run_script("scripts/15-pin-images.sh", IMAGES_TAG="sha-ba5e76e")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(all(call[-1].endswith(":sha-ba5e76e")
                             for call in self.calls() if "inspect" in call))
@@ -154,7 +154,7 @@ if args[0] == "inspect":
         original = path.read_bytes()
         for env in ({"INSPECT_FAIL": "jjb"}, {"BAD_DIGEST": "1"}):
             with self.subTest(env=env):
-                result = self.run_script("scripts/pin-images.sh", **env)
+                result = self.run_script("scripts/15-pin-images.sh", **env)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("先跑 images.yml 工作流", result.stderr)
                 self.assertEqual(path.read_bytes(), original)
@@ -162,7 +162,7 @@ if args[0] == "inspect":
     def test_invalid_merged_compose_never_replaces_override(self):
         path = self.root / "docker-compose.ghcr.yml"
         original = path.read_bytes()
-        result = self.run_script("scripts/pin-images.sh", CONFIG_FAIL="1")
+        result = self.run_script("scripts/15-pin-images.sh", CONFIG_FAIL="1")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(path.read_bytes(), original)
         self.assertEqual(sorted(p.name for p in self.root.glob("tmp*")), [])

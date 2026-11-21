@@ -123,7 +123,7 @@ EOF
 # secrets/ 下的文件，文件不存在时 compose 直接报
 # 「bind source path does not exist」，看不出是密钥没生成。
 stage="generating agent ssh key"
-bash /repo/scripts/gen-agent-key.sh >/dev/null
+bash /repo/scripts/40-gen-agent-key.sh >/dev/null
 
 # JCasC 的 directEntry 引用 JENKINS_AGENT_SSH_PRIVATE_KEY，compose 里是裸变量，
 # 必须在 compose 之前 export 才有值（写 .env 不行：既有「已有 .env 绝不修改」
@@ -156,7 +156,7 @@ stage="rendering gateway config"
 mkdir -p /repo/out
 python3 /repo/services/router/render.py \
     --routes /repo/config/routes.yaml --out /repo/out/Caddyfile --admin ""
-bash /repo/scripts/render-dex.sh --domain "$GATEWAY_DOMAIN" >/dev/null
+bash /repo/scripts/12-render-dex.sh --domain "$GATEWAY_DOMAIN" >/dev/null
 
 printf '{"services":{}}\n' > "$M0_COMPOSE_OVERRIDE"
 compose_ready=1
@@ -227,7 +227,7 @@ fi
 NEXUS_IMAGE="$nexus_id" \
 NEXUS_ADMIN_ID="$(sed -n 's/^NEXUS_ADMIN_ID=//p' "$M0_ENV_FILE" | tail -1)" \
 NEXUS_ADMIN_PASSWORD="$(sed -n 's/^NEXUS_ADMIN_PASSWORD=//p' "$M0_ENV_FILE" | tail -1)" \
-    bash /repo/scripts/nexus-deploy.sh
+    bash /repo/scripts/70-nexus-deploy.sh
 
 # #117 三件套 + CE EULA + 匿名开启：测试栈等价于「部署机上手动跑 setup 脚本」。
 # 全新 Nexus 不接受 EULA 时所有写路径 403（2026-11-14 CI 实测），匿名默认关闭
@@ -237,7 +237,7 @@ NEXUS_ADMIN_PASSWORD="$(sed -n 's/^NEXUS_ADMIN_PASSWORD=//p' "$M0_ENV_FILE" | ta
 # 二轮实测：不传参则脚本报「NEXUS_ADMIN_PASSWORD 没有来源」）。
 stage="provisioning nexus (eula/anonymous/repos)"
 compose exec -T router sh -c 'cat > /tmp/nexus-setup-repos.py' \
-    < /repo/scripts/nexus-setup-repos.py
+    < /repo/scripts/72-nexus-setup-repos.py
 compose exec -T router sh -c \
     'NEXUS_BASE_URL=http://nexus:8081 NEXUS_ADMIN_ID="$1" NEXUS_ADMIN_PASSWORD="$2" exec python3 /tmp/nexus-setup-repos.py' \
     nexus-setup \
@@ -252,7 +252,7 @@ compose exec -T ldap sh -c 'LDAP_URI=ldap://localhost:389 bash /opt/orgflow-auth
 # 否则测试拿 .env 的口令登录会一律 49/401 —— 这是 2026-11-11 三个用例红的根因。
 stage="setting ldap user passwords"
 COMPOSE="$(compose_cmd_string)" ENV_FILE="$M0_ENV_FILE" \
-    bash /repo/scripts/ldap-set-passwords.sh
+    bash /repo/scripts/11-ldap-set-passwords.sh
 
 stage="running bats"
 cd /repo

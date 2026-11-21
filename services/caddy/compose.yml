@@ -1,0 +1,38 @@
+# caddy：唯一对外发布端口的服务（80/443）
+#
+# 证书：仓库自带的 orgflow 内部 CA（config/ca/），不是 Caddy 自签的 local CA。
+#   根证书入库 → 有效期固定 2036 年、不会随 `down -v` 重建而变化；
+#   只有在 config/ca/ 缺文件时 make init 才会重新生成（scripts/20-gen-ca.sh）。
+#
+# 站点配置由 router 渲染到 out/Caddyfile；本服务只负责执行它。
+services:
+  caddy:
+    image: caddy:2@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e # lock: caddy
+    container_name: of-caddy
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_HTTP_PORT}:80"
+      - "${GATEWAY_HTTPS_PORT}:443"
+    volumes:
+      - ./out:/etc/caddy
+      # 内部 CA 的证书与私钥（入库，只读挂载）
+      - ./config/ca:/certs:ro
+      # 文档站静态内容：由 services/docs 生成的站点目录（compose 同名卷）
+      - docs_site:/srv/docs:ro
+      - caddy_data:/data
+    depends_on:
+      router:
+        condition: service_healthy
+      dnsmasq:
+        condition: service_healthy
+    dns:
+      - ${IP_DNSMASQ}
+    networks:
+      orgflow:
+        ipv4_address: ${IP_CADDY}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:2019/config/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s

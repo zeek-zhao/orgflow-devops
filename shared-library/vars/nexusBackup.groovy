@@ -30,5 +30,5 @@ def call(Map cfg = [:]) {
 
     echo "== nexus backup retention=${retention}d drill=${drill} boot=${boot} =="
     // set +x：脚本会打印备份路径与 sha256，但不要回显任何凭据
-    sh "set +x; set -eu; bash scripts/nexus-backup.sh ${args}"
+    sh "set +x; set -eu; bash scripts/71-nexus-backup.sh ${args}"
 }

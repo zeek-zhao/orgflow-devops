@@ -155,7 +155,7 @@ jobs:
   digests:
     needs: [select, build]
     # 只建了一部分镜像时，这里只汇总建过的那几个；未改动的镜像 digest 不会变，
-    # scripts/pin-images.sh 照旧从 registry 回写，不依赖这份汇总的完整性。
+    # scripts/15-pin-images.sh 照旧从 registry 回写，不依赖这份汇总的完整性。
     if: needs.select.outputs.any == 'true'
     runs-on: ubuntu-24.04
     steps:

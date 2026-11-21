@@ -28,7 +28,7 @@ setup() {
     run env NEXUS_IMAGE="$image" \
         NEXUS_ADMIN_ID="$(sed -n 's/^NEXUS_ADMIN_ID=//p' "$M0_ENV_FILE" | tail -1)" \
         NEXUS_ADMIN_PASSWORD="$(sed -n 's/^NEXUS_ADMIN_PASSWORD=//p' "$M0_ENV_FILE" | tail -1)" \
-        bash "$M0_REPO/scripts/nexus-deploy.sh"
+        bash "$M0_REPO/scripts/70-nexus-deploy.sh"
     [ "$status" -eq 0 ]
     assert_contains "$output" "已存在"
     assert_contains "$output" "复用"
@@ -45,7 +45,7 @@ setup() {
     before="$(cat "$dir/agent_ssh_key" "$dir/agent_ssh_key.pub" \
                   "$dir/agent_host_key" "$dir/agent_host_key.pub" | sha256sum)"
 
-    run bash "$M0_REPO/scripts/gen-agent-key.sh"
+    run bash "$M0_REPO/scripts/40-gen-agent-key.sh"
     [ "$status" -eq 0 ]
     assert_contains "$output" "复用已有 agent 密钥"
     assert_contains "$output" "复用已有 agent host key"
@@ -61,7 +61,7 @@ setup() {
 
 @test "gen-hosts: 片段含全部十域名与指定 IP，--write 落地后 getent 可解析 (#117 #62)" {
     local ip=127.0.0.1
-    run bash "$M0_REPO/scripts/gen-hosts.sh" "$ip"
+    run bash "$M0_REPO/scripts/22-gen-hosts.sh" "$ip"
     [ "$status" -eq 0 ]
     local expected_subs=() expected_names=()
     mapfile -t expected_subs < <(sed -n 's/^[[:space:]]*subdomain:[[:space:]]*//p' "$M0_REPO/config/routes.yaml" | sed -e 's/[[:space:]]*$//' -e "s/^['\"]//" -e "s/['\"]$//" | grep -v '^$')
@@ -76,12 +76,12 @@ setup() {
     # 不带 --write 不得改 hosts（片段生成是纯 stdout 动作）
     local hosts_before hosts_after
     hosts_before="$(cat /etc/hosts)"
-    bash "$M0_REPO/scripts/gen-hosts.sh" "$ip" >/dev/null
+    bash "$M0_REPO/scripts/22-gen-hosts.sh" "$ip" >/dev/null
     hosts_after="$(cat /etc/hosts)"
     [ "$hosts_after" = "$hosts_before" ]
 
     # --write：DinD 内层容器的 /etc/hosts 是一次性的，逐条验证全部十个名字均解析
-    bash "$M0_REPO/scripts/gen-hosts.sh" "$ip" --write >/dev/null
+    bash "$M0_REPO/scripts/22-gen-hosts.sh" "$ip" --write >/dev/null
     for sub in "${expected_subs[@]}"; do
         getent hosts "$sub.$GW_DOMAIN" | grep -q "^$ip"
     done

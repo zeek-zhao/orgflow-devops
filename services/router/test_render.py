@@ -106,7 +106,8 @@ class RouterTests(unittest.TestCase):
     def test_domain_sites_match_config_and_output_is_stable(self):
         self.assertEqual(self.run_render().returncode, 0)
         content = self.out.read_text()
-        self.assertIn("\tlocal_certs", content)
+        self.assertNotIn("local_certs", content, "内部 CA 改为 config/ca/ 入库证书，不再自签")
+        self.assertIn("tls /certs/orgflow-ca.crt /certs/orgflow-ca.key", content)
         sites = declared_sites()
         self.assertGreaterEqual(len(sites), 8, "路由数突然变少，先确认是不是删错了")
         for sub in sites:

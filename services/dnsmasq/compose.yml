@@ -1,0 +1,27 @@
+# dnsmasq：内部 DNS，把 *.org-devops.com 指到网关
+#
+# 为什么必须最先起：其余每个服务都把 resolver 指向它（dns: ${IP_DNSMASQ}），
+# dnsmasq 没就绪时其它容器会拿着解析不了的域名重试，表现为随机的连接失败。
+#
+# 配置来源：config/orgflow.yml → out/runtime.env（GATEWAY_DOMAIN / IP_CADDY / IP_DNSMASQ）
+services:
+  dnsmasq:
+    build:
+      context: ./services/dnsmasq
+      tags: ["orgflow/dnsmasq:24.04-v1"]
+    container_name: of-dnsmasq
+    restart: unless-stopped
+    environment:
+      - GATEWAY_DOMAIN=${GATEWAY_DOMAIN}
+      - GATEWAY_IP=${IP_CADDY}
+      # dnsmasq 只绑这个地址：0.0.0.0:53 会与 Docker 内嵌 DNS 的 127.0.0.11:53 冲突
+      - DNSMASQ_LISTEN_IP=${IP_DNSMASQ}
+    networks:
+      orgflow:
+        ipv4_address: ${IP_DNSMASQ}
+    healthcheck:
+      test: ["CMD-SHELL", "dig +short +time=2 +tries=1 jenkins.$$GATEWAY_DOMAIN @$$DNSMASQ_LISTEN_IP | grep -q ."]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s

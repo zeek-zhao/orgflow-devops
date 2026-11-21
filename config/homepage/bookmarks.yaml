@@ -76,6 +76,10 @@
         - abbr: HP
           href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/services/homepage.md
           icon: mdi-file-document
+    - 在线文档站 · MkDocs Material:
+        - abbr: DOC
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/services/docs.md
+          icon: mdi-file-document
     - 网络架构 · 分层排查:
         - abbr: NET
           href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/network/arch.md

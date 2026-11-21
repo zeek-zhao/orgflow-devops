@@ -41,15 +41,43 @@ def relative_targets(path):
         yield target
 
 
+def _compose_files():
+    """根 compose + 它 include 进来的每个片段。
+
+    2026-11 起 compose 按服务拆到 services/<name>/compose.yml，
+    根文件只剩 include 清单与网络/卷；读服务名时必须跟进去。
+    """
+    root = ROOT / "docker-compose.yml"
+    files = [root]
+    for raw in root.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line.startswith("- "):
+            continue
+        candidate = line[2:].strip().strip("'\"")
+        if not candidate.endswith((".yml", ".yaml")):
+            continue
+        fragment = (root.parent / candidate).resolve()
+        if fragment.is_file():
+            files.append(fragment)
+    return files
+
+
 def compose_service_names():
-    """从 docker-compose.yml 解析顶层 services: 下的服务名。
+    """解析 compose（根文件 + include 片段）顶层 services: 下的服务名。
 
     只认两空格缩进的键（services 的直接子级）；不引第三方 yaml 库，
     缩进约定由仓库自己的 compose 文件保证（00_stack.bats 也依赖它）。
     """
     names = []
+    for path in _compose_files():
+        names.extend(_service_names_in(path))
+    return sorted(set(names))
+
+
+def _service_names_in(path):
+    names = []
     in_services = False
-    for raw in (ROOT / "docker-compose.yml").read_text(encoding="utf-8").splitlines():
+    for raw in path.read_text(encoding="utf-8").splitlines():
         if raw.rstrip() == "services:":
             in_services = True
             continue

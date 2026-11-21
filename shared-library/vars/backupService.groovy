@@ -30,7 +30,7 @@ def call(Map cfg = [:]) {
             sh '''
                 set +x
                 set -eu
-                bash scripts/backup.sh --service "$BACKUP_SERVICE"
+                bash scripts/61-backup.sh --service "$BACKUP_SERVICE"
             '''
         }
     }

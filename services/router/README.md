@@ -25,7 +25,7 @@ bash services/router/reload.sh   # 渲染 + POST /load 到 Caddy admin
 ```
 
 2. `make render`（或等 router 服务 watch 自动热更）。
-3. 宿主机/局域网机器的 hosts 片段要重新生成：`make hosts`（或 `scripts/gen-hosts.sh`）。
+3. 宿主机/局域网机器的 hosts 片段要重新生成：`make hosts`（或 `scripts/22-gen-hosts.sh`）。
 
 ## 约定
 

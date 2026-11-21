@@ -1,0 +1,74 @@
+# =============================================================================
+# orgflow-devops 唯一人工维护的配置文件（M0 重构，2026-11-21）
+#
+# 这里只有**人需要改的东西**：域名、宿主端口、容器网段、备份路径、目录口径、账号口令。
+# 服务名与容器固定 IP 属于架构常量，登记在 config/services.yml（改它=改架构，要同步 ADR）。
+#
+# 改完执行：
+#   bash scripts/10-render-config.sh      # 渲染 out/runtime.env + out/Caddyfile + out/dex/config.yaml
+#   make deploy                           # 内部也会先渲染
+#
+# out/runtime.env 是**产物**，不要手改；它不进 git，权限 0600（含口令）。
+# 仓库里不再有 .env：所有脚本都从本文件（经渲染产物）取值。
+# =============================================================================
+
+gateway:
+  # 所有站点都是 https://<子域>.<domain>；子域清单在 config/routes.yaml
+  domain: org-devops.com
+  # 宿主端口映射（宿主 80/443 被占用时改这里；容器内始终是 80/443）
+  http_port: 80
+  https_port: 443
+
+network:
+  # 容器数据网络与固定 IP 段（ADR-13：固定 IP + 域名路由）
+  name: orgflow
+  subnet: 172.31.0.0/24
+  # 动态分配段：jjb 这类一次性容器从这里取地址，不与固定 IP 冲突
+  ip_range: 172.31.0.200/29
+  # Homepage 自定义卡片（用户自备的 docker.yaml / kubernetes.yaml）指向这里，
+  # 放 ./out/dashboard 是为了与其它运行时产物同进同出；模板仍在 config/homepage/。
+  user_data: ./out/dashboard
+
+ldap:
+  organisation: OrgFlow
+  # 目录根。镜像以 LDAP_BASE_DN 初始化；DN 派生规则见 scripts/lib/config.py
+  base_dn: dc=devops,dc=com
+  admin_id: admin
+  # 所有 LDAP 账号统一口令（2026-11-21 用户口径：不再随机生成，仓库存 {SSHA} 哈希）
+  # service 段里的同名账号若目录里没有，make init 会按账号体系补建。
+  password: "123456"
+
+mail:
+  # oauth2-proxy 的 --email-domain；Dex 用户 email 的后缀
+  domain: devops.com
+
+jenkins:
+  # 浏览器入口 / JCasC / oauth2 回跳用的地址，由 gateway.domain 派生，无需手改
+  # 管理员账号就是 LDAP 里的 svc-platform-admin（Jenkins 是 LDAP-only realm）
+  admin_id: svc-platform-admin
+  github_user: zeek-zhao
+  # 可读取 private 仓库的 GitHub PAT；留空则推 Job 时用匿名（只能推公开仓库）
+  github_token: ""
+
+nexus:
+  # Nexus 不在本轮 compose 里（#46）：由 Jenkins job nexus-deploy 部署
+  admin_id: admin
+  password: "123456"
+
+oauth2:
+  client_id: jenkins
+  client_secret: "123456"
+  # oauth2-proxy 要求 16/24/32 字节
+  cookie_secret: "12345612345612345612345612345612"
+
+backup:
+  # 相对路径按仓库根解析
+  dir: ./out/backups
+  retention_days: 7
+
+# 目录口径（DN 前缀），改这里等于改目录结构，需同步 ldap 的 base_dn
+directory:
+  users_ou: ou=users
+  groups_ou: ou=groups
+  departments_ou: ou=departments
+  apps_ou: ou=apps

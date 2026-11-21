@@ -62,10 +62,28 @@ for rule in "${RULES[@]}"; do
     combined="${combined:+$combined|}$pattern"
 done
 
+# 私钥块的豁免清单：只豁免「私钥块」这一条规则，PAT / AWS / 内网标识照扫。
+#   config/ca/orgflow-ca.key —— 内部测试 CA（需求：生成后入库，2035+ 有效期），
+#     脚本与文档都写明「上线必须换企业 CA / ACME 并清理历史」。
+#   scripts/test_deploy.py —— 单元测试夹具，必须是真实格式的 ed25519 私钥，
+#     否则 ssh-keygen 无法解析，被测的是密钥文件如何被读取与挂载。
+KEY_ALLOWLIST=(
+    "config/ca/orgflow-ca.key"
+    "scripts/test_deploy.py"
+)
+
 mapfile -t files < <(list_files | grep -vxF "$SELF" || true)
 
 hits=0
 report() { printf '✗ 命中 [%s] %s\n' "$1" "$2" >&2; hits=$((hits + 1)); }
+
+in_allowlist() {
+    local candidate="$1" entry
+    for entry in "${KEY_ALLOWLIST[@]}"; do
+        [[ "$candidate" == "$entry" ]] && return 0
+    done
+    return 1
+}
 
 if ((${#files[@]})); then
     # 一次 grep 扫全部文件；命中行再回头判断属于哪条规则。
@@ -78,6 +96,9 @@ if ((${#files[@]})); then
             name="${rule%%|*}"
             pattern="${rule#*|}"
             if printf '%s' "$content" | grep -qE -- "$pattern"; then
+                if [[ "$name" == "私钥块" ]] && in_allowlist "${file#"$TARGET/"}"; then
+                    continue
+                fi
                 report "$name" "${file#"$TARGET/"}"
             fi
         done
@@ -86,27 +107,26 @@ if ((${#files[@]})); then
     # 口令明文：只在「明确在说口令」的上下文里判，避免误伤 0123456789 这类占位串。
     # 判据来自一次真事故：README 曾直接写出目录初始口令，而那个值在部署机上真在用。
     password_re='(初始口令|初始密码|initial password|默认口令|默认密码)[^"]{0,20}\b123456\b|password["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"']?123456\b'
-    # 白名单：演示环境口令明文的唯一登记处（docs/network/架构图.md §0 账号口令总表）。
-    # 这些值只是演示模式默认值，deploy.sh 首次部署仍会把它们换成随机值（见使用说明 §0）。
-    # 白名单只豁免「口令明文」这一条规则，其余规则（PAT/私钥/内网网段）照扫不误；
-    # 要登记新文件必须同时满足：a) 该文件是这份信息的唯一真源 b) 评审记录在案。
-    REDACT_PASSWORD_ALLOWLIST=(
-        docs/network/架构图.md
+    # 白名单：口令明文的唯一登记处。
+    #   orgflow.yml            —— M0 重构后唯一的人工配置（2026-11-21 用户口径：所有
+    #                             账号共用一套口令，不再随机生成；目录里存的是哈希）。
+    #                             没有它无法部署，因此它是这份信息的唯一真源。
+    #   docs/network/架构图.md  —— 账号口令总表（面向运维的单页速查）。
+    # 白名单只豁免「口令明文」这一条规则，其余规则（PAT/私钥/内网网段）照扫不误。
+    #
+    # 判定交给 grep，不在 shell 里切分 "文件:行号:内容"：命中行内容几乎一定带冒号
+    # （本规则抓的就是 '口令: "值"'），在 bash 里切分与模式匹配踩过两次
+    # （豁免静默失效、红得莫名其妙）—— grep -v 的前缀过滤没有这些边界问题。
+    while IFS= read -r hit_file; do
+        [[ -z "$hit_file" ]] && continue
+        report "口令明文" "$hit_file"
+    done < <(
+        grep -InHE -- "$password_re" "${files[@]}" 2>/dev/null \
+            | grep -vE '^\.?/?docs/network/架构图\.md:' \
+            | cut -d: -f1 \
+            | grep -vE '(^|/)orgflow\.yml$' \
+            || true
     )
-    while IFS= read -r line; do
-        [[ -z "$line" ]] && continue
-        # cut 取到的是 "文件:行号"，两种分隔都要剥掉，否则报告里会带绝对路径和行号，
-        # 与上面那条规则的「相对路径」格式不一致，看起来像两个不同的东西。
-        hit_file="${line%:*}"      # 去掉 "内容"
-        hit_file="${hit_file%:*}"  # 再去掉 ":行号"
-        rel="${hit_file#"$TARGET/"}"
-        allowed=false
-        for allow in "${REDACT_PASSWORD_ALLOWLIST[@]}"; do
-            [[ "$rel" == "$allow" ]] && { allowed=true; break; }
-        done
-        $allowed && continue
-        report "口令明文" "$rel"
-    done < <(grep -InHE -- "$password_re" "${files[@]}" 2>/dev/null || true)
 fi
 
 # 内部流程文档按「最小披露」不再随仓库分发：它们含内网拓扑、验收取证过程与派工细节。

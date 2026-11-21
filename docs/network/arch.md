@@ -78,7 +78,7 @@ flowchart LR
 无固定 IP——它只在 `make jobs` 时 `compose run` 一次性起，走内网直连 `jenkins:8080`（#30）。
 
 > **`nexus` 不在 `docker-compose.yml` 里（#46）。** 它是「被 Jenkins 部署的制品库」，
-> 由 job `nexus-deploy` 调 `scripts/nexus-deploy.sh` 用 `docker run` 拉起，
+> 由 job `nexus-deploy` 调 `scripts/70-nexus-deploy.sh` 用 `docker run` 拉起，
 > 固定 IP `172.31.0.21` 与网络别名 `nexus` 都由脚本负责。
 > 所以 `make deploy` 之后 `nexus.<domain>` 是 **502**（预期），跑完 job 才是 200。
 > 上面这张表的 IP 不变，只是「谁把它拉起来」换了人。

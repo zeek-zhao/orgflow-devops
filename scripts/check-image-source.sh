@@ -11,7 +11,7 @@
 #   那会天天误报），而是「自 pinned-at 那次构建以来，镜像上下文有没有变过」：
 #   变了就等于本地镜像落后于源码，硬失败。
 #
-#   pinned-at 由 scripts/pin-images.sh 写入 docker-compose.ghcr.yml 头部，
+#   pinned-at 由 scripts/15-pin-images.sh 写入 docker-compose.ghcr.yml 头部，
 #   值是产出这批 digest 的那次提交。#134 要的「期望值溯源」，这里是第一处落地。
 #
 #   用法：
@@ -108,7 +108,7 @@ fi
 pinned_at=$(sed -n 's/^# pinned-at:[[:space:]]*//p' "$OVERLAY" | head -1 | tr -d '[:space:]')
 if [[ -z "$pinned_at" ]]; then
   fail "$OVERLAY 缺少 # pinned-at: 标注，无法判断镜像是否落后于源码" \
-       "  这一行由 scripts/pin-images.sh 写入，记录产出当前 digest 的那次提交。" \
+       "  这一行由 scripts/15-pin-images.sh 写入，记录产出当前 digest 的那次提交。" \
        "  修：make images-pin（会一并补上）"
 fi
 

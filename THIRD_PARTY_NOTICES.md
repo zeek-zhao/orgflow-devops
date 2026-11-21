@@ -29,7 +29,7 @@
 | Homepage | `mirror-homepage:v2.7.0` | [gethomepage/homepage](https://github.com/gethomepage/homepage) | **GPL-3.0** | GPL-3.0.txt |
 
 各镜像的精确版本由 digest 锁定，见 [`docker-compose.ghcr.yml`](docker-compose.ghcr.yml)
-与 [`scripts/nexus-deploy.sh`](scripts/nexus-deploy.sh)；汇总见 SBOM。
+与 [`scripts/70-nexus-deploy.sh`](scripts/70-nexus-deploy.sh)；汇总见 SBOM。
 
 ## 2. 本项目构建的镜像
 
