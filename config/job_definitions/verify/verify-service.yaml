@@ -66,6 +66,7 @@
       - dex
       - oauth2-proxy
       - homepage
+      - docs
       - nexus
     jobs:
       - verify-{svc}

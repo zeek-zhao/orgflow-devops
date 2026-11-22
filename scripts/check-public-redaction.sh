@@ -63,12 +63,12 @@ for rule in "${RULES[@]}"; do
 done
 
 # 私钥块的豁免清单：只豁免「私钥块」这一条规则，PAT / AWS / 内网标识照扫。
-#   config/ca/orgflow-ca.key —— 内部测试 CA（需求：生成后入库，2035+ 有效期），
-#     脚本与文档都写明「上线必须换企业 CA / ACME 并清理历史」。
 #   scripts/test_deploy.py —— 单元测试夹具，必须是真实格式的 ed25519 私钥，
 #     否则 ssh-keygen 无法解析，被测的是密钥文件如何被读取与挂载。
+#
+# 注意：CA 私钥**没有**豁免。2026-11-22 起私钥放 secrets/ca/（gitignore），
+# 公开仓里的私钥不是「敏感」而是「已泄漏」，这里必须拦下。
 KEY_ALLOWLIST=(
-    "config/ca/orgflow-ca.key"
     "scripts/test_deploy.py"
 )
 

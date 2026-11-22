@@ -1,8 +1,9 @@
 # caddy：唯一对外发布端口的服务（80/443）
 #
-# 证书：仓库自带的 orgflow 内部 CA（config/ca/），不是 Caddy 自签的 local CA。
-#   根证书入库 → 有效期固定 2036 年、不会随 `down -v` 重建而变化；
-#   只有在 config/ca/ 缺文件时 make init 才会重新生成（scripts/20-gen-ca.sh）。
+# 证书：仓库自带的 orgflow 内部 CA，不是 Caddy 自签的 local CA。
+#   根证书 config/ca/orgflow-ca.crt 入库 → 有效期固定 2036 年、不随 `down -v` 变化；
+#   CA 私钥与叶子证书在 secrets/ca/（不进 git），缺文件时 scripts/20-gen-ca.sh 重新生成
+#   CA，scripts/lib/site_certs.py 给每个子域现签。
 #
 # 站点配置由 router 渲染到 out/Caddyfile；本服务只负责执行它。
 services:
@@ -15,8 +16,9 @@ services:
       - "${GATEWAY_HTTPS_PORT}:443"
     volumes:
       - ../../out:/etc/caddy
-      # 内部 CA 的证书与私钥（入库，只读挂载）
-      - ../../config/ca:/certs:ro
+      # CA 私钥与叶子证书（只读挂载，不进 git）。/certs/sites/<子域>.crt|key 是
+      # scripts/lib/site_certs.py 为每个站点签的叶子证书，根证书在 /certs/orgflow-ca.crt
+      - ../../secrets/ca:/certs:ro
       # 文档站静态内容：由 services/docs 生成的站点目录（compose 同名卷）
       - docs_site:/srv/docs:ro
       - caddy_data:/data

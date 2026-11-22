@@ -9,10 +9,10 @@ Feature: verify-service 任务模板
   @REQ-M0-D5
 
   @REQ-M0-B0
-  Scenario: verify jobs: 模板覆盖 10 个 compose 服务 + nexus，与 deploy.sh 口径一致
+  Scenario: verify jobs: 模板覆盖 11 个 compose 服务 + nexus，与 config/services.yml 口径一致
     Given verify 模板已入库
-    When 对照 deploy.sh 服务口径
-    Then 模板覆盖 10+1 个服务且口径一致
+    When 对照 config/services.yml 的服务口径
+    Then 模板覆盖 11+1 个服务且口径一致
 
   @REQ-M0-B0
   @REQ-M0-B2

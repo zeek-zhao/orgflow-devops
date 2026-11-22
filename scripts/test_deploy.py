@@ -32,6 +32,8 @@ DEPLOY_DEPENDENCIES = (
     "config/orgflow.yml",
     "config/services.yml",
     "services/router/render.py",
+    # 渲染 Caddyfile 前要先补齐每个站点的叶子证书，缺它 render 直接退出 2
+    "scripts/lib/site_certs.py",
     "services/auth/dex/config.yaml.tmpl",
     "config/routes.yaml",
 )
@@ -89,6 +91,14 @@ class DeployTests(unittest.TestCase):
             target = self.root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, target)
+        # CA 证书入库（config/ca/）、私钥在 secrets/ca（不进 git）；沙箱里没有会在
+        # 签发站点证书那步退出 1。两处都按真实位置铺开，测的是真实布局。
+        for ca_name, ca_sub in (("orgflow-ca.crt", "config/ca"), ("orgflow-ca.key", "secrets/ca")):
+            src = ROOT / ca_sub / ca_name
+            if src.exists():
+                dst = self.root / ca_sub / ca_name
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(src, dst)
         plant_secrets(self.root)
         self.bin = self.root / "bin"
         self.bin.mkdir()
@@ -761,10 +771,19 @@ class RenderConfigTests(unittest.TestCase):
                      "scripts/lib/rendered_values.py",
                      "config/orgflow.yml", "config/services.yml",
                      "config/routes.yaml", "services/router/render.py",
+                     "scripts/lib/site_certs.py",
                      "services/auth/dex/config.yaml.tmpl"):
             target = self.root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, target)
+        # 内部 CA 是入库文件（config/ca/），沙箱里没有就会在签发站点证书时退出 1；
+        # 拷进去让渲染链完整跑通 —— 这正是「clean clone 也能直接 deploy」的前提。
+        for ca_name, ca_sub in (("orgflow-ca.crt", "config/ca"), ("orgflow-ca.key", "secrets/ca")):
+            src = ROOT / ca_sub / ca_name
+            if src.exists():
+                dst = self.root / ca_sub / ca_name
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(src, dst)
 
     def render(self, **env):
         base = {key: value for key, value in os.environ.items()
@@ -810,7 +829,12 @@ class RenderConfigTests(unittest.TestCase):
     def test_caddyfile_carries_the_site_and_the_ca(self):
         self.assertEqual(self.render().returncode, 0)
         caddyfile = (self.root / "out/Caddyfile").read_text()
-        self.assertIn("tls /certs/orgflow-ca.crt /certs/orgflow-ca.key", caddyfile)
+        # 每个站点用自己那张叶子证书（同一把内部 CA 签，SAN 只含该子域）；
+        # 断言「指向 sites/<子域>.crt|key」而不是写死一个证书名。
+        for name in ("jenkins", "docs"):
+            self.assertIn(
+                f"tls /certs/sites/{name}.org-devops.com.crt "
+                f"/certs/sites/{name}.org-devops.com.key", caddyfile)
         self.assertNotIn("local_certs", caddyfile)
 
 

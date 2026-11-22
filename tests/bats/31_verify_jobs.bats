@@ -16,7 +16,7 @@ setup() {
     setup_gw
 }
 
-@test "verify jobs: 模板覆盖 10 个 compose 服务 + nexus，与 deploy.sh 口径一致" {
+@test "verify jobs: 模板覆盖 11 个 compose 服务 + nexus，与 config/services.yml 口径一致" {
     local file="$M0_REPO/config/job_definitions/verify/verify-service.yaml"
     [ -f "$file" ]
 
@@ -53,12 +53,16 @@ PY
     [ -n "$from_script" ]
 
     local from_step
-    from_step="$(grep -A2 'def deployable' "$M0_REPO/shared-library/vars/verifyService.groovy" \
+    # 白名单跨两行（M0 加了 docs 之后一行放不下），用 sed 取整段再抽引号里的名字；
+    # nexus 单独断言（见下一条），这里只比 compose 服务。
+    from_step="$(sed -n '/def deployable/,/]/p' "$M0_REPO/shared-library/vars/verifyService.groovy" \
         | grep -oE "'[a-z0-9-]+'" | tr -d "'" | grep -vx nexus | sort | tr '\n' ' ')"
-    [ "$from_step" = "$from_script" ]
+    # 两边都排序比较：config 那边是 sorted()，groovy 那边是声明顺序
+    [ "$(printf '%s' "$from_step" | tr ' ' '\n' | sed '/^$/d' | sort | tr '\n' ' ')" = \
+      "$(printf '%s' "$from_script" | tr ' ' '\n' | sed '/^$/d' | sort | tr '\n' ' ')" ]
 
     # nexus 必须在 deployable 里（走 deployNexus 的那条分支）
-    grep -A2 'def deployable' "$M0_REPO/shared-library/vars/verifyService.groovy" | grep -q "'nexus'"
+    sed -n '/def deployable/,/]/p' "$M0_REPO/shared-library/vars/verifyService.groovy" | grep -q "'nexus'"
 }
 
 @test "verifyService: backupable 白名单与 backupService/backup.sh 一致（仅真卷服务）" {

@@ -70,6 +70,11 @@ set -a
 . "$OUT_DIR/runtime.env"
 set +a
 
+echo "== 签发站点证书 =="
+# 每个子域一张叶子证书（同一把内部 CA 签），缺失才签、已有就复用 ——
+# 所以要放在渲染 Caddyfile 之前，否则 Caddyfile 会指向不存在的文件。
+python3 scripts/lib/site_certs.py
+
 echo "== 渲染网关配置 =="
 python3 services/router/render.py --routes config/routes.yaml --out "$OUT_DIR/Caddyfile" --admin ""
 

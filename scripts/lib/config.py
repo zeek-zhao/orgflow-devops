@@ -328,3 +328,66 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+# ---------- 站点证书（M0）：每个子域一张叶子证书，由内部 CA 现签 ----------
+# 只有**证书**进 git（config/ca/orgflow-ca.crt，10 年，客户端装一次就行）；
+# CA 私钥与叶子证书都放 secrets/（gitignore）—— 公开仓里的私钥不是「敏感」而是「已泄漏」。
+CA_DIR = ROOT / "config" / "ca"
+CA_CERT = CA_DIR / "orgflow-ca.crt"
+CA_KEY = pathlib.Path(os.environ.get("CA_KEY") or (ROOT / "secrets" / "ca" / "orgflow-ca.key"))
+SITES_DIR = CA_KEY.parent / "sites"
+
+
+def site_cert_paths(sub: str, domain: str) -> tuple[pathlib.Path, pathlib.Path]:
+    """返回 (证书, 私钥) 的落盘路径；命名口径与 scripts/lib/site_certs.py 一致。"""
+    name = f"{sub}.{domain}"
+    return SITES_DIR / f"{name}.crt", SITES_DIR / f"{name}.key"
+
+
+def ensure_site_certs(cfg: dict[str, Any], domain: str) -> list[tuple[str, str]]:
+    """给 config/routes.yaml 里每个子域补齐叶子证书，返回**新签**的 [(sub, domain)]。
+
+    为什么放在这里：路由注册 API（#61）会在运行期往 routes.yaml 里加子域，
+    而 Caddy 每次热加载都会去读 /certs/sites/<子域>.crt —— 缺一张就整份新配置
+    被拒（实测 HTTP 400 `open /certs/sites/demo...: no such file`），
+    已经跑着的站点也会跟着不受影响地回滚。所以「加一条路由」必须连证书一起补。
+
+    只在缺文件时才签（已入库的 10 年期证书不会被覆盖），签名逻辑在
+    scripts/lib/site_certs.py 的 issue() 里，避免两份实现。
+    """
+    if not CA_CERT.exists():
+        raise ConfigError(f"缺 {CA_CERT}：先跑 bash scripts/20-gen-ca.sh 生成内部 CA")
+    if not CA_KEY.exists():
+        raise ConfigError(
+            f"缺 CA 私钥 {CA_KEY}：叶子证书要用它现签（私钥不进 git，从备份恢复或重新生成 CA）")
+    missing = []
+    for sub in routes_subdomains():
+        crt, key = site_cert_paths(sub, domain)
+        if not (crt.exists() and key.exists()):
+            missing.append((sub, domain))
+    if missing:
+        import sys as _sys
+
+        if str(ROOT / "scripts" / "lib") not in _sys.path:
+            _sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+        import site_certs  # noqa: E402  与 render 链共用同一份签发实现
+
+        for sub, dom in missing:
+            crt, key = site_cert_paths(sub, dom)
+            site_certs.issue(CA_CERT, CA_KEY, crt, key, sub, dom, 3650)
+    return missing
+
+
+def routes_subdomains() -> list[str]:
+    """config/routes.yaml 里的全部子域（用 router 的解析器，不另写一套）。"""
+    import sys as _sys
+
+    router_dir = str(ROOT / "services" / "router")
+    if router_dir not in _sys.path:
+        _sys.path.insert(0, router_dir)
+    import render  # noqa: E402
+
+    text = (ROOT / "config" / "routes.yaml").read_text(encoding="utf-8")
+    _settings, route_list = render.parse_routes_text(text)
+    return [r["subdomain"] for r in route_list]

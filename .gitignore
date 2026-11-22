@@ -5,8 +5,14 @@
 .jjb/
 out/
 *.log
-# agent 的 SSH 私钥（scripts/40-gen-agent-key.sh 生成，永不入库）
+# agent 的 SSH 私钥（scripts/40-gen-agent-key.sh 生成）与内部 CA 私钥/叶子证书
+# （scripts/20-gen-ca.sh 生成到 secrets/ca/）—— 永不入库。只有根证书 config/ca/*.crt 入库。
 secrets/
+# 兜底：任何子目录下的私钥都不入库（包括将来别人放错位置的 CA 私钥）
+*.key
+!config/ca/*.key.bak
+# 叶子证书是现签产物，不是仓库内容
+config/ca/sites/
 
 # 语言
 __pycache__/

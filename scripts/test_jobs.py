@@ -36,12 +36,22 @@ class JobScriptTests(unittest.TestCase):
             "scripts/40-gen-agent-key.sh",
             "config/orgflow.yml",
             "config/jenkins_jobs.ini.tpl", "config/routes.yaml",
-            "services/router/render.py", "services/auth/dex/config.yaml.tmpl",
+            "services/router/render.py",
+            # 渲染 Caddyfile 前先补齐站点叶子证书，缺它就退出 2
+            "scripts/lib/site_certs.py",
+            "services/auth/dex/config.yaml.tmpl",
             "tests/images.lock",
         ):
             target = self.root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, target)
+        # CA 证书入库（config/ca/）、私钥在 secrets/ca（不进 git）：两处按真实位置铺开
+        for ca_name, ca_sub in (("orgflow-ca.crt", "config/ca"), ("orgflow-ca.key", "secrets/ca")):
+            src = ROOT / ca_sub / ca_name
+            if src.exists():
+                dst = self.root / ca_sub / ca_name
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(src, dst)
         self.dotenv = self.root / ".env"
         self.dotenv.write_text(
             "JENKINS_URL=https://jenkins.org-devops.com/\n"
