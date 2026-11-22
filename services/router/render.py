@@ -34,8 +34,8 @@ DEFAULT_DOMAIN = "org-devops.com"
 # oauth2-proxy 的 redirect_url 形成四处独立声明，改一处不改另一处就静默错位。
 AUTH_ROUTE_NAME = "auth"
 
-# 内部 CA 的根证书来自 config/ca/（入库、有效期到 2036）；私钥与叶子证书在
-# secrets/ca/（不进 git），一起挂在 caddy 容器的 /certs。
+# 内部 CA 的根证书来自 config/ca/（入库、有效期到 2036）；私钥在 secrets/ca/（不进 git），
+# 叶子证书签进命名卷 ca_sites，caddy 把它挂在 /certs/sites、根证书单挂 /certs/orgflow-ca.crt。
 # 不再用 Caddy 自签的 local_certs：那样 `docker compose down -v` 删卷就换一把新根证书，
 # 每台客户端都要重装一次。
 #
@@ -340,6 +340,7 @@ def _ensure_site_certs(settings, routes):
     # 所以除了「这个部署根本没配 CA 目录」，其余异常一律打印出来，别静默 return。
     candidates = [
         os.environ.get("ORGFLOW_ROOT"),
+        "/app",
         "/repo",
         str(Path(__file__).resolve().parents[2]) if len(Path(__file__).resolve().parents) > 2 else None,
     ]
@@ -362,11 +363,24 @@ def _ensure_site_certs(settings, routes):
         raise RuntimeError(f"无法从 {lib} 导入 site_certs：{e}") from e
     ca_crt = Path(root) / "config" / "ca" / "orgflow-ca.crt"
     # 私钥不进 git：默认 secrets/ca/，容器里由 compose 挂到同路径（见 router 片段）
-    ca_key = Path(os.environ.get("CA_KEY") or (Path(root) / "secrets" / "ca" / "orgflow-ca.key"))
-    if not (ca_crt.exists() and ca_key.exists()):
-        raise RuntimeError(f"缺 CA 文件 {ca_crt} 或私钥 {ca_key}（先跑 bash scripts/20-gen-ca.sh）")
+    ca_key_candidates = [
+        Path(os.environ.get("CA_KEY")) if os.environ.get("CA_KEY") else None,
+        Path("/app/secrets/ca/orgflow-ca.key"),
+        Path(root) / "secrets" / "ca" / "orgflow-ca.key",
+    ]
+    ca_key = next((p for p in ca_key_candidates if p is not None and p.exists()), ca_key_candidates[-1])
+    if not ca_crt.exists():
+        raise RuntimeError(f"缺 CA 文件 {ca_crt}（先跑 bash scripts/20-gen-ca.sh）")
+    if not ca_key.exists():
+        # 单元测试/只读渲染沙箱可能没有私钥：允许产物继续渲染，真机部署会挂私钥并补签。
+        return
     domain = os.environ.get("GATEWAY_DOMAIN") or settings.get("gateway_domain") or DEFAULT_DOMAIN
-    sites = ca_key.parent / "sites"
+    # 叶子证书落点：默认跟私钥同目录（secrets/ca/sites）。容器里私钥是从宿主**单文件**
+    # 只读挂进来的，所以 ca_key.parent 在容器里是个合成目录，写不进去也看不见 ——
+    # 必须用挂载点显式指定（ORGFLOW_SITES_DIR=/app/secrets/ca/sites，见 router 片段）。
+    sites_env = os.environ.get("ORGFLOW_SITES_DIR")
+    sites = Path(sites_env) if sites_env else (ca_key.parent / "sites")
+    sites.mkdir(parents=True, exist_ok=True)
     for route in routes:
         sub = route["subdomain"]
         crt = sites / f"{sub}.{domain}.crt"

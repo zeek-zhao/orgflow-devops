@@ -23,6 +23,18 @@ except urllib.error.HTTPError as e:
 }
 
 @test "router api: POST 一条路由 → 文件/Caddyfile/Caddy 三处全生效，不重启任何容器" {
+    # 先清场：上一轮如果死在中间，demo 会留在 routes.yaml 里，第二轮就拿到
+    # 400 duplicate subdomain —— 看起来像「API 坏了」，其实是用例没打扫。
+    # 只删 demo 这一条，别人的路由一个字都不动。
+    python3 - "$ROUTES" "$M0_REPO/secrets/ca/sites" "$GW_DOMAIN" <<'PY' || true
+import pathlib, re, sys
+routes, sites, domain = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3]
+text = routes.read_text(encoding="utf-8")
+text = re.sub(r"  - name: demo\n    subdomain: demo\n    upstream: [^\n]+\n", "", text)
+routes.write_text(text, encoding="utf-8")
+for suffix in (".crt", ".key"):
+    (sites / f"demo.{domain}{suffix}").unlink(missing_ok=True)
+PY
     local before_sha after_sha baseline_routes
     before_sha=$(sha256sum "$ROUTES" | cut -d' ' -f1)
     baseline_routes=$(api GET /routes | sed -n '2,$p' | python3 -c 'import json,sys; print("\n".join(r["name"] for r in json.load(sys.stdin)["routes"]))')
@@ -40,8 +52,20 @@ except urllib.error.HTTPError as e:
     grep -q "https://demo.${GW_DOMAIN} {" "$CADDYFILE"
     # ②' 新子域的叶子证书也补签了：Caddyfile 引用的文件不存在时，Caddy 会整份
     #     拒绝新配置（HTTP 400），表现是「文件写了、Caddy 没加载」。
-    [ -f "$M0_REPO/secrets/ca/sites/demo.${GW_DOMAIN}.crt" ]
-    [ -f "$M0_REPO/secrets/ca/sites/demo.${GW_DOMAIN}.key" ]
+    # 运行期证书写进 ca_sites 命名卷（不是宿主 secrets/ca/sites），router 也挂了同一卷。
+    # 补签与写 routes/Caddy 在同一次 POST 内同步完成；轮询最多 5 秒是给容器内
+    # sh/volume 传播留一点余量，不把「证书尚未落卷」误判成成功或失败。
+    local cert_ready=0
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        run compose_cmd exec -T router sh -c '[ -f /app/secrets/ca/sites/demo.${GATEWAY_DOMAIN}.crt ] && [ -f /app/secrets/ca/sites/demo.${GATEWAY_DOMAIN}.key ]'
+        if [ "$status" -eq 0 ]; then cert_ready=1; break; fi
+        sleep 0.5
+    done
+    if [ "$cert_ready" -ne 1 ]; then
+        compose_cmd exec -T router sh -c 'ls -la /app/secrets/ca/sites >&2 || true' >&2
+        compose_cmd logs router --no-color 2>&1 | tail -12 >&2
+    fi
+    [ "$cert_ready" -eq 1 ]
     # ③ Caddy 真的加载了（issue 验收口径：admin /config/ 里有它，不是只写了文件）
     run compose_cmd exec -T router python3 -c '
 import urllib.request
@@ -75,10 +99,10 @@ print(urllib.request.urlopen("http://caddy:2019/config/", timeout=10).read().dec
     [ "$restored_routes" = "$baseline_routes" ]
     after_sha=$(sha256sum "$ROUTES" | cut -d' ' -f1)
     [ "$before_sha" = "$after_sha" ]
-    # 演示子域用完就删证书，别把测试痕迹留在 secrets/ca/sites 里
-    rm -f "$M0_REPO/secrets/ca/sites/demo.${GW_DOMAIN}.crt" \
-          "$M0_REPO/secrets/ca/sites/demo.${GW_DOMAIN}.key"
-    [ ! -f "$M0_REPO/secrets/ca/sites/demo.${GW_DOMAIN}.crt" ]
+    # 演示子域用完就删证书：证书在 ca_sites 命名卷里，不能靠宿主 secrets/ca/sites 清理。
+    compose_cmd exec -T router sh -c 'rm -f /app/secrets/ca/sites/demo.${GATEWAY_DOMAIN}.crt /app/secrets/ca/sites/demo.${GATEWAY_DOMAIN}.key'
+    run compose_cmd exec -T router sh -c '[ ! -e /app/secrets/ca/sites/demo.${GATEWAY_DOMAIN}.crt ]'
+    [ "$status" -eq 0 ]
 
     # 站点已删：握手必须失败（与 14_caddy 未知域名同口径，TLS alert / 非零退出）
     run curl -sS --max-time 20 -o /dev/null -w '%{http_code}' \

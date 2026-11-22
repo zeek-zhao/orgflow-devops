@@ -3,8 +3,8 @@
 #
 # 它必须在 caddy 之前就绪：caddy 启动即读 out/Caddyfile，配置不在就起不来。
 #
-# 证书：只有根证书 config/ca/orgflow-ca.crt 入库；CA 私钥与每个子域的叶子证书在
-# secrets/ca/（gitignore），运行期加路由时从这里现签，caddy 挂的是同一份目录。
+# 证书：只有根证书 config/ca/orgflow-ca.crt 入库；CA 私钥在 secrets/ca/orgflow-ca.key
+# （gitignore），叶子证书签进命名卷 ca_sites（运行期加路由时现签），caddy 挂同一个卷。
 services:
   router:
     build:
@@ -16,6 +16,12 @@ services:
       - CADDY_ADMIN_URL=http://caddy:2019
       - ROUTES_FILE=/app/config/routes.yaml
       - GATEWAY_DOMAIN=${GATEWAY_DOMAIN}
+      # 容器内绝对路径是真源，禁止运行期猜 /repo 或父目录。
+      - ORGFLOW_ROOT=/app
+      - CA_KEY=/app/secrets/ca/orgflow-ca.key
+      # 叶子证书落点。私钥是单文件只读挂载，它的父目录在容器里是合成的，
+      # 不能靠「私钥同目录」推断，必须显式给（与下面 ca_sites 的挂载点一致）。
+      - ORGFLOW_SITES_DIR=/app/secrets/ca/sites
     volumes:
       # 注册 API(#61) 要写 routes.yaml，config 不再只读 —— routes.yaml 仍是唯一真源
       #
@@ -31,8 +37,16 @@ services:
       # 注意 /app/scripts/lib 是**独立挂载**、不是整仓 scripts：router 只需要这一个
       # 模块，多挂一点就多一个「容器里看到宿主代码」的歧义面。
       - ../../config/ca:/app/config/ca
-      # CA 私钥与叶子证书在 secrets/ca（不进 git）；只读挂载，router 只签不删。
-      - ../../secrets/ca:/app/secrets/ca
+      # CA 私钥与叶子证书在 secrets/ca（不进 git）。这里**刻意不挂整个 secrets/ca**：
+      # 仓根没有 secrets/ca/ 时（干净 clone、CI 单测、只用外部路径）compose 会把它
+      # 建成一个 root 属主的空目录，之后 scripts/20-gen-ca.sh 就以 jenkins 身份写不进去
+      # —— 而且报错是「Permission denied」不是「目录不存在」，很难联想。
+      # 只挂两个必须存在/可写的子路径：
+      #   CA 私钥（只读，签发时读）—— 必须已在宿主机存在，否则 router 起不来是**对的**
+      - ../../secrets/ca/orgflow-ca.key:/app/secrets/ca/orgflow-ca.key:ro
+      #   叶子证书目录（读写，缺一张就补签）—— 用命名卷，不依赖宿主机目录属主。
+      #   宿主机想看得见就把 secrets/ca/sites 挂到同一个卷（备份/排查用，可选）。
+      - ca_sites:/app/secrets/ca/sites
       - ../../scripts/lib/site_certs.py:/app/scripts/lib/site_certs.py:ro
     expose:
       - "8090"
