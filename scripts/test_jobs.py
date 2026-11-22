@@ -45,24 +45,18 @@ class JobScriptTests(unittest.TestCase):
             target = self.root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, target)
-        # CA 证书入库（config/ca/）、私钥在 secrets/ca（不进 git）：两处按真实位置铺开
+        # CI checkout lacks the ignored CA private key. Always generate one matched
+        # pair in each fixture so DeployTests checks deploy behavior, not stale files.
         ca_crt = self.root / "config/ca/orgflow-ca.crt"
         ca_key = self.root / "secrets/ca/orgflow-ca.key"
-        for ca_name, ca_sub in (("orgflow-ca.crt", "config/ca"), ("orgflow-ca.key", "secrets/ca")):
-            src = ROOT / ca_sub / ca_name
-            if src.exists():
-                dst = self.root / ca_sub / ca_name
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(src, dst)
-        if not ca_crt.exists() or not ca_key.exists():
-            ca_crt.parent.mkdir(parents=True, exist_ok=True)
-            ca_key.parent.mkdir(parents=True, exist_ok=True)
-            subprocess.run([
-                "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
-                "-keyout", str(ca_key), "-out", str(ca_crt), "-days", "3650",
-                "-subj", "/CN=OrgFlow Test CA/O=OrgFlow/OU=Test",
-                "-addext", "basicConstraints=critical,CA:TRUE",
-            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ca_crt.parent.mkdir(parents=True, exist_ok=True)
+        ca_key.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run([
+            "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", str(ca_key), "-out", str(ca_crt), "-days", "3650",
+            "-subj", "/CN=OrgFlow Test CA/O=OrgFlow/OU=Test",
+            "-addext", "basicConstraints=critical,CA:TRUE",
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.dotenv = self.root / ".env"
         self.dotenv.write_text(
             "JENKINS_URL=https://jenkins.org-devops.com/\n"
