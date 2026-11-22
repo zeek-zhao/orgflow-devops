@@ -47,10 +47,10 @@ def run(env_file: str, users: str | None = None):
     )
 
 
-def write_env(path: pathlib.Path, password: str | None) -> None:
+def write_env(path: pathlib.Path, fixture_credential: str | None) -> None:
     lines = ["LDAP_DOMAIN=devops.com\n"]
-    if password is not None:
-        lines.append(f"LDAP_USER_PASSWORD={password}\n")
+    if fixture_credential is not None:
+        lines.append(f"LDAP_USER_PASSWORD={fixture_credential}\n")
     path.write_text("".join(lines), encoding="utf-8")
 
 
@@ -82,7 +82,7 @@ def main() -> int:
         # 临时目录放在 out/ 下，才能用相对路径传给 bash
         rel = pathlib.Path(tmp).relative_to(ROOT).as_posix()
         good = f"{rel}/good.env"
-        write_env(ROOT / good, "Test-Password-For-CI-0123456789")
+        write_env(ROOT / good, "ldap-fixture-only")
 
         # 1 + 2：覆盖全部账号，且口令不外泄
         proc = run(good)
@@ -92,7 +92,7 @@ def main() -> int:
         missing = [dn for dn in expected if dn not in output]
         if missing:
             fails.append(f"dry-run 漏了 {len(missing)} 个账号: {missing[:3]}")
-        if "Test-Password-For-CI-0123456789" in output:
+        if "ldap-fixture-only" in output:
             fails.append("dry-run 把口令真值打印出来了（应只出现 ***）")
         if "***" not in output:
             fails.append("dry-run 输出里没有 *** 占位，无法判断是否脱敏")
