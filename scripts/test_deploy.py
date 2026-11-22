@@ -780,6 +780,7 @@ class RenderConfigTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         for name in ("scripts/10-render-config.sh", "scripts/12-render-dex.sh",
+                     "scripts/20-gen-ca.sh",
                      "scripts/lib/config.py", "scripts/lib/runtime.sh",
                      "scripts/lib/rendered_values.py",
                      "config/orgflow.yml", "config/services.yml",
