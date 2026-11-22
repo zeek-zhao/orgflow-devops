@@ -633,7 +633,17 @@ def main():
         # 收敛判据只取决于「本轮有没有热加载、热加载成功没有」。
         # 不能把 changed/force_reload 掺进来：那会让「配置没变」直接算收敛，
         # 于是 Caddy 起来之后永远等不到重试（2026-11-22 实测）。
-        health_state["desired"] = not args.admin or reloaded
+        # Router is the bootstrap publisher: if Caddy is not up yet, the route
+        # artifact is still valid and the Caddy startup can consume it.  Marking
+        # the router unhealthy here creates a caddy <-> router startup cycle.
+        # Watch 模式下 Caddy 尚未就绪是正常的 bootstrap 状态；router 健康
+        # 的判据是配置产物有效且进程正在服务，而不是 Caddy reload 已成功。
+        # reload 失败仍由 watch loop 持续重试。
+        # Router health is bootstrap-only: the watched route artifact being valid
+        # is sufficient. Reload retries are tracked separately to avoid an endless
+        # healthy-but-spamming loop after Caddy successfully reloads.
+        health_state["desired"] = True
+        health_state["retry_pending"] = bool(args.admin and not reloaded)
         health_state["routes_count"] = len(routes)
         watch_bootstrap["pending"] = False
         return True
@@ -674,7 +684,7 @@ def main():
             if m != last:
                 once(force_reload=last is None)
                 last = m
-            elif not health_state.get("desired", True):
+            elif health_state.get("retry_pending", False):
                 # 配置没变，但**上一次热加载没成功**（Caddy 还没起来 / 拒了新配置）：
                 # 不重试的话，这台机器会一直停在旧配置上，直到下次改 routes.yaml。
                 # 判据由 once() 按「本轮热加载成功没有」重置，收敛后不再发无关请求；
