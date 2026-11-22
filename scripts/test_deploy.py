@@ -825,6 +825,30 @@ class RenderConfigTests(unittest.TestCase):
         return dict(line.split("=", 1) for line in text.splitlines()
                     if "=" in line and not line.startswith("#"))
 
+    def test_existing_ca_key_must_match_certificate(self):
+        """已存在根证书与私钥不配套时，脚本必须停机，不应继续签叶子证书。"""
+        ca_dir = self.root / "config/ca"
+        key_dir = self.root / "secrets/ca"
+        ca_dir.mkdir(parents=True, exist_ok=True)
+        key_dir.mkdir(parents=True, exist_ok=True)
+        ca = ca_dir / "orgflow-ca.crt"
+        key = key_dir / "orgflow-ca.key"
+        subprocess.run([
+            "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", str(key), "-out", str(ca), "-days", "365",
+            "-subj", "/CN=Wrong CA/O=OrgFlow/OU=Test",
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        mismatch = key_dir / "other.key"
+        subprocess.run([
+            "openssl", "genrsa", "-out", str(mismatch), "2048"
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        shutil.move(str(mismatch), str(key))
+        result = subprocess.run([
+            "bash", "scripts/20-gen-ca.sh"
+        ], cwd=self.root, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("不配套", result.stderr)
+
     def test_runtime_env_is_owner_only(self):
         """口令在里面，权限必须是 0600 —— 0644 等于把口令给了所有本地账号。"""
         result = self.render()
