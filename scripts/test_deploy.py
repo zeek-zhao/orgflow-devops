@@ -95,23 +95,16 @@ class DeployTests(unittest.TestCase):
         # 签发站点证书那步退出 1。两处都按真实位置铺开，测的是真实布局。
         ca_crt = self.root / "config/ca/orgflow-ca.crt"
         ca_key = self.root / "secrets/ca/orgflow-ca.key"
-        for ca_name, ca_sub in (("orgflow-ca.crt", "config/ca"), ("orgflow-ca.key", "secrets/ca")):
-            src = ROOT / ca_sub / ca_name
-            if src.exists():
-                dst = self.root / ca_sub / ca_name
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(src, dst)
-        # CI 干净 checkout 不会保留 gitignore 的私钥；测试夹具必须现场生成
-        # 一个最小的内网测试 CA，否则所有 deploy/render 用例会在 CA 前置件处假红。
-        if not ca_crt.exists() or not ca_key.exists():
-            ca_crt.parent.mkdir(parents=True, exist_ok=True)
-            ca_key.parent.mkdir(parents=True, exist_ok=True)
-            subprocess.run([
-                "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
-                "-keyout", str(ca_key), "-out", str(ca_crt), "-days", "3650",
-                "-subj", "/CN=OrgFlow Test CA/O=OrgFlow/OU=Test",
-                "-addext", "basicConstraints=critical,CA:TRUE",
-            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ca_crt.parent.mkdir(parents=True, exist_ok=True)
+        ca_key.parent.mkdir(parents=True, exist_ok=True)
+        # CI checkout lacks the gitignored private key and historical pair copies
+        # may be mismatched after reissue. Generate one matched test pair always.
+        subprocess.run([
+            "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", str(ca_key), "-out", str(ca_crt), "-days", "3650",
+            "-subj", "/CN=OrgFlow Test CA/O=OrgFlow/OU=Test",
+            "-addext", "basicConstraints=critical,CA:TRUE",
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         plant_secrets(self.root)
         self.bin = self.root / "bin"
         self.bin.mkdir()
@@ -794,21 +787,17 @@ class RenderConfigTests(unittest.TestCase):
         # 拷进去让渲染链完整跑通 —— 这正是「clean clone 也能直接 deploy」的前提。
         ca_crt = self.root / "config/ca/orgflow-ca.crt"
         ca_key = self.root / "secrets/ca/orgflow-ca.key"
-        for ca_name, ca_sub in (("orgflow-ca.crt", "config/ca"), ("orgflow-ca.key", "secrets/ca")):
-            src = ROOT / ca_sub / ca_name
-            if src.exists():
-                dst = self.root / ca_sub / ca_name
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(src, dst)
-        if not ca_crt.exists() or not ca_key.exists():
-            ca_crt.parent.mkdir(parents=True, exist_ok=True)
-            ca_key.parent.mkdir(parents=True, exist_ok=True)
-            subprocess.run([
-                "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
-                "-keyout", str(ca_key), "-out", str(ca_crt), "-days", "3650",
-                "-subj", "/CN=OrgFlow Test CA/O=OrgFlow/OU=Test",
-                "-addext", "basicConstraints=critical,CA:TRUE",
-            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ca_crt.parent.mkdir(parents=True, exist_ok=True)
+        ca_key.parent.mkdir(parents=True, exist_ok=True)
+        # Generate a matched pair inside every fixture. Copying historical cert/key
+        # pairs can create a mismatch after CA reissuing and turns the fixture into
+        # a false red independent of renderer behavior.
+        subprocess.run([
+            "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", str(ca_key), "-out", str(ca_crt), "-days", "3650",
+            "-subj", "/CN=OrgFlow Test CA/O=OrgFlow/OU=Test",
+            "-addext", "basicConstraints=critical,CA:TRUE",
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def render(self, **env):
         base = {key: value for key, value in os.environ.items()
