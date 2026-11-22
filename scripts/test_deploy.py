@@ -791,12 +791,23 @@ class RenderConfigTests(unittest.TestCase):
             shutil.copyfile(ROOT / name, target)
         # 内部 CA 是入库文件（config/ca/），沙箱里没有就会在签发站点证书时退出 1；
         # 拷进去让渲染链完整跑通 —— 这正是「clean clone 也能直接 deploy」的前提。
+        ca_crt = self.root / "config/ca/orgflow-ca.crt"
+        ca_key = self.root / "secrets/ca/orgflow-ca.key"
         for ca_name, ca_sub in (("orgflow-ca.crt", "config/ca"), ("orgflow-ca.key", "secrets/ca")):
             src = ROOT / ca_sub / ca_name
             if src.exists():
                 dst = self.root / ca_sub / ca_name
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(src, dst)
+        if not ca_crt.exists() or not ca_key.exists():
+            ca_crt.parent.mkdir(parents=True, exist_ok=True)
+            ca_key.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run([
+                "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+                "-keyout", str(ca_key), "-out", str(ca_crt), "-days", "3650",
+                "-subj", "/CN=OrgFlow Test CA/O=OrgFlow/OU=Test",
+                "-addext", "basicConstraints=critical,CA:TRUE",
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def render(self, **env):
         base = {key: value for key, value in os.environ.items()
