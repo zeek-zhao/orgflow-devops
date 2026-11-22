@@ -71,6 +71,9 @@ set -a
 set +a
 
 echo "== 签发站点证书 =="
+# 产物渲染是干净 checkout 首次运行的第一步：CA 私钥不进 git，缺失时现场生成。
+# CA 已存在时脚本会复用；FORCE=1 只用于明确换根证书的场景。
+bash scripts/20-gen-ca.sh
 # 每个子域一张叶子证书（同一把内部 CA 签），缺失才签、已有就复用 ——
 # 所以要放在渲染 Caddyfile 之前，否则 Caddyfile 会指向不存在的文件。
 python3 scripts/lib/site_certs.py

@@ -327,6 +327,9 @@ class HarnessEnvTest(unittest.TestCase):
         entrypoint = (cfgmod.ROOT / "tests" / "harness" / "entrypoint.sh").read_text(encoding="utf-8")
         self.assertIn("scripts/10-render-config.sh", entrypoint)
         self.assertIn("/repo/out/runtime.env", entrypoint)
+        render = (cfgmod.ROOT / "scripts" / "10-render-config.sh").read_text(encoding="utf-8")
+        self.assertIn("scripts/20-gen-ca.sh", render)
+        self.assertIn("python3 scripts/lib/site_certs.py", render)
         # 渲染产物必须覆盖 compose 引用的每个变量，否则 compose 静默插值成空串
         self.assertIn("渲染产物缺少 compose 引用的变量", entrypoint)
         # DN 带逗号：写进 dotenv 必须加引号，否则解析器会丢掉整份载荷
