@@ -2,6 +2,9 @@
 # 同时把 out/ca/ 下的根证书与安装脚本作为 ca.<domain> 的内容源。
 #
 # 它必须在 caddy 之前就绪：caddy 启动即读 out/Caddyfile，配置不在就起不来。
+#
+# 证书：只有根证书 config/ca/orgflow-ca.crt 入库；CA 私钥与每个子域的叶子证书在
+# secrets/ca/（gitignore），运行期加路由时从这里现签，caddy 挂的是同一份目录。
 services:
   router:
     build:
@@ -22,6 +25,15 @@ services:
       # 这两行与 build.context 用同一个锚点（仓根），两种调用方式下都对。
       - ../../config:/app/config
       - ../../out:/app/out
+      # 运行期加路由时要现场补签叶子证书（scripts/lib/site_certs.py 只有一份实现），
+      # 所以要把 config/ca 与签发脚本都挂进来；router 原来只读 routes.yaml/Caddyfile。
+      #
+      # 注意 /app/scripts/lib 是**独立挂载**、不是整仓 scripts：router 只需要这一个
+      # 模块，多挂一点就多一个「容器里看到宿主代码」的歧义面。
+      - ../../config/ca:/app/config/ca
+      # CA 私钥与叶子证书在 secrets/ca（不进 git）；只读挂载，router 只签不删。
+      - ../../secrets/ca:/app/secrets/ca
+      - ../../scripts/lib/site_certs.py:/app/scripts/lib/site_certs.py:ro
     expose:
       - "8090"
     depends_on:

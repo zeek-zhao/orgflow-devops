@@ -36,7 +36,9 @@ bash services/router/reload.sh   # 渲染 + POST /load 到 Caddy admin
   没有 `AUTH_SUBDOMAIN` 变量——独立变量会和 Caddyfile 站点、dex 的 issuer、
   oauth2-proxy 的 `redirect_url` 形成四处声明，改一处漏一处就静默错位。
   缺这条路由直接报错，不会退化成默认值。
-- 全局 `local_certs`：所有站点用 Caddy 内部 CA 自签，不向公网申请证书。
+- 证书：每个站点一行 `tls /certs/sites/<sub>.<domain>.crt /certs/sites/<sub>.<domain>.key`，
+  叶子证书由仓库自带的内部 CA（`config/ca/`）签发，不向公网申请证书。
+  不用 `local_certs` —— 那样客户端得信任一张会随 `down -v` 变化的 CA。
 - `auth: true` → 在该站点的 `reverse_proxy` 前通过 oauth2-proxy 校验会话，
   401 时跳转 **绝对地址** `https://<auth 路由的 subdomain>.<domain>/oauth2/start?rd={scheme}://{host}{uri}`，
   并透传用户和邮件请求头。默认 `false`；M0 仅 Jenkins 站点开启。

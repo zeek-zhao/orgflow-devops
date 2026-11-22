@@ -55,11 +55,11 @@ teardown() {
 @test "auth: 完整 OIDC 登录建立会话——会话内取受保护页放行，伪造会话必须回登录页（反证）" {
     local pass target
     pass=$(ldap_initial_password) || return 1
-    target=/network/arch.md
-    [ -f "$M0_REPO/docs${target}" ] || {
-        echo "靶子文件不存在：docs${target}（是它没了，不是权限问题）" >&2
-        return 1
-    }
+    # 靶子用站点根：不写死某个 md 文件（文档重编号后路径会变，2026-11-22 本地
+    # DinD 就因为 /network/arch.md 变成 /network/arch/ 而拿到 404，看着像认证坏了）；
+    # 也不从首页挑链接 —— 未登录访问首页会先被网关 302，根本拿不到 HTML。
+    # 站点根一定能被 Caddy file_server 应答，状态码由 forward_auth 决定，正合适。
+    target=/
     # 正向：oauth2→Dex→LDAP→approval 完整走一遍，同一会话内取受保护页
     run python3 "$M0_REPO/tests/bats/helpers/oidc_flow.py" \
         "docs.${GW_DOMAIN}" "${GW_HTTPS_PORT}" svc-platform-dev "$pass" "$target"

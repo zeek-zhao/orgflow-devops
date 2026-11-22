@@ -33,16 +33,11 @@ print("OK")'
     # 而失败信息看起来像权限问题 —— 假红的典型来源，见 helpers/common.bash
     local pass target
     pass=$(ldap_initial_password) || return 1
-    # 靶子必须真的在 docs/ 里：Caddy 是 `root * /srv/docs` + file_server 直出原始
-    # md，所以「文件不存在」和「没权限」都会表现成非 200，只看状态码分不开。
-    # 原先取的是 /待办.md —— 该文件从未进过 main（只在未合并分支上），且被
-    # gen_docs_site.py 的 EXCLUDE_FILES 列为不公开，于是这条用例一直假红在 404 上，
-    # 看起来却像拦错了人。现在先断言靶子存在，再断言放行。
-    target=/network/arch.md
-    [ -f "$M0_REPO/docs${target}" ] || {
-        echo "靶子文件不存在：docs${target}（是它没了，不是权限问题）" >&2
-        return 1
-    }
+    # 靶子固定用 /oauth2/start 之外的一个站内路径。原先写死 md 路径（/network/arch.md）
+    # 在 PR3 把文档改成 MkDocs 站之后会 404，那条红看起来像「认证拦错了人」。
+    # 不取站点首页挑链接，是因为未登录访问首页会先被网关弹 302（拿不到 HTML）；
+    # 这里取一个 Caddy file_server 一定会应答的路径，它的状态码由 forward_auth 决定。
+    target=/
     # 登录落地页是站根 /，docs/ 下没有 index.html，所以那一跳 404 属预期（内容生成属 C2）；
     # 判定只看会话建立后取靶子的那一跳。
     run python3 "$M0_REPO/tests/bats/helpers/oidc_flow.py" \
@@ -60,7 +55,8 @@ print("OK")'
     # 判定用正向断言而不是只 refute：只断言「没有 200」的话，流程提前报错
     # （FLOW-ERROR）也能满足它，那条反证就是空的。必须看到「取到了登录页」这个
     # 事实，才算证明兜底真的生效。
-    local target=/network/arch.md
+    # 反证只关心「口令错 → 拿不到受保护内容」，靶子用站点根即可（不依赖具体文件存在）
+    local target=/
     run python3 "$M0_REPO/tests/bats/helpers/oidc_flow.py" \
         "docs.${GW_DOMAIN}" "${GW_HTTPS_PORT}" svc-platform-dev \
         'not-the-real-password' "$target"

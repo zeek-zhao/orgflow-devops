@@ -47,9 +47,18 @@ if [[ -n "$GATEWAY_URL" ]]; then
         echo "失败：无法从 $GATEWAY_URL/root.crt 拉取（网关地址错？不可达？证书还没导出？）" >&2
         exit 1
     fi
+    # 校验拉到的是**本环境的根 CA**（自签、CA:TRUE）。M0 起这张根证书由
+    # scripts/20-gen-ca.sh 生成并入库（CN=orgflow-devops internal CA），不再是
+    # Caddy 自签的 Local Authority；所以判据是「自签 + CA:TRUE + 主题是 orgflow」，
+    # 而不是写死某个名字 —— 换企业 CA 时只改 20-gen-ca.sh，这里不用动。
     subject="$(openssl x509 -in "$fetched" -noout -subject 2>/dev/null || true)"
-    if ! grep -qi "Caddy Local Authority" <<< "$subject"; then
-        echo "失败：拉到的内容不是本环境 CA 根证书（subject: ${subject:-无}）" >&2
+    issuer="$(openssl x509 -in "$fetched" -noout -issuer 2>/dev/null || true)"
+    if ! openssl x509 -in "$fetched" -noout -text 2>/dev/null | grep -q "CA:TRUE"; then
+        echo "失败：拉到的不是 CA 证书（basicConstraints 里没有 CA:TRUE）" >&2
+        exit 1
+    fi
+    if [[ "${subject#subject=}" != "${issuer#issuer=}" ]] || ! grep -qi "orgflow" <<< "$subject"; then
+        echo "失败：拉到的不是本环境自签根证书（subject: ${subject:-无}）" >&2
         exit 1
     fi
 
@@ -92,17 +101,17 @@ fi
 
 mkdir -p "$OUT_DIR"
 
-if ! command -v docker >/dev/null 2>&1; then
-    echo "需要 docker 才能从 caddy 容器里导出根证书" >&2
+# M0 起 CA 证书是**入库的**文件（config/ca/orgflow-ca.crt；私钥在 secrets/ca/，不进 git，由
+# scripts/20-gen-ca.sh 只在缺文件时生成、有效期 10 年），Caddy 直接用它签站点证书，
+# 所以导出就是把入库的公钥拷到 out/ca —— 不再去 caddy 卷里捞自签 CA（那条路在
+# 「CA 入库 + 有效期可控」之后已经不存在，拷卷会得到 No such file）。
+SOURCE_CA="$ROOT/config/ca/orgflow-ca.crt"
+if [[ ! -s "$SOURCE_CA" ]]; then
+    echo "缺 $SOURCE_CA：先跑 bash scripts/20-gen-ca.sh 生成内部 CA" >&2
     exit 1
 fi
-
-# shellcheck disable=SC2086
-if ! docker compose -f "$ROOT/docker-compose.yml" --env-file "$ENV_FILE" \
-        --project-directory "$ROOT" exec -T caddy \
-        cat /data/caddy/pki/authorities/local/root.crt > "$CERT" 2>/dev/null; then
-    echo "导出失败：caddy 容器未运行，或 /data/caddy 下还没有根证书" >&2
-    echo "先跑 make deploy，再重试。" >&2
+if ! cp -- "$SOURCE_CA" "$CERT"; then
+    echo "导出失败：无法写 $CERT" >&2
     exit 1
 fi
 

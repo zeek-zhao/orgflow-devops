@@ -11,7 +11,7 @@
   每个 route 是一个独立站点 https://<subdomain>.<gateway_domain>
   - gateway_domain 默认取 routes.yaml，可被环境变量 GATEWAY_DOMAIN 覆盖
   - 认证网关域名由 name: auth 那条路由的 subdomain 决定（单一真源，无独立变量）
-  - 全部站点用仓库自带的 orgflow 内部 CA（config/ca/），不向公网申请证书
+  - 全部站点用仓库自带的 orgflow 内部 CA（根证书 config/ca/），不向公网申请证书
   - 未登录访问受保护站点时，跳转到认证域名登录，登录后回到原 URL
 """
 import argparse
@@ -26,6 +26,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 DEFAULT_DOMAIN = "org-devops.com"
 # 认证网关站点的路由名。它的 subdomain 就是登录跳转的目标域名。
@@ -33,12 +34,22 @@ DEFAULT_DOMAIN = "org-devops.com"
 # oauth2-proxy 的 redirect_url 形成四处独立声明，改一处不改另一处就静默错位。
 AUTH_ROUTE_NAME = "auth"
 
-# 内部 CA 的证书来自 config/ca/（入库、有效期到 2036），挂在 caddy 容器的 /certs。
+# 内部 CA 的根证书来自 config/ca/（入库、有效期到 2036）；私钥与叶子证书在
+# secrets/ca/（不进 git），一起挂在 caddy 容器的 /certs。
 # 不再用 Caddy 自签的 local_certs：那样 `docker compose down -v` 删卷就换一把新根证书，
 # 每台客户端都要重装一次。
 #
 # tls 是**站点级**指令，不能写进全局块 —— 所以每个站点块里都插一行。
-TLS_LINE = "\ttls /certs/orgflow-ca.crt /certs/orgflow-ca.key"
+#
+# 用的是**每个子域一张叶子证书**（由 scripts/lib/site_certs.py 用同一把内部 CA
+# 签出，SAN 只含该子域），而不是把 CA 自己的证书当站点证书：
+#   - 浏览器/curl 认 SAN，CA 证书没有 SAN 时 openssl s_client 报 "No extensions in
+#     certificate"，客户端校验链也会因为「证书主体是 CA」而拒绝；
+#   - 私钥与叶子证书在 secrets/ca/（不进 git）：CA 私钥只在本机，叶子证书按需现签。
+#     只有根证书 config/ca/orgflow-ca.crt 入库。
+def tls_line(sub, domain):
+    name = f"{sub}.{domain}"
+    return f"\ttls /certs/sites/{name}.crt /certs/sites/{name}.key"
 SUBDOMAIN_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
 NAME_RE = SUBDOMAIN_RE
 # 注册 API 写 routes.yaml；routes.yaml 仍是唯一真源，API 只是它的写入口。
@@ -140,7 +151,7 @@ def render(settings, routes):
         if (r.get("name") or "").strip() == "docs":
             out.append(f"https://docs.{domain} {{")
             out.extend([
-                TLS_LINE,
+                tls_line("docs", domain),
                 # 匹配器豁免 /oauth2/*:start/callback 若也被 forward_auth 拦下,
                 # 会 302 到自身造成 rd 无限增长(实测踩过)
                 "\t@notoauth2 not path /oauth2/*",
@@ -166,7 +177,7 @@ def render(settings, routes):
             continue
 
         out.append(f"https://{sub}.{domain} {{")
-        out.append(TLS_LINE)
+        out.append(tls_line(sub, domain))
         if r.get("auth", False):
             out.extend([
                 "\tforward_auth oauth2-proxy:4180 {",
@@ -293,14 +304,92 @@ def _serialize_route_block(route):
     return "\n".join(lines) + "\n"
 
 
+# CLI（main）解析出 --routes/--out 后登记在这里；注册 API 的写入路径复用它。
+# 用 dict 而不是单值：单测会在同一进程里起多个临时目录，单值会互相踩。
+_OUT_PATHS: dict = {}
+
+
+def _out_path_for(routes_path):
+    """与 CLI 默认口径一致：Caddyfile 写在 routes.yaml 的同级目录。
+
+    render.py --watch 的 out 路径由 --out 指定；注册 API 走的是同一份约定
+    （容器里 /app/config/routes.yaml ↔ /app/out/Caddyfile 不同目录，所以
+    还要认 ORGFLOW_OUT_DIR）。优先用环境变量，其次用同级目录。
+    """
+    registered = _OUT_PATHS.get(str(routes_path))
+    if registered:
+        return Path(registered)
+    out_dir = os.environ.get("ORGFLOW_OUT_DIR")
+    if out_dir:
+        return Path(out_dir) / "Caddyfile"
+    return Path(routes_path).parent / "Caddyfile"
+
+
+def _ensure_site_certs(settings, routes):
+    """给新加的子域补签叶子证书（缺一张，Caddy 热加载就会整份拒绝）。
+
+    渲染链（scripts/10-render-config.sh）只在启动时补一次；API 在运行期加路由，
+    必须自己补 —— 否则新配置引用的 /certs/sites/<子域>.crt 不存在，
+    Caddy 返回 400 且**新配置完全不生效**（不是只缺那一条）。
+    签发实现只有一份：scripts/lib/site_certs.py。router 镜像把仓根 scripts/lib
+    挂在 /repo/scripts/lib（见 services/router/compose.yml），这里按需探测。
+    """
+    # 仓根定位：容器里 render.py 在 /app/render.py，`parents[2]` 会越界（IndexError），
+    # 所以不能只靠文件位置猜 —— 先看显式配置，再看 compose 挂进来的两个挂载点。
+    # 注意：缺证书**不是可以默默跳过的事**（缺一张 Caddy 就整份拒绝，且没有任何提示），
+    # 所以除了「这个部署根本没配 CA 目录」，其余异常一律打印出来，别静默 return。
+    candidates = [
+        os.environ.get("ORGFLOW_ROOT"),
+        "/repo",
+        str(Path(__file__).resolve().parents[2]) if len(Path(__file__).resolve().parents) > 2 else None,
+    ]
+    root = next((c for c in candidates if c and (Path(c) / "config" / "ca").is_dir()), None)
+    if not root:
+        # 没配 CA 目录 = 这个部署不签证书（例如只跑渲染的 CI 单测），这是预期分支
+        return
+    lib = Path(root) / "scripts" / "lib"
+    if not lib.is_dir():
+        # 到这里说明「仓根找到了、但它不像仓库」——静默跳过会让 Caddyfile 引用一个
+        # 不存在的证书，Caddy 整份拒配置且毫无提示，所以必须炸出来。
+        raise RuntimeError(
+            f"仓根 {root} 下没有 scripts/lib（缺 site_certs.py），无法为新子域签发证书"
+        )
+    if str(lib) not in sys.path:
+        sys.path.insert(0, str(lib))
+    try:
+        import site_certs  # noqa: WPS433
+    except ImportError as e:
+        raise RuntimeError(f"无法从 {lib} 导入 site_certs：{e}") from e
+    ca_crt = Path(root) / "config" / "ca" / "orgflow-ca.crt"
+    # 私钥不进 git：默认 secrets/ca/，容器里由 compose 挂到同路径（见 router 片段）
+    ca_key = Path(os.environ.get("CA_KEY") or (Path(root) / "secrets" / "ca" / "orgflow-ca.key"))
+    if not (ca_crt.exists() and ca_key.exists()):
+        raise RuntimeError(f"缺 CA 文件 {ca_crt} 或私钥 {ca_key}（先跑 bash scripts/20-gen-ca.sh）")
+    domain = os.environ.get("GATEWAY_DOMAIN") or settings.get("gateway_domain") or DEFAULT_DOMAIN
+    sites = ca_key.parent / "sites"
+    for route in routes:
+        sub = route["subdomain"]
+        crt = sites / f"{sub}.{domain}.crt"
+        key = sites / f"{sub}.{domain}.key"
+        if not (crt.exists() and key.exists()):
+            site_certs.issue(ca_crt, ca_key, crt, key, sub, domain, 3650)
+
+
 def _write_routes_validated(path, new_text):
     """先按「改完的文本」完整走一遍 parse+render，全绿才落盘。
 
     这是 400 反证（文件 sha256 不变）的保证：非法输入在写之前就被拒绝。
     """
     settings, routes = parse_routes_text(new_text)
-    render(apply_env(settings), routes)
-    write_if_changed(path, new_text)
+    env_settings = apply_env(settings)
+    _ensure_site_certs(env_settings, routes)
+    content = render(env_settings, routes)
+    if write_if_changed(path, new_text):
+        # 产物也要落盘：run 起来的时候，watch 循环靠 (mtime, size, inode) 判断
+        # 「配置变了」——多了一个字节它就会自己重渲染。但路由顺序（先写 routes.yaml
+        # 再热加载）要求新内容在热加载那一刻就已经在 out/Caddyfile 里，
+        # 否则 Caddy 加载的还是旧文件，接口返回 201 而线上没生效。
+        write_if_changed(_out_path_for(path), content)
 
 
 def append_route(path, route):
@@ -431,6 +520,9 @@ class RouterHandler(BaseHTTPRequestHandler):
             except (OSError, RuntimeError) as e:
                 self._json(502, {"error": str(e)})
                 return
+            except SystemExit as e:   # site_certs/openssl 失败时会 SystemExit
+                self._json(502, {"error": f"证书签发失败：{e}"})
+                return
         self._json(201, {"route": route})
 
     def do_DELETE(self):
@@ -476,6 +568,11 @@ def main():
 
     # 健康状态单独持有：非 watch 模式没有 HTTP server，once() 也要能跑。
     health_state = {"routes_count": None}
+    # 注册 API 写 routes.yaml 时要顺手把产物写到同一处：--out 才是唯一真源，
+    # 不能靠拼目录猜（容器里 /app/config 与 /app/out 是两个挂载点）。
+    _OUT_PATHS[args.routes] = args.out
+
+    watch_bootstrap = {"pending": True}
 
     def once(force_reload=False):
         settings, routes = parse_routes(args.routes)
@@ -489,12 +586,43 @@ def main():
         # Health must not depend on Caddy: deploy waits for router before starting Caddy.
         if health_state["routes_count"] is None:
             health_state["routes_count"] = len(routes)
-        if args.admin and (changed or force_reload):
-            st = reload_caddy(content, args.admin)
-            print(f"[router] caddy reload -> {st}", flush=True)
+        # Caddy 还没起来时 reload 必然失败（router 被设计成先于 Caddy 就绪，
+        # 见 docs/services/router.md 的启动顺序）—— 那是**预期**，不是错误：
+        # 只要把 Caddyfile 写到 out/，Caddy 启动时就会读它。
+        # 原先这里会让一次失败把 watch 循环打崩（进程退出 → 容器 unhealthy →
+        # caddy 的 depends_on 失败 → 整栈起不来，2026-11-22 本地 DinD 实测）。
+        # watch 模式下 Caddy 未就绪是常态（router 被设计成先于 Caddy 就绪，
+        # 见 docs/services/router.md 的启动顺序），所以那一轮不算失败 —— 下一轮接着试。
+        # 一次性模式下没有「下一轮」：热加载没成功 = 这份配置没进 Caddy，
+        # 必须让调用方拿到非零退出码（否则 reload.sh 的 wrapper 永远看不见失败）。
+        reloaded = False
+        if args.admin and (changed or force_reload or watch_bootstrap):
+            try:
+                st = reload_caddy(content, args.admin)
+                reloaded = True
+                print(f"[router] caddy reload -> {st}", flush=True)
+            except (RuntimeError, OSError) as e:
+                if args.watch:
+                    print(f"[router] 跳过热加载（Caddy 还没就绪，属预期，会重试）：{e}", flush=True)
+                else:
+                    print(f"[router] update failed: {e}; previous Caddyfile preserved",
+                          file=sys.stderr)
+                    # 产物仍然要写：Caddy 启动/重启读的就是这份文件，
+                    # 「没进正在跑的 Caddy」不等于「不该发布这份配置」。
+                    write_if_changed(args.out, content)
+                    return False
         if write_if_changed(args.out, content):
             print(f"[router] rendered {args.out} ({len(routes)} routes)")
+        # 重试判据：**Caddy 里装的配置**是否已经是最新。产物文件一致不等于
+        # Caddy 一致（它可能重启后手里是旧配置，或者上一轮加载被拒）。
+        # 只有在「不需要热加载」或「热加载刚成功」时才算收敛；否则每轮重试。
+        # 收敛判据只取决于「本轮有没有热加载、热加载成功没有」。
+        # 不能把 changed/force_reload 掺进来：那会让「配置没变」直接算收敛，
+        # 于是 Caddy 起来之后永远等不到重试（2026-11-22 实测）。
+        health_state["desired"] = not args.admin or reloaded
         health_state["routes_count"] = len(routes)
+        watch_bootstrap["pending"] = False
+        return True
 
     server = None
     if args.watch:
@@ -515,11 +643,14 @@ def main():
 
     if not args.watch:
         try:
-            once(force_reload=True)
+            ok = once(force_reload=True)
         except (OSError, RuntimeError, ValueError) as e:
             print(f"[router] update failed: {e}; previous Caddyfile preserved", file=sys.stderr)
             return 1
-        return 0
+        # 热加载没成功（Caddy 不可达/拒了配置）→ 非零退出。
+        # 根 compose 里有同内容的 out/Caddyfile（Caddy 启动时会读它），所以「发布」本身
+        # 不受影响；但一次性执行的调用方必须知道「这份配置没进正在跑的 Caddy」。
+        return 0 if ok else 1
 
     last = None
     while True:
@@ -529,6 +660,12 @@ def main():
             if m != last:
                 once(force_reload=last is None)
                 last = m
+            elif not health_state.get("desired", True):
+                # 配置没变，但**上一次热加载没成功**（Caddy 还没起来 / 拒了新配置）：
+                # 不重试的话，这台机器会一直停在旧配置上，直到下次改 routes.yaml。
+                # 判据由 once() 按「本轮热加载成功没有」重置，收敛后不再发无关请求；
+                # interval 本身就在节流，不需要额外退避。
+                once(force_reload=False)
         except (OSError, RuntimeError, ValueError) as e:
             print(f"[router] watch error: {e}; will retry", file=sys.stderr)
         time.sleep(args.interval)

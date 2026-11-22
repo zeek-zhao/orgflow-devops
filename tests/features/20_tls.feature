@@ -7,10 +7,10 @@ Feature: TLS 证书链
   @REQ-M0-D3
 
   @REQ-M0-D3
-  Scenario: tls: 每个站点都签出对应域名的证书，签发者是 Caddy 内部 CA
+  Scenario: tls: 每个站点都出对应域名的证书，签发者是仓库自带的内部 CA
     Given 各站点已配置
     When 对每站点做 TLS 握手
-    Then 证书域名匹配，签发者为 Caddy 内部 CA
+    Then 证书域名匹配，签发者为仓库自带的内部 CA（config/ca/）
 
   @REQ-M0-D3
   Scenario: tls: 导出的根证书能校验整条链（不带 -k 也通）

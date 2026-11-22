@@ -21,8 +21,10 @@ Caddyfile **不是手写的**，由 `router` 从 `config/routes.yaml` 渲染到 
 - **依赖谁**：`router`（要它渲染好 Caddyfile 并 healthy）、`dnsmasq`（解析上游服务名）
 - **被谁依赖**：所有业务站点，以及局域网访问（局域网机器直连宿主 443）
 
-TLS 用 Caddy **内部 CA**（`local_certs`），不向公网申请证书。所以客户端必须导入 `out/ca/root.crt`，
-否则浏览器报证书错误——这不是故障。
+TLS 用**仓库自带的内部 CA**：根证书 `config/ca/orgflow-ca.crt` 入库，私钥 `secrets/ca/orgflow-ca.key` 不进 git（缺文件才由
+`scripts/20-gen-ca.sh` 生成，有效期 10 年），每个站点用它签一张叶子证书
+（`secrets/ca/sites/<sub>.<domain>.{crt,key}`，不进 git），不向公网申请证书。所以客户端必须导入
+`out/ca/root.crt`，否则浏览器报证书错误——这不是故障。
 
 ## 部署与配置
 
@@ -187,7 +189,7 @@ Caddy 容器本身没有业务环境变量；改路由后由 `router` 热加载�
 ## 备份
 
 Caddy **没有业务数据卷**：`caddy_data` 只存可重建的证书，不在 `make backup` 范围内；
-`config/routes.yaml` 在 Git、`.env` 走受控密钥保管（不入库），容器可随时重建。
+`config/routes.yaml`、`orgflow.yml` 在 Git；渲染产物 `out/runtime.env` 与 CA 私钥`secrets/` 不入库，容器可随时重建。
 证书分发与重建后客户端重装根证书的流程见 [备份与恢复](../engineering/备份与恢复.md)「范围与前提」
 与 [使用说明](../engineering/使用说明.md) §1；本服务无单独恢复演练项。
 

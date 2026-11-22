@@ -30,8 +30,11 @@ def call(Map cfg = [:]) {
 
     // 与 deploy.sh 的 case 白名单 + nexus（走 deployNexus，#46）保持一致。
     // 两边各写一份是因为报错要早：JJB 渲染期不校验 service 名。
+    // M0 重构后 docs（MkDocs 站点）也是 compose 服务，白名单必须覆盖
+    // config/services.yml 的每个服务 —— 具体名单由
+    // tests/bats/31_verify_jobs.bats 对着那份登记表核对，这里不再手写解释。
     def deployable = ['dnsmasq', 'jenkins', 'jenkins-agent', 'caddy', 'router',
-                      'ldap', 'ldapadmin', 'dex', 'oauth2-proxy', 'homepage', 'nexus']
+                      'ldap', 'ldapadmin', 'dex', 'oauth2-proxy', 'homepage', 'docs', 'nexus']
     // 与 backup.sh / backupService 的白名单一致：只有这三个有真卷可备。
     def backupable = ['jenkins', 'nexus', 'ldap']
     if (!(service in deployable)) {

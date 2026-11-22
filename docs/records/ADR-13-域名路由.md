@@ -30,8 +30,13 @@ M0 最初把 Caddy 当「路径前缀反代」用：`http://localhost:8080/jenki
 - 新增 `dnsmasq` 容器（`172.31.0.2`）做容器内 DNS：`*.org-devops.com` 解析到
   Caddy 的 `172.31.0.10`，其余查询转发 Docker 内嵌 DNS（`127.0.0.11`），
   所以 `ldap` / `dex` 这类服务名照旧可用。
-- Caddy 用 `local_certs`（内部 CA）自签，不向公网申请证书；根证书由
-  `scripts/21-ca-install.sh` 导出并装进系统信任库。
+- 证书由**仓库自带的内部 CA** 签发：根证书 `config/ca/orgflow-ca.crt` 入库，私钥在 `secrets/ca/`（不进 git）
+  （`scripts/20-gen-ca.sh` 生成，缺文件才生成，有效期 10 年），
+  每个站点再用它签一张**自己的叶子证书** `secrets/ca/sites/<sub>.<domain>.{crt,key}`（私钥与叶子证书不进 git）
+  （`scripts/lib/site_certs.py`），Caddyfile 里逐站点 `tls /certs/sites/<sub>.<domain>.crt ...`。
+  不用 Caddy 的 `local_certs`：它的内部 CA 存在数据卷里，`down -v` 就换根，
+  而且没法指定有效期；客户端只需信任一张十年不变的根证书。
+  根证书由 `scripts/21-ca-install.sh` 导出并装进系统信任库。
 
 ## 固定 IP 表
 

@@ -28,12 +28,18 @@ setup() {
     [ "$(grep -cE '^https://[^/{]+ \{' "$file")" -eq "$expected_site_count" ]
     # 反证：若还有路径式站点地址（https://host/jenkins），上面三条会先红
     ! grep -qE '^https://[^ ]+/[a-z]' "$file"
-    # 内部 CA：不向公网申请证书
-    grep -qx $'\tlocal_certs' "$file"
+    # 内部 CA：不向公网申请证书。M0 起 Caddy 不再用自己生成内部 CA（local_certs），
+    # 而是用仓库的根证书（config/ca/orgflow-ca.crt，入库、10 年期、down -v 不变）
+    # 给每个子域签叶子证书（secrets/ca/sites/<子域>.crt|key，私钥不进 git），
+    # 所以每个站点块里必须显式 tls 指向自己那张。
+    # 不能把 CA 证书本身当站点证书：它没有 SAN，客户端校验会拒。
+    ! grep -qx $'\tlocal_certs' "$file"
     local sub
     for sub in jenkins nexus docker pypi ldapadmin dex auth home ca docs; do # #117 #62 #86
         grep -qx "https://${sub}.${GW_DOMAIN} {" "$file"
+        grep -qx "\ttls /certs/sites/${sub}.${GW_DOMAIN}.crt /certs/sites/${sub}.${GW_DOMAIN}.key" "$file"
     done
+    [ "$(grep -cxE $'\ttls /certs/sites/[a-z0-9.-]+\\.crt /certs/sites/[a-z0-9.-]+\\.key' "$file")" -eq "$expected_site_count" ]
 }
 
 @test "caddy: HTTP 端口只做跳转，未知域名没有站点承接" {

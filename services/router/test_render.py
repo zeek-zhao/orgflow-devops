@@ -1,14 +1,17 @@
 import contextlib
+import io
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
 from pathlib import Path
+import shutil
 import socket
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+import re
 import unittest
 import urllib.error
 import urllib.request
@@ -44,9 +47,12 @@ def admin_server():
         def do_POST(self):
             body = self.rfile.read(int(self.headers["Content-Length"]))
             self.server.requests.append((self.path, self.headers["Content-Type"], body))
+            self.server.responses.append(self.server.status)
             self.send_response(self.server.status)
             self.end_headers()
-            self.wfile.write(b"invalid test configuration" if self.server.status == 400 else b"")
+            # 与真 Caddy 一致：非 2xx 就是拒绝，响应体里带原因（400 = 解析失败，403 = 配置非法）
+            self.wfile.write(
+                b"invalid test configuration" if self.server.status != 200 else b"")
 
         def log_message(self, *args):
             pass
@@ -54,6 +60,7 @@ def admin_server():
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     server.status = 200
     server.requests = []
+    server.responses = []
     thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.02})
     thread.start()
     try:
@@ -80,6 +87,14 @@ class RouterTests(unittest.TestCase):
             env=self.env, capture_output=True, text=True, timeout=15,
         )
 
+    def assert_reload_failed(self, result, reason):
+        """一次性渲染 + 热加载失败：命令返回 0（产物照写），但原因必须打到 stderr。"""
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    @staticmethod
+    def _last_status_ok(server):
+        return bool(server.responses) and server.responses[-1] == 200
+
     def wait_for(self, predicate):
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
@@ -101,13 +116,25 @@ class RouterTests(unittest.TestCase):
             self.assertIsNone(process.poll())
         finally:
             process.terminate()
-            process.communicate(timeout=5)
+            _out, err = process.communicate(timeout=5)
+            # 子进程的 stderr 平时是吞掉的：断言失败时只能看到「状态不对」，
+            # 看不到真正的原因。失败时把 stderr 贴出来，省一轮复现。
+            if self._outcome is not None and getattr(self._outcome, "errors", None):
+                print(f"\n[child stderr]\n{err}", file=sys.stderr)
 
     def test_domain_sites_match_config_and_output_is_stable(self):
         self.assertEqual(self.run_render().returncode, 0)
         content = self.out.read_text()
         self.assertNotIn("local_certs", content, "内部 CA 改为 config/ca/ 入库证书，不再自签")
-        self.assertIn("tls /certs/orgflow-ca.crt /certs/orgflow-ca.key", content)
+        # M0 起每个站点用**自己那张**叶子证书（SAN 只含该子域），由同一把内部 CA 签出；
+        # 断言「每个站点块的 tls 行指向 <sub>.<domain> 的 .crt/.key」而不是写死一张证书名。
+        sites = re.findall(r"^https://([a-z0-9-]+\.[^ ]+) \{$", content, re.M)
+        self.assertTrue(sites, content)
+        for name in sites:
+            self.assertIn(
+                f"tls /certs/sites/{name}.crt /certs/sites/{name}.key", content)
+        self.assertEqual(
+            len(re.findall(r"^\ttls /certs/sites/", content, re.M)), len(sites))
         sites = declared_sites()
         self.assertGreaterEqual(len(sites), 8, "路由数突然变少，先确认是不是删错了")
         for sub in sites:
@@ -235,10 +262,14 @@ class RouterTests(unittest.TestCase):
         with admin_server() as (server, url):
             server.status = 400
             rejected = self.run_render("--admin", url)
+            # 一次性渲染的契约：热加载没成功 → 非零退出（调用方必须知道没进 Caddy），
+            # 但产物照写：Caddy 启动时读的是这份文件，发布不受影响。
             self.assertNotEqual(rejected.returncode, 0)
             self.assertIn("HTTP 400", rejected.stderr)
             self.assertIn("invalid test configuration", rejected.stderr)
-            self.assertEqual(self.out.read_text(), "old file\n")
+            # 一次性渲染的语义：产物照写（Caddy 起动时要读它），失败原因打到 stderr；
+            # 站点是否真的换掉由 Caddy 决定 —— 它拒了这份配置，手里仍是旧的。
+            self.assertIn("https://jenkins.", self.out.read_text())
             server.status = 200
             self.assertEqual(self.run_render("--admin", url).returncode, 0)
             self.assertEqual(server.requests[-1][0:2], ("/load", "text/caddyfile"))
@@ -246,16 +277,22 @@ class RouterTests(unittest.TestCase):
             good = self.out.read_bytes()
             self.routes.write_text(self.routes.read_text().replace("jenkins:8080", "new:8080"))
             server.status = 400
-            self.assertNotEqual(self.run_render("--admin", url).returncode, 0)
-            self.assertEqual(self.out.read_bytes(), good)
+            again = self.run_render("--admin", url)
+            self.assertNotEqual(again.returncode, 0)
+            self.assertIn("HTTP 400", again.stderr)
+            # 配置里换了目标，产物要更新到新内容；Caddy 拒了它，线上仍是上一份
+            self.assertIn("new:8080", self.out.read_text())
         self.assertEqual(sorted(p.name for p in self.out.parent.iterdir()),
                          ["Caddyfile", "routes.yaml"])
 
-    def test_rejected_first_load_does_not_create_output(self):
+    def test_rejected_first_load_still_writes_output_and_explains(self):
+        """首次加载被拒：产物照写（Caddy 起动要读），但必须说清「没进 Caddy」。"""
         with admin_server() as (server, url):
             server.status = 400
-            self.assertNotEqual(self.run_render("--admin", url).returncode, 0)
-            self.assertFalse(self.out.exists())
+            result = self.run_render("--admin", url)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("HTTP 400", result.stderr)
+            self.assertIn("https://jenkins.", self.out.read_text())
 
     def test_shell_unreachable_even_when_output_is_unchanged(self):
         self.assertEqual(self.run_render().returncode, 0)
@@ -271,6 +308,7 @@ class RouterTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("cannot reach Caddy admin", result.stderr)
         self.assertIn("check that Caddy is running", result.stderr)
+        # 内容没变就不重写文件（inode/mtime 都不动）
         self.assertEqual(self.out.stat().st_mtime_ns, before.st_mtime_ns)
 
     def test_shell_propagates_http_failure_and_success(self):
@@ -284,9 +322,10 @@ class RouterTests(unittest.TestCase):
                     capture_output=True, text=True, timeout=15,
                 )
                 if status == 400:
+                    # reload.sh 是 render.py 的一次性包装：同样把「被拒」翻成非零退出
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn("invalid test configuration", result.stderr)
-                    self.assertEqual(self.out.read_text(), "old file\n")
+                    self.assertIn("https://jenkins.", self.out.read_text())
                 else:
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertEqual(server.requests[-1][2], self.out.read_bytes())
@@ -296,10 +335,12 @@ class RouterTests(unittest.TestCase):
         with admin_server() as (server, url):
             server.status = 400
             with self.watch(url):
+                # 产物文件总是写（Caddy 起动/重启都要读它），所以「文件内容」不能用来
+                # 判断 Caddy 收没收——判据是「热加载请求还在重试」。
                 self.wait_for(lambda: len(server.requests) >= 2)
-                self.assertEqual(self.out.read_text(), "old file\n")
+                self.assertIn("https://jenkins.", self.out.read_text())
                 server.status = 200
-                self.wait_for(lambda: "jenkins:8080" in self.out.read_text())
+                self.wait_for(lambda: self._last_status_ok(server))
                 count = len(server.requests)
                 before = self.out.stat().st_mtime_ns
                 time.sleep(0.15)
@@ -314,6 +355,8 @@ class RouterTests(unittest.TestCase):
         with admin_server() as (server, url):
             server.status = 400
             with self.watch(url):
+                # 产物已经存在（内容是否一致由 content_matches 判）→ 启动时不必重写，
+                # 但热加载仍要做一次：Caddy 可能刚重启、手里还是旧配置。
                 self.wait_for(lambda: self.out.exists() and len(server.requests) >= 2)
                 before = self.out.stat().st_mtime_ns
                 server.status = 200
@@ -323,6 +366,40 @@ class RouterTests(unittest.TestCase):
                 time.sleep(0.15)
                 self.assertEqual(len(server.requests), count)
                 self.assertEqual(self.out.stat().st_mtime_ns, before)
+
+    def test_site_cert_signing_refuses_to_guess_the_repo_root(self):
+        """仓根算错必须**抛错**，不能静默跳过。
+
+        2026-11-22 真机复现：容器里 render.py 在 `/app/render.py`，`parents[2]` 就是
+        `/` —— 旧实现据此拼出 `/scripts/lib`（不存在）然后 `return`，
+        结果是 Caddyfile 引用 `/certs/sites/demo.*.crt` 而文件不存在、Caddy 整份
+        拒新配置：routes.yaml 与 Caddyfile 都没更新，客户端只看到 RemoteDisconnected。
+        所以：找不到 CA 可跳过（这个部署不签证书）；**能定位到仓根却没有
+        scripts/lib 时必须报错**。
+        """
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("render_under_test", SCRIPT)
+        render = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(render)
+        # 第一层：连 CA 目录都没有（正常 CI 分支）→ 安静跳过
+        empty = Path(self.directory.name) / "no-ca"
+        empty.mkdir()
+        saved_root = os.environ.get("ORGFLOW_ROOT")
+        os.environ["ORGFLOW_ROOT"] = str(empty)
+        try:
+            render._ensure_site_certs({"gateway_domain": "org-devops.com"},
+                                      [{"subdomain": "probe-ca-root"}])
+            # 第二层：有 config/ca 但缺 scripts/lib → 必须炸
+            (empty / "config" / "ca").mkdir(parents=True)
+            with self.assertRaises(RuntimeError) as ctx:
+                render._ensure_site_certs({"gateway_domain": "org-devops.com"},
+                                          [{"subdomain": "probe-ca-root"}])
+        finally:
+            if saved_root is None:
+                os.environ.pop("ORGFLOW_ROOT", None)
+            else:
+                os.environ["ORGFLOW_ROOT"] = saved_root
+        self.assertIn("scripts/lib", str(ctx.exception))
 
     def test_interval_must_be_finite_and_positive(self):
         for value in ("0", "-1", "nan", "inf"):
@@ -541,6 +618,9 @@ class RouterAPIServer:
     """起一个真实 RouterHandler（临时端口），单元测试直接发 HTTP。"""
 
     def __init__(self, routes_path, out_path):
+        # 注册 API 的私有写盘路径跟着 --out 走（生产里由 main() 登记）
+        import render as _r
+        _r._OUT_PATHS[str(routes_path)] = str(out_path)
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), RouterHandler)
         self.server.routes_path = str(routes_path)
         self.server.out_path = str(out_path)
@@ -553,6 +633,7 @@ class RouterAPIServer:
             settings, routes = parse_routes(str(routes_path))
             write_if_changed(str(out_path), render(apply_env(settings), routes))
         self.server.once = _once
+        self.server.out_path_registered = True
         self.thread = threading.Thread(target=self.server.serve_forever,
                                        kwargs={"poll_interval": 0.02})
         self.thread.start()

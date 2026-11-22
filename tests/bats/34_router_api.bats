@@ -38,6 +38,10 @@ except urllib.error.HTTPError as e:
     grep -q "subdomain: demo" "$ROUTES"
     # ② Caddyfile 已重渲染
     grep -q "https://demo.${GW_DOMAIN} {" "$CADDYFILE"
+    # ②' 新子域的叶子证书也补签了：Caddyfile 引用的文件不存在时，Caddy 会整份
+    #     拒绝新配置（HTTP 400），表现是「文件写了、Caddy 没加载」。
+    [ -f "$M0_REPO/secrets/ca/sites/demo.${GW_DOMAIN}.crt" ]
+    [ -f "$M0_REPO/secrets/ca/sites/demo.${GW_DOMAIN}.key" ]
     # ③ Caddy 真的加载了（issue 验收口径：admin /config/ 里有它，不是只写了文件）
     run compose_cmd exec -T router python3 -c '
 import urllib.request
@@ -71,6 +75,11 @@ print(urllib.request.urlopen("http://caddy:2019/config/", timeout=10).read().dec
     [ "$restored_routes" = "$baseline_routes" ]
     after_sha=$(sha256sum "$ROUTES" | cut -d' ' -f1)
     [ "$before_sha" = "$after_sha" ]
+    # 演示子域用完就删证书，别把测试痕迹留在 secrets/ca/sites 里
+    rm -f "$M0_REPO/secrets/ca/sites/demo.${GW_DOMAIN}.crt" \
+          "$M0_REPO/secrets/ca/sites/demo.${GW_DOMAIN}.key"
+    [ ! -f "$M0_REPO/secrets/ca/sites/demo.${GW_DOMAIN}.crt" ]
+
     # 站点已删：握手必须失败（与 14_caddy 未知域名同口径，TLS alert / 非零退出）
     run curl -sS --max-time 20 -o /dev/null -w '%{http_code}' \
         --resolve "demo.${GW_DOMAIN}:${GW_HTTPS_PORT}:${GW_HOST}" \
