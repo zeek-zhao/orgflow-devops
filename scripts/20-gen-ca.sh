@@ -34,6 +34,13 @@ KEY="${CA_KEY:-${CA_KEY_DIR:-$ROOT/secrets/ca}/orgflow-ca.key}"
 DAYS="${CA_DAYS:-3650}"
 
 if [ -s "$CRT" ] && [ -s "$KEY" ] && [ "${FORCE:-0}" != "1" ]; then
+  openssl x509 -in "$CRT" -noout >/dev/null 2>&1 || orgflow_fail "根证书损坏：$CRT"
+  openssl rsa -in "$KEY" -check -noout >/dev/null 2>&1 || orgflow_fail "CA 私钥损坏：$KEY"
+  crt_modulus="$(openssl x509 -noout -modulus -in "$CRT" 2>/dev/null | openssl sha256)"
+  key_modulus="$(openssl rsa -noout -modulus -in "$KEY" 2>/dev/null | openssl sha256)"
+  if [ -z "$crt_modulus" ] || [ "$crt_modulus" != "$key_modulus" ]; then
+    orgflow_fail "根证书与 CA 私钥不配套：$CRT 与 $KEY；请备份后重新生成，勿用 FORCE 覆盖真生产证书"
+  fi
   echo "  CA 已存在（$(basename "$CRT")），复用，不重新生成"
   echo "    到期：$(openssl x509 -in "$CRT" -noout -enddate 2>/dev/null | sed 's/notAfter=//' || echo '（取不到，openssl 不可用）')"
   exit 0
