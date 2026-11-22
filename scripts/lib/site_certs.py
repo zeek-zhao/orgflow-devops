@@ -85,7 +85,8 @@ def main():
         print(f"缺 {ca_crt} 或 {ca_key}：先跑 bash scripts/20-gen-ca.sh", file=sys.stderr)
         return 1
 
-    out_dir = ca_key.parent / "sites"
+    # 启动渲染和 router API 都要落到 caddy 的命名卷 ca_sites；允许显式覆盖。
+    out_dir = Path(os.environ.get("ORGFLOW_SITES_DIR") or (ca_key.parent / "sites"))
     missing = []
     for sub, domain in routes(root):
         crt = out_dir / f"{sub}.{domain}.crt"

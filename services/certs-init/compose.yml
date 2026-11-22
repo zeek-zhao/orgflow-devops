@@ -1,0 +1,32 @@
+services:
+  certs-init:
+    image: orgflow/router:24.04-v1
+    container_name: of-certs-init
+    restart: "no"
+    environment:
+      - GATEWAY_DOMAIN=${GATEWAY_DOMAIN}
+    volumes:
+      - ../../config/ca/orgflow-ca.crt:/ca/orgflow-ca.crt:ro
+      - ../../secrets/ca/orgflow-ca.key:/ca/orgflow-ca.key:ro
+      - ../../config/routes.yaml:/routes.yaml:ro
+      - ca_sites:/certs/sites
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        gateway=$$GATEWAY_DOMAIN
+        sed -n 's/^ *subdomain: *//p' /routes.yaml | sort -u | while IFS= read -r sub; do
+          [ -n "$$sub" ] || continue
+          crt=/certs/sites/$$sub.$$gateway.crt
+          key=/certs/sites/$$sub.$$gateway.key
+          [ -s "$$crt" ] && [ -s "$$key" ] && continue
+          ext=$$(mktemp)
+          echo 'basicConstraints=CA:FALSE' > "$$ext"
+          echo 'keyUsage=critical,digitalSignature,keyEncipherment' >> "$$ext"
+          echo 'extendedKeyUsage=serverAuth' >> "$$ext"
+          printf 'subjectAltName=DNS:%s.%s\n' "$$sub" "$$gateway" >> "$$ext"
+          openssl req -new -newkey rsa:2048 -nodes -keyout "$$key" -out /tmp/leaf.csr -subj "/CN=$$sub.$$gateway" >/dev/null 2>&1
+          openssl x509 -req -in /tmp/leaf.csr -CA /ca/orgflow-ca.crt -CAkey /ca/orgflow-ca.key -CAcreateserial -out "$$crt" -days 3650 -sha256 -extfile "$$ext" >/dev/null 2>&1
+          chmod 600 "$$key"; chmod 644 "$$crt"; rm -f "$$ext"
+        done
+        echo "certs-init: leaf certificates ready"

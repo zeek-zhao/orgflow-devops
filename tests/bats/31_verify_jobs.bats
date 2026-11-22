@@ -22,7 +22,8 @@ setup() {
 
     # svc 列表 = compose 全部服务 + nexus（deployNexus 负责，#46），不多不少
     local expected
-    expected="$({ compose_cmd config --services; echo nexus; } | sort | tr '\n' ' ')"
+    # certs-init 是一次性证书初始化容器，不是业务服务；模板只覆盖业务 compose 服务 + nexus。
+    expected="$({ compose_cmd config --services | grep -vx certs-init; echo nexus; } | sort | tr '\n' ' ')"
     local actual
     actual="$(awk '/^    svc:/{flag=1; next} flag && /^    jobs:/{exit} flag && /^      - /{sub(/^      - /,""); print}' "$file" | sort | tr '\n' ' ')"
     [ "$actual" = "$expected" ]

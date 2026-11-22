@@ -34,10 +34,12 @@ setup() {
     # 所以每个站点块里必须显式 tls 指向自己那张。
     # 不能把 CA 证书本身当站点证书：它没有 SAN，客户端校验会拒。
     ! grep -qx $'\tlocal_certs' "$file"
+    # 注意用 grep -F + printf 造期望行：GNU grep 3.4 的 `grep -qx "\ttls ..."` 对
+    # 「以制表符开头」的行会假红（同样内容 -F 就命中），别退回去。
     local sub
     for sub in jenkins nexus docker pypi ldapadmin dex auth home ca docs; do # #117 #62 #86
         grep -qx "https://${sub}.${GW_DOMAIN} {" "$file"
-        grep -qx "\ttls /certs/sites/${sub}.${GW_DOMAIN}.crt /certs/sites/${sub}.${GW_DOMAIN}.key" "$file"
+        grep -qxF "$(printf '\ttls /certs/sites/%s.%s.crt /certs/sites/%s.%s.key' "$sub" "$GW_DOMAIN" "$sub" "$GW_DOMAIN")" "$file"
     done
     [ "$(grep -cxE $'\ttls /certs/sites/[a-z0-9.-]+\\.crt /certs/sites/[a-z0-9.-]+\\.key' "$file")" -eq "$expected_site_count" ]
 }

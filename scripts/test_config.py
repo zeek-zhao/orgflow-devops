@@ -147,6 +147,8 @@ class ConfigStructureTest(unittest.TestCase):
         included = set(re.findall(r"^\s*-\s+(\S+/compose\.yml)\s*$", text, re.M))
         expected = {spec["compose"] for spec in self.services.values()}
         expected |= {spec["compose"] for spec in (self.registry.get("tools") or {}).values()}
+        # certs-init 是一次性辅助容器，不是业务服务，不登记 services.yml。
+        included.discard("services/certs-init/compose.yml")
         self.assertEqual(
             included,
             expected,

@@ -16,13 +16,20 @@ services:
       - "${GATEWAY_HTTPS_PORT}:443"
     volumes:
       - ../../out:/etc/caddy
-      # CA 私钥与叶子证书（只读挂载，不进 git）。/certs/sites/<子域>.crt|key 是
-      # scripts/lib/site_certs.py 为每个站点签的叶子证书，根证书在 /certs/orgflow-ca.crt
-      - ../../secrets/ca:/certs:ro
+      # 叶子证书来自命名卷 ca_sites（router 用 scripts/lib/site_certs.py 现签的
+      # /certs/sites/<子域>.crt|key），**挂到 /certs/sites**而不是 /certs：
+      # /certs 整卷只读时，再往它下面挂根证书会报
+      #   error mounting ... at "/certs/orgflow-ca.crt": read-only file system
+      # （挂一点会先创建挂载点，只读卷里建不了）。
+      - ca_sites:/certs/sites:ro
+      # 根证书是入库的那一份，只读挂成 /certs/orgflow-ca.crt；CA 私钥不进这个容器。
+      - ../../config/ca/orgflow-ca.crt:/certs/orgflow-ca.crt:ro
       # 文档站静态内容：由 services/docs 生成的站点目录（compose 同名卷）
       - docs_site:/srv/docs:ro
       - caddy_data:/data
     depends_on:
+      certs-init:
+        condition: service_completed_successfully
       router:
         condition: service_healthy
       dnsmasq:

@@ -11,10 +11,16 @@ setup() {
     # 上游/mirror 镜像共 6 个，必须逐条对得上 images.lock（jenkins 走 build:、
     # nexus 移出 compose 归 #46，都不在这里）。
     mapfile -t fragments < <(awk '/^[[:space:]]*-[[:space:]]+[A-Za-z0-9_.\/-]+\.ya?ml[[:space:]]*$/ {print $2}' "$file")
-    [ "${#fragments[@]}" -eq 12 ]
-    [ "$(grep -hcE '^[[:space:]]+image:' "$M0_REPO/docker-compose.yml" "${fragments[@]/#/$M0_REPO/}" \
+    # certs-init 是一次性辅助容器，不是业务服务；片段数因此比业务服务多 1。
+    [ "${#fragments[@]}" -eq 13 ]
+    local business_fragments=()
+    for frag in "${fragments[@]}"; do
+        [ "$frag" = "services/certs-init/compose.yml" ] && continue
+        business_fragments+=("$M0_REPO/$frag")
+    done
+    [ "$(grep -hcE '^[[:space:]]+image:' "$M0_REPO/docker-compose.yml" "${business_fragments[@]}" \
              | awk '{n += $1} END {print n + 0}')" -eq 6 ]
-    [ "$(grep -hcE '^[[:space:]]+image:.*@sha256:' "$M0_REPO/docker-compose.yml" "${fragments[@]/#/$M0_REPO/}" \
+    [ "$(grep -hcE '^[[:space:]]+image:.*@sha256:' "$M0_REPO/docker-compose.yml" "${business_fragments[@]}" \
              | awk '{n += $1} END {print n + 0}')" -eq 6 ]
     while read -r image; do
         expected=
@@ -24,7 +30,7 @@ setup() {
         done < "$M0_REPO/tests/images.lock"
         [ -n "$expected" ]
         [ "$image" = "$expected" ]
-    done < <(grep -hE '^[[:space:]]+image:' "$M0_REPO/docker-compose.yml" "${fragments[@]/#/$M0_REPO/}" \
+    done < <(grep -hE '^[[:space:]]+image:' "$M0_REPO/docker-compose.yml" "${business_fragments[@]}" \
                  | awk '{print $2}' | sort -u)
     run compose_cmd config --services
     [ "$status" -eq 0 ]
@@ -38,7 +44,9 @@ import lib.config as cfg
 print(len(cfg.load_services()["services"]))
 PY
 )"
-    [ "$(printf '%s\n' "$output" | wc -l)" -eq "$want" ]
+    # certs-init 是一次性辅助容器，不属于业务服务；compose --services 会把它算进去。
+    output=$(printf '%s\n' "$output" | grep -vx certs-init)
+    [ "$(printf '%s\n' "$output" | sed '/^$/d' | wc -l)" -eq "$want" ]
     for name in dnsmasq jenkins jenkins-agent caddy router ldap ldapadmin dex oauth2-proxy homepage docs; do
         printf '%s\n' "$output" | grep -qx "$name"
     done

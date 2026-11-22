@@ -25,6 +25,7 @@ include:
   - services/oauth2-proxy/compose.yml
   - services/router/compose.yml
   - services/caddy/compose.yml
+  - services/certs-init/compose.yml
   - services/homepage/compose.yml
   - services/docs/compose.yml
   - services/jenkins/compose.yml
@@ -55,3 +56,7 @@ volumes:
   # 而真正的数据在另一个卷里，**静默出错**。
   nexus_data:
   docs_site:
+  # 站点叶子证书卷：router 现签、caddy 只读，两边挂同一个卷。
+  # 不放宿主机目录是因为宿主机可能没有 secrets/ca（干净 clone），
+  # compose 会把缺失的 bind 建成 root 属主空目录，之后脚本写不进去。
+  ca_sites:

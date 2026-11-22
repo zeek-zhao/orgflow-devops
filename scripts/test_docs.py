@@ -102,7 +102,8 @@ class ServiceDocCoverageTests(unittest.TestCase):
     # nexus 不在 compose 里（#46，由 job nexus-deploy 拉起），但它是 M0 服务。
     EXTRA_SERVICES = ("nexus",)
     # jjb 是 compose 里的工具容器（tools profile），不是对外服务，无文档。
-    NON_SERVICES = ("jjb",)
+    # certs-init 是 compose 一次性辅助容器，不是业务服务；不需要服务手册。
+    NON_SERVICES = ("jjb", "certs-init")
 
     def test_every_service_has_a_doc(self):
         missing = []
