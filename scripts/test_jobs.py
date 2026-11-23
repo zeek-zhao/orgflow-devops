@@ -247,6 +247,22 @@ sys.exit(int(os.environ.get("JOB_TEST_STATUS", "0")))
         self.assertEqual(parser["jenkins"]["password"], "TESTONLY_INITIAL_PW_140")
         self.assertEqual(parser["jenkins"]["url"], "http://jenkins:8080/")
 
+    def test_ldap_user_password_keeps_quote_for_ldap_bind(self):
+        """#M0：runtime.env 的用户口令经 quote() 渲染成 "{...}"；11-ldap-set-passwords.sh
+        用 sed 把带引号值原样写进 LDAP，jjb 认证必须保留引号（去掉 → 401）。
+        反证：把 13-gen-jjb-conf.sh 里保留 LDAP_USER_PASSWORD 引号的分支去掉，
+        这条必红（password 变成无引号值）。"""
+        self.dotenv.write_text(
+            "JENKINS_URL=https://jenkins.org-devops.com/\n"
+            "LDAP_USER_PASSWORD=\"QUOTED_PW_140\"\n"
+        )
+        result = self.run_script("13-gen-jjb-conf")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        parser = configparser.ConfigParser()
+        parser.read(self.root / ".jjb/jenkins_jobs.ini")
+        self.assertEqual(parser["jenkins"]["user"], "svc-platform-admin")
+        self.assertEqual(parser["jenkins"]["password"], '"QUOTED_PW_140"')
+
     def test_conf_explicit_jjb_credentials_take_precedence(self):
         """显式 JJB_USER/JJB_PASSWORD 优先于用户口令（运维换专用服务账号）。
         反证：只给这两个键、去掉归一化到模板键的赋值，必填校验会误报缺变量。"""
