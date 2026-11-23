@@ -1,0 +1,33 @@
+# caddy 唯一入口：隔离端口 8080/8443，固定 IP .10，挂 CA 卷
+services:
+  caddy:
+    image: caddy@sha256:0000000000000000000000000000000000000000000000000000000000000003
+    container_name: of-caddy
+    build:
+      context: services/caddy
+    environment:
+      DOMAIN: ${DOMAIN:-org-devops.local}
+      CA_DIR: /ca
+    ports:
+      - "${P_CADDY_HTTP:-8080}:80"
+      - "${P_CADDY_HTTPS:-8443}:443"
+      - "2019:2019"
+    volumes:
+      - ca-data:/ca:ro
+    networks:
+      orgflow:
+        ipv4_address: ${IP_CADDY:-192.168.90.10}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:2019/config/ >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  ca-data:
+networks:
+  orgflow:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${NET_SUBNET:-192.168.90.0/24}
