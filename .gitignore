@@ -13,6 +13,8 @@ secrets/
 !config/ca/*.key.bak
 # 叶子证书是现签产物，不是仓库内容
 config/ca/sites/
+# openssl 签发叶子证书时生成的 CA 序列号文件，运行期产物，不入库
+*.srl
 
 # 语言
 __pycache__/
