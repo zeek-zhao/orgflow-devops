@@ -61,7 +61,14 @@ for raw in Path(sys.argv[1]).read_text().splitlines():
         if end == -1 or (value[end + 1:].strip() and
                          not value[end + 1:].strip().startswith("#")):
             sys.exit(f"{key}: 需要单行、正确闭合的引号")
-        value = value[1:end]
+        # LDAP_USER_PASSWORD 来自 runtime.env 的 quote() 渲染，值形如 "{...}"。
+        # 11-ldap-set-passwords.sh 用 sed 读取时**不去掉引号**就把 "{...}" 写进了
+        # LDAP 用户口令；jjb 认证 svc-platform-admin 必须原样带引号，去掉则 bind 49
+        # / crumbIssuer 401（2026-11-23 实测：带引号 17 Job 全成功）。
+        # 归一化会把这个值传给 JENKINS_ADMIN_PASSWORD，故在这里保留即可。
+        # 其它键（显式 JJB_PASSWORD、URL 等）仍按去引号口径解析。
+        if key != "LDAP_USER_PASSWORD":
+            value = value[1:end]
     else:
         value = re.split(r"\s+#", value, maxsplit=1)[0].rstrip()
     values[key] = value
