@@ -1,0 +1,19 @@
+# 书签（官方 homepage 格式）。值必须是列表，不能直接写映射，
+# 否则 homepage 静默丢 href → 前端 new URL(undefined) 整页报错（main 的实测教训）。
+- 运维参考:
+    - Caddy:
+        - abbr: CD
+          href: https://caddyserver.com/docs/
+          icon: mdi-web
+    - OpenLDAP:
+        - abbr: LD
+          href: https://www.openldap.org/doc/
+          icon: mdi-web
+    - phpLDAPadmin:
+        - abbr: LA
+          href: https://github.com/osixia/docker-openldap
+          icon: mdi-web
+    - Tailscale Funnel:
+        - abbr: TS
+          href: https://tailscale.com/kb/1223/funnel
+          icon: mdi-web

@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 # check-image-source.sh —— 镜像来源闸门（NFR-01）
-# 镜像上下文（Dockerfile / 各服务配置）改动后，若 images.lock 未同步更新，拒绝部署。
+# 镜像上下文（注入配置 / 挂载脚本）改动后，若 images.lock 未同步更新，拒绝部署。
+# 2026-11-24 改版：镜像全部对齐 main、本仓无 Dockerfile 构建，故把「以卷注入的配置」
+#   （Caddyfile / LDIF / homepage yaml / router server.py / gen-ca.sh）纳入上下文 hash。
 # 用内容 hash 快照 out/images.context.sha 比对；首次运行生成快照（视为基线）。
-# 反证：改任一 Dockerfile → 本脚本红；make images-lock 回填 → 复绿。
+# 反证：改任一注入配置 → 本脚本红；make images-lock 回填 → 复绿。
 set -uo pipefail
+shopt -s nullglob
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 SNAP="out/images.context.sha"
 mkdir -p out
-cur="$( { shopt -s nullglob; for f in services/*/Dockerfile config/images.env services/*/*.conf services/*/*.py; do echo "--- $f"; sha256sum "$f"; done; } | sha256sum | awk '{print $1}' )"
+CTX_FILES=(services/*/Dockerfile config/images.env config/Caddyfile config/ldap/*.ldif
+           config/homepage/*.yaml services/*/*.conf services/*/*.py services/*/*.sh)
+cur="$( { for f in "${CTX_FILES[@]}"; do echo "--- $f"; sha256sum "$f"; done; } | sha256sum | awk '{print $1}' )"
 if [[ ! -f "$SNAP" ]]; then
   echo "$cur" > "$SNAP"
   echo "✓ 已生成镜像上下文基线快照（$cur）—— 首次运行"

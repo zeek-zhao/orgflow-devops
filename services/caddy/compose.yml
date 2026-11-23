@@ -1,13 +1,11 @@
 # caddy 唯一入口：隔离端口 8080/8443，固定 IP .10，挂 CA 卷
+# 官方 caddy:2 镜像（main 同款），静态 Caddyfile 挂载，本仓不自建。
 services:
   caddy:
-    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/caddy@sha256:7567416ff0f4f59a81fa49176f69bb426fcdc72355900c12825b6abe6497a61b
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-caddy@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
     container_name: of-caddy
-    build:
-      context: services/caddy
     environment:
       DOMAIN: ${DOMAIN:-org-devops.local}
-      CA_DIR: /ca
       PUBLIC_PORT: ${PUBLIC_PORT:-18081}
     ports:
       - "${P_CADDY_HTTP:-8080}:80"
@@ -15,12 +13,13 @@ services:
       - "2019:2019"
       - "${PUBLIC_PORT:-18081}:18081"
     volumes:
+      - ../../config/Caddyfile:/etc/caddy/Caddyfile:ro
       - ca-data:/ca:ro
     networks:
       orgflow:
         ipv4_address: ${IP_CADDY:-192.168.90.10}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:2019/config/ >/dev/null"]
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:2019/config/"]
       interval: 5s
       timeout: 3s
       retries: 10

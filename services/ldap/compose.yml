@@ -1,24 +1,36 @@
 # OpenLDAP：固定 IP .13，宿主不映射 389（最小暴露面）
+# osixia/openldap:1.5.0（main 同款官方镜像），2 个用户由自定义 LDIF 首启自动导入。
 services:
   ldap:
-    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/ldap@sha256:2e00d8303894667d0168ecf79142d0b7f815e0217f4169e4e80634116728bc44
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-openldap@sha256:18742e9c449c9c1afe129d3f2f3ee15fb34cc43e5f940a20f3399728f41d7c28
     container_name: of-ldap
-    build:
-      context: services/ldap
+    # --copy-service：避免对只读挂载的 50-users.ldif chown 失败
+    entrypoint: ["/container/tool/run", "--copy-service"]
     environment:
-      DOMAIN: ${DOMAIN:-org-devops.local}
-      BASE_DN: ${BASE_DN:-dc=orgflow,dc=local}
-      LDAP_PASSWORD: ${LDAP_PASSWORD:-change-me}
+      LDAP_ORGANISATION: OrgFlow
+      LDAP_DOMAIN: ${LDAP_DOMAIN:-orgflow.local}
+      LDAP_ADMIN_PASSWORD: ${LDAP_PASSWORD:-change-me}
+      LDAP_BASE_DN: ${LDAP_BASE_DN:-dc=orgflow,dc=local}
+      LDAP_ADMIN_DN: ${LDAP_ADMIN_DN:-cn=admin,dc=orgflow,dc=local}
+      LDAP_TLS: "false"
+    volumes:
+      - ldap_data:/var/lib/ldap
+      - ldap_config:/etc/ldap/slapd.d
+      - ../../config/ldap/50-users.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/50-users.ldif:ro
     expose:
       - "389"
     networks:
       orgflow:
         ipv4_address: ${IP_LDAP:-192.168.90.13}
     healthcheck:
-      test: ["CMD-SHELL", "ldapsearch -x -H ldap://127.0.0.1 -b '' -s base >/dev/null 2>&1 || ldapsearch -x -H ldap://127.0.0.1 -D cn=admin,dc=orgflow,dc=local -w change-me -b dc=orgflow,dc=local >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "printf '%s' \"$$LDAP_ADMIN_PASSWORD\" | ldapsearch -x -H ldap://127.0.0.1 -D \"$$LDAP_ADMIN_DN\" -y /dev/stdin -b \"$$LDAP_BASE_DN\" -s base >/dev/null 2>&1"]
       interval: 5s
       timeout: 3s
       retries: 10
+
+volumes:
+  ldap_data:
+  ldap_config:
 
 networks:
   orgflow:

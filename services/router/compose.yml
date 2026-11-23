@@ -1,16 +1,17 @@
 # Router 路由注册：固定 IP .14，隔离端口 8083（内部 8080）
+# 复用 main CI 产物 router:24.04-v1（内含 python3），仅挂载 server.py，本仓不自建。
 services:
   router:
-    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/router@sha256:dc8e100673de973b063328a15fe4b72e8556f434886f0cb0398613e65b45d086
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/router@sha256:e5fd71d1cd7cec5068a24ce1165e35587856e2cafe7ca2e772a3b50944f9fe87
     container_name: of-router
-    build:
-      context: services/router
+    entrypoint: ["python3", "/app/server.py"]
     environment:
       ROUTES: /etc/router/routes.yaml
       CADDY_ADMIN: http://caddy:2019
     ports:
       - "${P_ROUTER:-8083}:8080"
     volumes:
+      - ../../services/router/server.py:/app/server.py:ro
       - ../../config/routes.yaml:/etc/router/routes.yaml:ro
       - ca-data:/ca:ro
     networks:
