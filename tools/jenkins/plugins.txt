@@ -1,7 +1,0 @@
-workflow-aggregator
-git
-credentials
-credentials-binding
-plain-credentials
-ssh-slaves
-configuration-as-code

@@ -1,32 +1,8 @@
-# 敏感与运行期产物
-.env
-.env.*
-!.env.example
-.jjb/
 out/
-*.log
-# agent 的 SSH 私钥（scripts/40-gen-agent-key.sh 生成）与内部 CA 私钥/叶子证书
-# （scripts/20-gen-ca.sh 生成到 secrets/ca/）—— 永不入库。只有根证书 config/ca/*.crt 入库。
-secrets/
-# 兜底：任何子目录下的私钥都不入库（包括将来别人放错位置的 CA 私钥）
-*.key
-!config/ca/*.key.bak
-# 叶子证书是现签产物，不是仓库内容
-config/ca/sites/
-# openssl 签发叶子证书时生成的 CA 序列号文件，运行期产物，不入库
-*.srl
-
-# 语言
+*.env
+!.env.example
+!config/images.env
 __pycache__/
 *.pyc
-
-# 编辑器
-.idea/
-.vscode/
-
-# WF3/WF4 派单任务卡（本地工作产物，不入库）
-TASK-*.md
-
-# 临时脚本与抓取输出（排查时随手写的，别进仓库）
-# 踩过：git add -A 把它们一起带进了 main，只能再删一次
-.tmp-*
+*.log
+.DS_Store

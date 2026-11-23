@@ -1,78 +1,8 @@
-# 路由注册数据源（路由注册服务读取此文件并渲染 Caddyfile）
-#
-# 域名模型：每个 route 是一个独立站点 https://<subdomain>.<gateway_domain>
-#   - gateway_domain 默认取本文件，部署时由 .env 的 GATEWAY_DOMAIN 覆盖
-#   - 全部站点使用 Caddy 内部 CA（local_certs），不向公网申请证书
-#   - 未登录访问受保护站点会跳到 name: auth 那条路由的站点 /oauth2/start
-#     （认证域名只由这一条路由决定，没有独立的 AUTH_SUBDOMAIN 变量）
-#
-# 改完执行 `make render`，或由 router 服务 watch 自动热加载。
-#
-# 注意：M0 ADR-13 起不再支持路径路由（/jenkins 这类入口已删除）。
-
-gateway_domain: org-devops.com
-
+# 路由真源：host → upstream。改这里 → make routes → 30s 内新域 200，不重启 Caddy。
 routes:
-  # A4 起 Jenkins 直连 LDAP 自带登录,网关不再代管(#86:摘 auth)
-  - name: jenkins
-    subdomain: jenkins
-    upstream: jenkins:8080
-
-  - name: nexus
-    subdomain: nexus
-    upstream: nexus:8081
-
-  # 容器镜像仓库（#117）：反代 Nexus 的 docker connector，不是 8081。
-  # 8081 没映射到宿主，这里走的是**同网络内的容器端口**，重建 Nexus 不会丢配置。
-  #
-  # 为什么指 8082(hosted) 而不是 8083(group)：实测 Nexus OSS 3.92.2 向 group push 会被拒
-  #   denied: Deploying to groups is a PRO-licensed feature.
-  # group 只能 pull。所以用一个域名同时满足 push 和 pull，只能落到 hosted；
-  # docker-group(8083) 保留为容器网络内的聚合入口（含 docker-proxy 的上游缓存），
-  # 不单独开公网子域 —— 免得再增加一条 hosts 记录。
-  # 客户端：docker login docker.<domain> → push / pull 都落在 docker-hosted。
-  - name: docker
-    subdomain: docker
-    upstream: nexus:8082
-
-  # PyPI（#117）：没有独立端口，走 Nexus 8081 的路径前缀。
-  # 客户端：pip --index-url https://pypi.<domain>/repository/pypi-group/simple/
-  # 不做路径改写 —— 改写得动 render.py，而 Nexus 的标准用法本来就是这个长路径，
-  # 多一层重写只会增加一处可能对不上的地方。
-  - name: pypi
-    subdomain: pypi
-    upstream: nexus:8081
-
-  # phpLDAPadmin 自带 LDAP 登录(#86:摘网关 auth)
-  - name: ldapadmin
-    subdomain: ldapadmin
-    upstream: ldapadmin:80
-
-  # Dex 的端点挂在 issuer 路径 /dex 下（/dex/auth、/dex/token、/dex/keys）
-  - name: dex
-    subdomain: dex
-    upstream: dex:5556
-
-  # OAuth2 Proxy：/oauth2/* 与 /ping
-  # name 必须是 auth：受保护站点的登录跳转目标就是这条路由的 subdomain
-  - name: auth
-    subdomain: auth
-    upstream: oauth2-proxy:4180
-
-  # 统一入口：一屏看到所有服务。放在最后，方便以后继续往下加。
-  - name: homepage
-    subdomain: home
-    upstream: homepage:3000
-
-  # CA 分发：router 容器直接服务 out/ca/ 下的 root.crt 与 ca-install.sh（#62）。
-  # 局域网机器从 https://ca.<domain>/ 取证书与安装脚本，见 docs/services/caddy.md。
-  - name: ca
-    subdomain: ca
-    upstream: router:8090
-
-  # 文档站：唯一受网关保护的站点（#86 选项 1——只守无原生认证的静态内容）。
-  # 特例路由：Caddy file_server 直接服务 docs/ 静态文件，/oauth2/* 走 oauth2-proxy
-  # （登录与回调都在 docs 域闭环，cookie 落在 docs 单域，见 render.py 的 docs 特例）。
-  - name: docs
-    subdomain: docs
-    upstream: oauth2-proxy:4180
+  - host: home.org-devops.local
+    upstream: home:3000
+  - host: ldapadmin.org-devops.local
+    upstream: ldapadmin:8080
+  - host: router.org-devops.local
+    upstream: router:8080

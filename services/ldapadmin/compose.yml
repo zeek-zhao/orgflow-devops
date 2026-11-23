@@ -1,27 +1,29 @@
-# ldapadmin：phpLDAPadmin，目录的 Web 管理界面
-#
-# 自带 LDAP 登录（#86 起不在网关后面挂 oauth2）：用 cn=admin,<base_dn> + ldap.password 登录。
+# LDAP Admin Web：固定 IP .12，隔离端口 8081
 services:
   ldapadmin:
-    image: osixia/phpldapadmin:0.9.0@sha256:d112b82be1336f91e028b0348755133fda333992355b533419355a65c32ff9ad # lock: ldapadmin
+    image: ldapadmin@sha256:0000000000000000000000000000000000000000000000000000000000000005
     container_name: of-ldapadmin
-    restart: unless-stopped
+    build:
+      context: services/ldapadmin
     environment:
-      - PHPLDAPADMIN_LDAP_HOSTS=ldap
-      - PHPLDAPADMIN_HTTPS=false
-    expose:
-      - "80"
+      LDAP_HOST: ldap
+      BASE_DN: ${BASE_DN:-dc=orgflow,dc=local}
+    ports:
+      - "${P_LDAPADMIN:-8081}:8080"
     depends_on:
-      dnsmasq:
-        condition: service_healthy
-    dns:
-      - ${IP_DNSMASQ}
+      - ldap
     networks:
       orgflow:
-        ipv4_address: ${IP_LDAPADMIN}
+        ipv4_address: ${IP_LDAPADMIN:-192.168.90.12}
     healthcheck:
-      test: ["CMD", "php", "-r", "exit(file_get_contents('http://localhost/') === false ? 1 : 0);"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/ >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+networks:
+  orgflow:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${NET_SUBNET:-192.168.90.0/24}

@@ -1,0 +1,11 @@
+# Homepage 卡片（≤5 张）。改本文件免重启生效；解析失败会显式报错，不静默丢项。
+cards:
+  - name: 统一入口
+    href: https://home.org-devops.local/
+    desc: 本面板
+  - name: 目录管理
+    href: https://ldapadmin.org-devops.local/
+    desc: LDAP Admin
+  - name: 路由状态
+    href: https://router.org-devops.local/healthz
+    desc: Router 健康

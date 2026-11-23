@@ -1,62 +1,156 @@
-# =============================================================================
-# orgflow-devops 主编排入口（M0 重构，2026-11-21）
-#
-# 结构变了：每个服务一份片段，放在自己目录下 services/<svc>/compose.yml。
-# 这个文件只做三件事：
-#   1. 定义共享网络与卷；
-#   2. include 全部服务片段（compose 2.20+ 的 include）；
-#   3. 给 `docker compose -f docker-compose.yml` 一个稳定的入口。
-#
-# 为什么拆：改一个服务只动它自己那份文件；服务清单、固定 IP、容器名在
-# config/services.yml 里登记，脚本按 start_order 串行启动（bash scripts/30-up-serial.sh）。
-#
-# ⚠ 变量来源：不再有 .env。`make deploy` 会先渲染 out/runtime.env，
-#   compose 的 ${VAR} 全部从那里取。直接跑 docker compose 时请带
-#   --env-file out/runtime.env（Makefile 已经这么做了）。
-# =============================================================================
+# 最小系统全栈：7 容器，单一网段 orgflow，CA 卷共享。
+# 镜像全部 @sha256 锁定；宿主仅暴露 :80/:443（由 caddy），其余用隔离端口。
+name: orgflow-minimal
 
-name: orgflow-devops
+services:
+  dnsmasq:
+    image: dnsmasq@sha256:0000000000000000000000000000000000000000000000000000000000000001
+    container_name: of-dnsmasq
+    build:
+      context: services/dnsmasq
+    environment:
+      DOMAIN: ${DOMAIN:-org-devops.local}
+      IP_CADDY: ${IP_CADDY:-192.168.90.10}
+    ports:
+      - "${P_DNSMASQ:-5353}:53/udp"
+    networks:
+      orgflow:
+        ipv4_address: ${IP_DNSMASQ:-192.168.90.15}
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep dnsmasq >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
-include:
-  - services/dnsmasq/compose.yml
-  - services/ldap/compose.yml
-  - services/ldapadmin/compose.yml
-  - services/dex/compose.yml
-  - services/oauth2-proxy/compose.yml
-  - services/router/compose.yml
-  - services/caddy/compose.yml
-  - services/certs-init/compose.yml
-  - services/homepage/compose.yml
-  - services/docs/compose.yml
-  - services/jenkins/compose.yml
-  - services/jenkins-agent/compose.yml
-  - tools/jjb/compose.yml
+  certs-init:
+    image: certs-init@sha256:0000000000000000000000000000000000000000000000000000000000000002
+    container_name: of-certs-init
+    build:
+      context: services/certs-init
+    environment:
+      DOMAIN: ${DOMAIN:-org-devops.local}
+      CA_DIR: /ca
+    volumes:
+      - ca-data:/ca
+    restart: "no"
+    networks:
+      - orgflow
 
-networks:
-  # 网络名与网段来自 config/orgflow.yml（渲染进 out/runtime.env）
-  orgflow:
-    name: ${NETWORK_NAME:-orgflow}
-    ipam:
-      driver: default
-      config:
-        # ip_range 必须与 subnet 同属一个 config 对象：写成两个列表项会被 daemon
-        # 拒绝（invalid ip-range ... parent subnet invalid），而 `docker compose config`
-        # 的 schema 校验发现不了，只有真正 network create 才报错。
-        - subnet: ${NETWORK_SUBNET}
-          ip_range: ${NETWORK_IP_RANGE}
+  ldap:
+    image: ldap@sha256:0000000000000000000000000000000000000000000000000000000000000004
+    container_name: of-ldap
+    build:
+      context: services/ldap
+    environment:
+      DOMAIN: ${DOMAIN:-org-devops.local}
+      BASE_DN: ${BASE_DN:-dc=orgflow,dc=local}
+      LDAP_PASSWORD: ${LDAP_PASSWORD:-change-me}
+    expose:
+      - "389"
+    networks:
+      orgflow:
+        ipv4_address: ${IP_LDAP:-192.168.90.13}
+    healthcheck:
+      test: ["CMD-SHELL", "ldapsearch -x -H ldap://127.0.0.1 -D cn=admin,dc=orgflow,dc=local -w change-me -b dc=orgflow,dc=local >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  caddy:
+    image: caddy@sha256:0000000000000000000000000000000000000000000000000000000000000003
+    container_name: of-caddy
+    build:
+      context: services/caddy
+    environment:
+      DOMAIN: ${DOMAIN:-org-devops.local}
+      CA_DIR: /ca
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "2019:2019"
+    volumes:
+      - ca-data:/ca:ro
+    depends_on:
+      - certs-init
+    networks:
+      orgflow:
+        ipv4_address: ${IP_CADDY:-192.168.90.10}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:2019/config/ >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  homepage:
+    image: homepage@sha256:0000000000000000000000000000000000000000000000000000000000000006
+    container_name: of-homepage
+    build:
+      context: services/homepage
+    environment:
+      BOOKMARKS: /etc/homepage/bookmarks.yaml
+    volumes:
+      - ./config/bookmarks.yaml:/etc/homepage/bookmarks.yaml:ro
+    depends_on:
+      - caddy
+    networks:
+      orgflow:
+        ipv4_address: ${IP_HOMEPAGE:-192.168.90.11}
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import urllib.request;urllib.request.urlopen(\"http://127.0.0.1:3000/\")'"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ldapadmin:
+    image: ldapadmin@sha256:0000000000000000000000000000000000000000000000000000000000000005
+    container_name: of-ldapadmin
+    build:
+      context: services/ldapadmin
+    environment:
+      LDAP_HOST: ldap
+      BASE_DN: ${BASE_DN:-dc=orgflow,dc=local}
+    depends_on:
+      - ldap
+      - caddy
+    networks:
+      orgflow:
+        ipv4_address: ${IP_LDAPADMIN:-192.168.90.12}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/ >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  router:
+    image: router@sha256:0000000000000000000000000000000000000000000000000000000000000007
+    container_name: of-router
+    build:
+      context: services/router
+    environment:
+      ROUTES: /etc/router/routes.yaml
+      CADDY_ADMIN: http://caddy:2019
+    volumes:
+      - ./config/routes.yaml:/etc/router/routes.yaml:ro
+      - ca-data:/ca:ro
+    depends_on:
+      - caddy
+      - homepage
+      - ldapadmin
+    networks:
+      orgflow:
+        ipv4_address: ${IP_ROUTER:-192.168.90.14}
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import urllib.request;urllib.request.urlopen(\"http://127.0.0.1:8080/healthz\")'"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
-  jenkins_home:
-  caddy_data:
-  ldap_data:
-  ldap_config:
-  # ★ 保留声明但 compose 里没有服务使用（#46：nexus 移出 compose）。
-  # 留着是为了让卷名继续由 compose 项目名决定（orgflow-devops_nexus_data），
-  # 与 scripts/lib 里登记的卷名对齐 —— 卷名一旦漂移，备份脚本会备份一个空卷
-  # 而真正的数据在另一个卷里，**静默出错**。
-  nexus_data:
-  docs_site:
-  # 站点叶子证书卷：router 现签、caddy 只读，两边挂同一个卷。
-  # 不放宿主机目录是因为宿主机可能没有 secrets/ca（干净 clone），
-  # compose 会把缺失的 bind 建成 root 属主空目录，之后脚本写不进去。
-  ca_sites:
+  ca-data:
+
+networks:
+  orgflow:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${NET_SUBNET:-192.168.90.0/24}
