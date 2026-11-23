@@ -1,0 +1,28 @@
+# OpenLDAP：固定 IP .13，宿主不映射 389（最小暴露面）
+services:
+  ldap:
+    image: ldap@sha256:0000000000000000000000000000000000000000000000000000000000000004
+    container_name: of-ldap
+    build:
+      context: services/ldap
+    environment:
+      DOMAIN: ${DOMAIN:-org-devops.local}
+      BASE_DN: ${BASE_DN:-dc=orgflow,dc=local}
+      LDAP_PASSWORD: ${LDAP_PASSWORD:-change-me}
+    expose:
+      - "389"
+    networks:
+      orgflow:
+        ipv4_address: ${IP_LDAP:-192.168.90.13}
+    healthcheck:
+      test: ["CMD-SHELL", "ldapsearch -x -H ldap://127.0.0.1 -b '' -s base >/dev/null 2>&1 || ldapsearch -x -H ldap://127.0.0.1 -D cn=admin,dc=orgflow,dc=local -w change-me -b dc=orgflow,dc=local >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+networks:
+  orgflow:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${NET_SUBNET:-192.168.90.0/24}

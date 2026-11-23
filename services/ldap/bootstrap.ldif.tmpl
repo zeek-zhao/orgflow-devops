@@ -1,0 +1,31 @@
+dn: {{BASE_DN}}
+objectClass: top
+objectClass: dcObject
+objectClass: organization
+o: OrgFlow
+dc: orgflow
+
+dn: ou=people,{{BASE_DN}}
+objectClass: top
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,{{BASE_DN}}
+objectClass: top
+objectClass: organizationalUnit
+ou: groups
+
+dn: cn=svc-platform-admin,ou=groups,{{BASE_DN}}
+objectClass: top
+objectClass: groupOfNames
+cn: svc-platform-admin
+member: cn=admin,{{BASE_DN}}
+
+dn: cn=demo,ou=people,{{BASE_DN}}
+objectClass: top
+objectClass: person
+objectClass: inetOrgPerson
+cn: demo
+sn: demo
+uid: demo
+userPassword: {{HASH}}

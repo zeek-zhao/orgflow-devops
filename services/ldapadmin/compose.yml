@@ -1,0 +1,29 @@
+# LDAP Admin Web：固定 IP .12，隔离端口 8081
+services:
+  ldapadmin:
+    image: ldapadmin@sha256:0000000000000000000000000000000000000000000000000000000000000005
+    container_name: of-ldapadmin
+    build:
+      context: services/ldapadmin
+    environment:
+      LDAP_HOST: ldap
+      BASE_DN: ${BASE_DN:-dc=orgflow,dc=local}
+    ports:
+      - "${P_LDAPADMIN:-8081}:8080"
+    depends_on:
+      - ldap
+    networks:
+      orgflow:
+        ipv4_address: ${IP_LDAPADMIN:-192.168.90.12}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/ >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+networks:
+  orgflow:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${NET_SUBNET:-192.168.90.0/24}
