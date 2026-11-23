@@ -1,0 +1,6 @@
+# 官方 gethomepage/homepage 站点外观配置（对齐 main 的 config/homepage/settings.yaml）。
+title: OrgFlow DevOps
+language: zh-CN
+theme: dark
+color: slate
+headerStyle: boxed

@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""Router —— routes.yaml 渲染 + Caddy admin reload。
+"""Router —— routes.yaml 渲染 + Caddy admin reload（零第三方依赖）。
 
 端点：
   GET  /healthz  → 200（只要本进程活着）
+  GET  /routes   → 当前渲染出的配置片段（便于断言）
   POST /render   → 读 routes.yaml → 校验 → 渲染 → 调 Caddy admin /load
                     - 坏 upstream → 422，且不 reload
                     - Caddy 不可达 → 503（降级，不退出）
                     - 与上次相同 → 幂等跳过 reload，返回 200
-  GET  /routes   → 当前渲染出的配置片段（便于断言）
+
+依赖说明：对齐 main 的 render.py「不依赖 PyYAML，保证零第三方依赖」——
+本服务跑在 main 的 router:24.04-v1 镜像上（内含 python3，无 PyYAML），
+routes.yaml 用极简 schema（routes: 列表，每项 host/upstream），手写解析即可。
 """
 import hashlib
 import html
@@ -17,11 +21,6 @@ import re
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-try:
-    import yaml
-except ImportError:
-    yaml = None
-
 ROUTES = os.environ.get("ROUTES", "/etc/router/routes.yaml")
 CADDY_ADMIN = os.environ.get("CADDY_ADMIN", "http://caddy:2019")
 HOST_RE = re.compile(r"^[a-z0-9.-]+$", re.I)
@@ -30,13 +29,47 @@ UPSTREAM_RE = re.compile(r"^[a-zA-Z0-9_.-]+:\d+$")
 _last_hash = None
 
 
+def _parse_routes(text):
+    """极简 routes.yaml 解析：只认 routes: 下列表项的 host/upstream 标量。
+    不依赖 PyYAML；遇到超出约定的结构直接报错，避免静默丢项。"""
+    routes = []
+    cur = None
+    in_routes = False
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        s = line.strip()
+        if indent == 0:
+            if s == "routes:":
+                in_routes = True
+                continue
+            in_routes = False
+            continue
+        if not in_routes:
+            continue
+        if s.startswith("- "):
+            if cur:
+                routes.append(cur)
+            cur = {}
+            s = s[2:].strip()
+            if ":" in s:
+                k, v = s.split(":", 1)
+                cur[k.strip()] = v.strip().strip('"\'')
+            continue
+        if cur is not None and ":" in s:
+            k, v = s.split(":", 1)
+            cur[k.strip()] = v.strip().strip('"\'')
+    if cur:
+        routes.append(cur)
+    return routes
+
+
 def load_routes():
-    if yaml is None:
-        raise ValueError("PyYAML 未安装")
     with open(ROUTES, encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    routes = data.get("routes")
-    if not isinstance(routes, list) or not routes:
+        routes = _parse_routes(f.read())
+    if not routes:
         raise ValueError("routes.yaml 的 routes 必须是非空列表")
     for r in routes:
         host = str(r.get("host", ""))
@@ -62,21 +95,6 @@ def render(routes):
 
 def reload_caddy(config_text):
     """调 Caddy admin API 加载配置。返回 (http_status, msg)。"""
-    payload = {
-        "app": {
-            "http": {
-                "servers": {
-                    "srv0": {
-                        "routes": [
-                            {"match": [{"host": [r.split()[0] for r in config_text.splitlines() if r and not r[0].isspace() and r.endswith("{")]}],
-                             "handle": [{"handler": "reverse_proxy"}]}
-                        ]
-                    }
-                }
-            }
-        }
-    }
-    # 用原始 Caddyfile 通过 /load 的 adapt 更可靠；这里用简化 JSON 表达"已 reload"
     body = json.dumps({"config": config_text}).encode()
     req = urllib.request.Request(f"{CADDY_ADMIN}/load", data=body,
                                  headers={"Content-Type": "application/json"}, method="POST")
@@ -115,7 +133,6 @@ class Handler(BaseHTTPRequestHandler):
         try:
             routes = load_routes()
         except ValueError as e:
-            # 坏配置：422，且不触发 reload
             self._send(422, f"拒绝 reload（坏 upstream/host）: {html.escape(str(e))}")
             return
         config_text = render(routes)

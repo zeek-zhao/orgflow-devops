@@ -1,0 +1,59 @@
+# osixia/openldap 首次启动自动导入的自定义 LDIF（挂到
+# /container/service/slapd/assets/config/bootstrap/ldif/custom/）。
+# 结构对齐 main 分支 services/auth/ldif/users.ldif（inetOrgPerson + posixAccount），
+# 但只建现有最小底座真正需要的 2 个账号：平台管理员 + 所有者。
+# main 里的 gerrit/nexus/jira/dev/qa 等账号对应服务在本底座不存在，按需不建。
+#
+# {{ LDAP_BASE_DN }} 由 osixia 启动脚本替换为 LDAP_DOMAIN 派生出的 base DN。
+# userPassword 为统一口令 change-me 的 {SSHA}（每个账号独立 salt），
+# 与 config/defaults.env 的 LDAP_PASSWORD 默认值一致；改口令用 scripts 重算哈希。
+
+dn: ou=people,{{ LDAP_BASE_DN }}
+objectClass: top
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,{{ LDAP_BASE_DN }}
+objectClass: top
+objectClass: organizationalUnit
+ou: groups
+
+dn: cn=svc-platform-admin,ou=groups,{{ LDAP_BASE_DN }}
+objectClass: top
+objectClass: groupOfNames
+cn: svc-platform-admin
+member: uid=svc-platform-admin,ou=people,{{ LDAP_BASE_DN }}
+
+# 用户 1：平台管理员服务账号（对齐 main 的 svc-platform-admin）
+dn: uid=svc-platform-admin,ou=people,{{ LDAP_BASE_DN }}
+cn: svc-platform-admin
+sn: svc-platform-admin
+displayName: svc-platform-admin
+givenName: svc-platform-admin
+uid: svc-platform-admin
+uidNumber: 1000
+gidNumber: 501
+homeDirectory: /home/users/svc-platform-admin
+loginShell: /bin/bash
+mail: svc-platform-admin@orgflow.local
+objectClass: top
+objectClass: inetOrgPerson
+objectClass: posixAccount
+userPassword: {SSHA}JnlS51wZS26BP2TQQGVby1a0hZ4cjlsRaONdXw==
+
+# 用户 2：所有者账号（对齐 main 的 zeek.zhao）
+dn: uid=zeek.zhao,ou=people,{{ LDAP_BASE_DN }}
+cn: Zeek Zhao
+sn: Zhao
+displayName: Zeek Zhao
+givenName: Zeek
+uid: zeek.zhao
+uidNumber: 1008
+gidNumber: 501
+homeDirectory: /home/users/zeek.zhao
+loginShell: /bin/bash
+mail: zeek.zhao@orgflow.local
+objectClass: top
+objectClass: inetOrgPerson
+objectClass: posixAccount
+userPassword: {SSHA}CGGFDGlngL/qTBucdThSycLYaVTEYEf0YZK25g==

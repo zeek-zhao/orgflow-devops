@@ -1,20 +1,20 @@
 # dnsmasq 单服务编排：零依赖可起，隔离端口 5353，不占宿主 53。
+# 镜像为 main CI 产物（dnsmasq:24.04-v1），本仓不再自建。
 services:
   dnsmasq:
-    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/dnsmasq@sha256:be9ea4708eccc51a31e9c8b4da3bab2f1a80623fe5ce3977d7752508482171f4
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/dnsmasq@sha256:9f1a5959399d1ff65e258a6f2f477c2430f9d9851764dce16b7779579c3d32f6
     container_name: of-dnsmasq
-    build:
-      context: services/dnsmasq
     environment:
-      DOMAIN: ${DOMAIN:-org-devops.local}
-      IP_CADDY: ${IP_CADDY:-192.168.90.10}
+      GATEWAY_DOMAIN: ${DOMAIN:-org-devops.local}
+      GATEWAY_IP: ${IP_CADDY:-192.168.90.10}
+      DNSMASQ_LISTEN_IP: ${IP_DNSMASQ:-192.168.90.15}
     ports:
       - "${P_DNSMASQ:-5353}:53/udp"
     networks:
       orgflow:
         ipv4_address: ${IP_DNSMASQ:-192.168.90.15}
     healthcheck:
-      test: ["CMD-SHELL", "pgrep dnsmasq >/dev/null"]
+      test: ["CMD-SHELL", "dig +short +time=2 +tries=1 home.$$GATEWAY_DOMAIN @$$(hostname -I | cut -d' ' -f1) | grep -q ."]
       interval: 5s
       timeout: 3s
       retries: 10

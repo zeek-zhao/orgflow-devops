@@ -1,21 +1,22 @@
-# Homepage 统一面板：纯静态，隔离端口 8082，固定 IP .11
+# Homepage 统一面板：官方 gethomepage/homepage（main 同款），隔离端口 8082，固定 IP .11
 services:
   homepage:
-    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/homepage@sha256:befc000a80337eb9ac56e581f8b821cb9e59b301a20dd0cd500bcebfb49bf0af
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-homepage@sha256:19c5c09184458a41b7b5915e71463a39f36cd33540f41bdbed008791b8182d5f
     container_name: of-homepage
-    build:
-      context: services/homepage
     environment:
-      BOOKMARKS: /etc/homepage/bookmarks.yaml
+      HOMEPAGE_ALLOWED_HOSTS: home.${DOMAIN:-org-devops.local},orgflow-sandbox.tail0b7621.ts.net
+      HOMEPAGE_VAR_GATEWAY_DOMAIN: ${DOMAIN:-org-devops.local}
+      PUID: "1000"
+      PGID: "1000"
     ports:
       - "${P_HOMEPAGE:-8082}:3000"
     volumes:
-      - ../../config/bookmarks.yaml:/etc/homepage/bookmarks.yaml:ro
+      - ../../config/homepage:/app/config
     networks:
       orgflow:
         ipv4_address: ${IP_HOMEPAGE:-192.168.90.11}
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c 'import urllib.request;urllib.request.urlopen(\"http://127.0.0.1:3000/\")'"]
+      test: ["CMD", "node", "-e", "require('http').get({host:'127.0.0.1',port:3000,path:'/',headers:{Host:'home.org-devops.local'}},r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
       interval: 5s
       timeout: 3s
       retries: 10

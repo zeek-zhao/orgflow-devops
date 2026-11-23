@@ -1,0 +1,18 @@
+# 服务卡片（官方 homepage 格式）。只列本最小底座实际存在的服务。
+# 卡片链接用公网路径（经 Funnel → Caddy /home/ /ldapadmin/ /router/），
+# 换域名不用改 yaml；siteMonitor 探测走 compose 内网服务名直连。
+- 服务入口:
+    - LDAP 管理页:
+        href: /ldapadmin/
+        description: 用户与部门管理 · ldapadmin:80
+        icon: mdi-account-group
+        siteMonitor: http://ldapadmin:80/
+    - 路由状态:
+        href: /router/
+        description: 路由注册与热更新 · router:8080
+        icon: mdi-lan
+        siteMonitor: http://router:8080/healthz
+    - Caddy Admin:
+        href: /caddy/config/
+        description: 网关配置只读查看 · caddy:2019
+        icon: mdi-web

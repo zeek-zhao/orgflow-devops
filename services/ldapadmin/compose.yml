@@ -1,22 +1,19 @@
-# LDAP Admin Web：固定 IP .12，隔离端口 8081
+# LDAP Admin Web：osixia/phpldapadmin（main 同款），固定 IP .12，隔离端口 8081→容器 80
 services:
   ldapadmin:
-    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/ldapadmin@sha256:3866f1f4c0e165d5d07f39cfb9e96a7fb15ec5f54113c77e4838b97b5712abe4
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-phpldapadmin@sha256:d112b82be1336f91e028b0348755133fda333992355b533419355a65c32ff9ad
     container_name: of-ldapadmin
-    build:
-      context: services/ldapadmin
     environment:
-      LDAP_HOST: ldap
-      BASE_DN: ${BASE_DN:-dc=orgflow,dc=local}
+      PHPLDAPADMIN_LDAP_HOSTS: ldap
+      PHPLDAPADMIN_HTTPS: "false"
     ports:
-      - "${P_LDAPADMIN:-8081}:8080"
-    depends_on:
-      - ldap
+      - "${P_LDAPADMIN:-8081}:80"
+    # 单服务编排零依赖；宿主栈的 depends_on 在 docker-compose.yml 里声明
     networks:
       orgflow:
         ipv4_address: ${IP_LDAPADMIN:-192.168.90.12}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/ >/dev/null"]
+      test: ["CMD", "php", "-r", "exit(file_get_contents('http://127.0.0.1/') === false ? 1 : 0);"]
       interval: 5s
       timeout: 3s
       retries: 10

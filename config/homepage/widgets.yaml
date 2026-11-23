@@ -1,0 +1,13 @@
+# 组件（官方 homepage 格式）。只放不依赖凭据的：resources 读容器自身 cgroup，
+# datetime 纯前端。首页公开可访问，不放任何需要 token 的 widget。
+- resources:
+    label: 宿主资源
+    cpu: true
+    memory: true
+    disk: /
+
+- datetime:
+    text_size: xl
+    format:
+      dateStyle: short
+      timeStyle: short
