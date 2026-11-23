@@ -1,7 +1,7 @@
 # caddy 唯一入口：隔离端口 8080/8443，固定 IP .10，挂 CA 卷
 services:
   caddy:
-    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/caddy@sha256:8195c8fd3319118f70633a4fa776eb6a5682c2fd6c9f8ae31e1d08972c01e9b8
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/caddy@sha256:7567416ff0f4f59a81fa49176f69bb426fcdc72355900c12825b6abe6497a61b
     container_name: of-caddy
     build:
       context: services/caddy

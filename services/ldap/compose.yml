@@ -1,7 +1,7 @@
 # OpenLDAP：固定 IP .13，宿主不映射 389（最小暴露面）
 services:
   ldap:
-    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/ldap@sha256:8de37539c997b80fb046570547164ae81be66a26a640afd77f520bc6f4b4cb82
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/ldap@sha256:2e00d8303894667d0168ecf79142d0b7f815e0217f4169e4e80634116728bc44
     container_name: of-ldap
     build:
       context: services/ldap

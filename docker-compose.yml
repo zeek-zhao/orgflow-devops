@@ -4,7 +4,7 @@ name: orgflow-minimal
 
 services:
   dnsmasq:
-    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/dnsmasq@sha256:bd829c7b34d0f18a0a273324fb1c85cf6767b0823298d34efae6cc04afb0d1df
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/dnsmasq@sha256:be9ea4708eccc51a31e9c8b4da3bab2f1a80623fe5ce3977d7752508482171f4
     container_name: of-dnsmasq
     build:
       context: services/dnsmasq
@@ -23,7 +23,7 @@ services:
       retries: 10
 
   certs-init:
-    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/certs-init@sha256:21656428b1a6a702700542cd94b9e44eadeeddda3ca88ad5fca8e7dadc416e3c
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/certs-init@sha256:ceca6d67fe918d48ff3b7fdc2fbf9058d5daf7dde4854f5708cca6d8c7d427dd
     container_name: of-certs-init
     build:
       context: services/certs-init
@@ -37,7 +37,7 @@ services:
       - orgflow
 
   ldap:
-    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/ldap@sha256:8de37539c997b80fb046570547164ae81be66a26a640afd77f520bc6f4b4cb82
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/ldap@sha256:2e00d8303894667d0168ecf79142d0b7f815e0217f4169e4e80634116728bc44
     container_name: of-ldap
     build:
       context: services/ldap
@@ -57,7 +57,7 @@ services:
       retries: 10
 
   caddy:
-    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/caddy@sha256:8195c8fd3319118f70633a4fa776eb6a5682c2fd6c9f8ae31e1d08972c01e9b8
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/caddy@sha256:7567416ff0f4f59a81fa49176f69bb426fcdc72355900c12825b6abe6497a61b
     container_name: of-caddy
     build:
       context: services/caddy
@@ -85,7 +85,7 @@ services:
       retries: 10
 
   homepage:
-    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/homepage@sha256:bdace56a623cdc1f910765fcd47f5962ddd99c93d567c0e1d2fdc00e069afa48
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/homepage@sha256:befc000a80337eb9ac56e581f8b821cb9e59b301a20dd0cd500bcebfb49bf0af
     container_name: of-homepage
     build:
       context: services/homepage
@@ -105,7 +105,7 @@ services:
       retries: 10
 
   ldapadmin:
-    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/ldapadmin@sha256:f5728afbdc4788d838c857f85813539b3f61be1e03363e421d7d89e22046c4f6
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/ldapadmin@sha256:3866f1f4c0e165d5d07f39cfb9e96a7fb15ec5f54113c77e4838b97b5712abe4
     container_name: of-ldapadmin
     build:
       context: services/ldapadmin
@@ -125,7 +125,7 @@ services:
       retries: 10
 
   router:
-    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/router@sha256:4e49d848619ce9fe8d39dbf185385598b94af003add1a1296ebb03cf03cf6ee9
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/router@sha256:dc8e100673de973b063328a15fe4b72e8556f434886f0cb0398613e65b45d086
     container_name: of-router
     build:
       context: services/router
