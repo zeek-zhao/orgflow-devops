@@ -1,0 +1,74 @@
+# orgflow-minimal-devops —— 最小 DevOps 底座
+# 原则：同一个结论必须能用一条命令复现。镜像全部 @sha256 锁定。
+SHELL := /bin/bash
+COMPOSE ?= docker compose
+ENV_FILE ?= config/defaults.env
+
+SERVICES := dnsmasq certs-init caddy ldap ldapadmin homepage router
+
+.PHONY: help render up down up-% down-% check check-all test verify doctor \
+        routes hosts ca ca-rotate record images-lock images-guard \
+        test-svc-% $(addprefix test-,$(SERVICES))
+
+# ---------- 帮助 ----------
+help: ## 列出全部目标
+	@grep -E '^[a-zA-Z0-9_%-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*##' '{printf "  %-18s %s\n", $$1, $$2}'
+
+# ---------- 配置 ----------
+render: ## 渲染配置产物到 out/（非敏感值来自 defaults.env）
+	@mkdir -p out && bash scripts/render.sh
+
+# ---------- 部署 ----------
+up: images-guard ## 按 boot.sh 顺序起全栈（就绪断言，失败中止）
+	@bash scripts/boot.sh up
+
+down: ## 停止并移除全部容器（不动数据卷）
+	@$(COMPOSE) --env-file $(ENV_FILE) down
+
+up-%: ## 只起单个服务（隔离端口，零依赖可起）：make up-dnsmasq
+	@bash scripts/boot.sh up-$*
+
+down-%: ## 只停单个服务：make down-dnsmasq
+	@bash scripts/boot.sh down-$*
+
+test-%: ## 单服务自测：make test-dnsmasq（S_<svc> 行为用例）
+	@bash scripts/test-svc.sh $*
+
+# ---------- 门禁与验证 ----------
+check: ## 快检查（无 docker）：文档/记录/标签/门禁格式
+	@bash scripts/check-fast.sh
+
+check-all: check ## 全量门禁（含镜像 digest 与基底）
+	@bash scripts/check-images-lock.sh
+
+test: ## 静态自检（python 语法 + 配置解析）
+	@bash scripts/test-static.sh
+
+verify: ## 全量验收矩阵（AC-1~AC-15）
+	@bash scripts/verify.sh
+
+doctor: ## 只读环境自检（不改状态）
+	@bash scripts/doctor.sh
+
+# ---------- 运维 ----------
+routes: ## 渲染 routes.yaml → Caddyfile 并 reload
+	@bash scripts/render-routes.sh
+
+hosts: ## 生成域名 hosts 片段
+	@bash scripts/gen-hosts.sh
+
+ca: ## 导出根证书供客户端安装
+	@bash scripts/gen-ca.sh --export
+
+ca-rotate: ## 轮换内部 CA（FORCE 重签）
+	@FORCE=1 bash scripts/gen-ca.sh
+
+record: ## 记录一条操作（见 scripts/record.sh --help）
+	@bash scripts/record.sh $(ARGS)
+
+# ---------- 镜像 ----------
+images-guard: ## 镜像来源闸门：源码改了没重建则拒绝部署
+	@bash scripts/check-image-source.sh
+
+images-lock: ## 回填镜像 digest 到 tests/images.lock
+	@bash scripts/update-images-lock.sh
