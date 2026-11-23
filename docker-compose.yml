@@ -1,0 +1,156 @@
+# 最小系统全栈：7 容器，单一网段 orgflow，CA 卷共享。
+# 镜像全部 @sha256 锁定；宿主仅暴露 :80/:443（由 caddy），其余用隔离端口。
+name: orgflow-minimal
+
+services:
+  dnsmasq:
+    image: dnsmasq@sha256:0000000000000000000000000000000000000000000000000000000000000001
+    container_name: of-dnsmasq
+    build:
+      context: services/dnsmasq
+    environment:
+      DOMAIN: ${DOMAIN:-org-devops.local}
+      IP_CADDY: ${IP_CADDY:-192.168.90.10}
+    ports:
+      - "${P_DNSMASQ:-5353}:53/udp"
+    networks:
+      orgflow:
+        ipv4_address: ${IP_DNSMASQ:-192.168.90.15}
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep dnsmasq >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  certs-init:
+    image: certs-init@sha256:0000000000000000000000000000000000000000000000000000000000000002
+    container_name: of-certs-init
+    build:
+      context: services/certs-init
+    environment:
+      DOMAIN: ${DOMAIN:-org-devops.local}
+      CA_DIR: /ca
+    volumes:
+      - ca-data:/ca
+    restart: "no"
+    networks:
+      - orgflow
+
+  ldap:
+    image: ldap@sha256:0000000000000000000000000000000000000000000000000000000000000004
+    container_name: of-ldap
+    build:
+      context: services/ldap
+    environment:
+      DOMAIN: ${DOMAIN:-org-devops.local}
+      BASE_DN: ${BASE_DN:-dc=orgflow,dc=local}
+      LDAP_PASSWORD: ${LDAP_PASSWORD:-change-me}
+    expose:
+      - "389"
+    networks:
+      orgflow:
+        ipv4_address: ${IP_LDAP:-192.168.90.13}
+    healthcheck:
+      test: ["CMD-SHELL", "ldapsearch -x -H ldap://127.0.0.1 -D cn=admin,dc=orgflow,dc=local -w change-me -b dc=orgflow,dc=local >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  caddy:
+    image: caddy@sha256:0000000000000000000000000000000000000000000000000000000000000003
+    container_name: of-caddy
+    build:
+      context: services/caddy
+    environment:
+      DOMAIN: ${DOMAIN:-org-devops.local}
+      CA_DIR: /ca
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "2019:2019"
+    volumes:
+      - ca-data:/ca:ro
+    depends_on:
+      - certs-init
+    networks:
+      orgflow:
+        ipv4_address: ${IP_CADDY:-192.168.90.10}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:2019/config/ >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  homepage:
+    image: homepage@sha256:0000000000000000000000000000000000000000000000000000000000000006
+    container_name: of-homepage
+    build:
+      context: services/homepage
+    environment:
+      BOOKMARKS: /etc/homepage/bookmarks.yaml
+    volumes:
+      - ./config/bookmarks.yaml:/etc/homepage/bookmarks.yaml:ro
+    depends_on:
+      - caddy
+    networks:
+      orgflow:
+        ipv4_address: ${IP_HOMEPAGE:-192.168.90.11}
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import urllib.request;urllib.request.urlopen(\"http://127.0.0.1:3000/\")'"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ldapadmin:
+    image: ldapadmin@sha256:0000000000000000000000000000000000000000000000000000000000000005
+    container_name: of-ldapadmin
+    build:
+      context: services/ldapadmin
+    environment:
+      LDAP_HOST: ldap
+      BASE_DN: ${BASE_DN:-dc=orgflow,dc=local}
+    depends_on:
+      - ldap
+      - caddy
+    networks:
+      orgflow:
+        ipv4_address: ${IP_LDAPADMIN:-192.168.90.12}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/ >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  router:
+    image: router@sha256:0000000000000000000000000000000000000000000000000000000000000007
+    container_name: of-router
+    build:
+      context: services/router
+    environment:
+      ROUTES: /etc/router/routes.yaml
+      CADDY_ADMIN: http://caddy:2019
+    volumes:
+      - ./config/routes.yaml:/etc/router/routes.yaml:ro
+      - ca-data:/ca:ro
+    depends_on:
+      - caddy
+      - homepage
+      - ldapadmin
+    networks:
+      orgflow:
+        ipv4_address: ${IP_ROUTER:-192.168.90.14}
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import urllib.request;urllib.request.urlopen(\"http://127.0.0.1:8080/healthz\")'"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  ca-data:
+
+networks:
+  orgflow:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${NET_SUBNET:-192.168.90.0/24}

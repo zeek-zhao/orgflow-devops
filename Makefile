@@ -8,7 +8,7 @@ SERVICES := dnsmasq certs-init caddy ldap ldapadmin homepage router
 
 .PHONY: help render up down up-% down-% check check-all test verify doctor \
         routes hosts ca ca-rotate record images-lock images-guard \
-        test-svc-% $(addprefix test-,$(SERVICES))
+        test-svc-%
 
 # ---------- 帮助 ----------
 help: ## 列出全部目标
