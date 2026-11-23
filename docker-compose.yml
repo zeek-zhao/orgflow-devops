@@ -6,6 +6,7 @@ services:
   dnsmasq:
     image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/dnsmasq@sha256:be9ea4708eccc51a31e9c8b4da3bab2f1a80623fe5ce3977d7752508482171f4
     container_name: of-dnsmasq
+    restart: unless-stopped
     build:
       context: services/dnsmasq
     environment:
@@ -39,6 +40,7 @@ services:
   ldap:
     image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/ldap@sha256:2e00d8303894667d0168ecf79142d0b7f815e0217f4169e4e80634116728bc44
     container_name: of-ldap
+    restart: unless-stopped
     build:
       context: services/ldap
     environment:
@@ -59,6 +61,7 @@ services:
   caddy:
     image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/caddy@sha256:7567416ff0f4f59a81fa49176f69bb426fcdc72355900c12825b6abe6497a61b
     container_name: of-caddy
+    restart: unless-stopped
     build:
       context: services/caddy
     environment:
@@ -87,6 +90,7 @@ services:
   homepage:
     image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/homepage@sha256:befc000a80337eb9ac56e581f8b821cb9e59b301a20dd0cd500bcebfb49bf0af
     container_name: of-homepage
+    restart: unless-stopped
     build:
       context: services/homepage
     environment:
@@ -107,6 +111,7 @@ services:
   ldapadmin:
     image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/ldapadmin@sha256:3866f1f4c0e165d5d07f39cfb9e96a7fb15ec5f54113c77e4838b97b5712abe4
     container_name: of-ldapadmin
+    restart: unless-stopped
     build:
       context: services/ldapadmin
     environment:
@@ -127,6 +132,7 @@ services:
   router:
     image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/router@sha256:dc8e100673de973b063328a15fe4b72e8556f434886f0cb0398613e65b45d086
     container_name: of-router
+    restart: unless-stopped
     build:
       context: services/router
     environment:
