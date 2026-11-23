@@ -1,7 +1,7 @@
 # dnsmasq 单服务编排：零依赖可起，隔离端口 5353，不占宿主 53。
 services:
   dnsmasq:
-    image: dnsmasq@sha256:0000000000000000000000000000000000000000000000000000000000000001
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/dnsmasq@sha256:be9ea4708eccc51a31e9c8b4da3bab2f1a80623fe5ce3977d7752508482171f4
     container_name: of-dnsmasq
     build:
       context: services/dnsmasq

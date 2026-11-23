@@ -1,7 +1,7 @@
 # certs-init —— 一次性证书签发容器（exit 0，非常驻）
 services:
   certs-init:
-    image: certs-init@sha256:0000000000000000000000000000000000000000000000000000000000000002
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/certs-init@sha256:ceca6d67fe918d48ff3b7fdc2fbf9058d5daf7dde4854f5708cca6d8c7d427dd
     container_name: of-certs-init
     build:
       context: services/certs-init

@@ -1,7 +1,7 @@
 # Homepage 统一面板：纯静态，隔离端口 8082，固定 IP .11
 services:
   homepage:
-    image: homepage@sha256:0000000000000000000000000000000000000000000000000000000000000006
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/homepage@sha256:befc000a80337eb9ac56e581f8b821cb9e59b301a20dd0cd500bcebfb49bf0af
     container_name: of-homepage
     build:
       context: services/homepage

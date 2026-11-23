@@ -4,7 +4,7 @@ name: orgflow-minimal
 
 services:
   dnsmasq:
-    image: dnsmasq@sha256:0000000000000000000000000000000000000000000000000000000000000001
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/dnsmasq@sha256:be9ea4708eccc51a31e9c8b4da3bab2f1a80623fe5ce3977d7752508482171f4
     container_name: of-dnsmasq
     build:
       context: services/dnsmasq
@@ -23,7 +23,7 @@ services:
       retries: 10
 
   certs-init:
-    image: certs-init@sha256:0000000000000000000000000000000000000000000000000000000000000002
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/certs-init@sha256:ceca6d67fe918d48ff3b7fdc2fbf9058d5daf7dde4854f5708cca6d8c7d427dd
     container_name: of-certs-init
     build:
       context: services/certs-init
@@ -37,7 +37,7 @@ services:
       - orgflow
 
   ldap:
-    image: ldap@sha256:0000000000000000000000000000000000000000000000000000000000000004
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/ldap@sha256:2e00d8303894667d0168ecf79142d0b7f815e0217f4169e4e80634116728bc44
     container_name: of-ldap
     build:
       context: services/ldap
@@ -57,17 +57,20 @@ services:
       retries: 10
 
   caddy:
-    image: caddy@sha256:0000000000000000000000000000000000000000000000000000000000000003
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/caddy@sha256:7567416ff0f4f59a81fa49176f69bb426fcdc72355900c12825b6abe6497a61b
     container_name: of-caddy
     build:
       context: services/caddy
     environment:
       DOMAIN: ${DOMAIN:-org-devops.local}
       CA_DIR: /ca
+      PUBLIC_PORT: ${PUBLIC_PORT:-18081}
     ports:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
       - "2019:2019"
+      # 公网入口：Funnel 边缘终止 TLS 后转发到此纯 HTTP 端口
+      - "${PUBLIC_PORT:-18081}:18081"
     volumes:
       - ca-data:/ca:ro
     depends_on:
@@ -82,7 +85,7 @@ services:
       retries: 10
 
   homepage:
-    image: homepage@sha256:0000000000000000000000000000000000000000000000000000000000000006
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/homepage@sha256:befc000a80337eb9ac56e581f8b821cb9e59b301a20dd0cd500bcebfb49bf0af
     container_name: of-homepage
     build:
       context: services/homepage
@@ -102,7 +105,7 @@ services:
       retries: 10
 
   ldapadmin:
-    image: ldapadmin@sha256:0000000000000000000000000000000000000000000000000000000000000005
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/ldapadmin@sha256:3866f1f4c0e165d5d07f39cfb9e96a7fb15ec5f54113c77e4838b97b5712abe4
     container_name: of-ldapadmin
     build:
       context: services/ldapadmin
@@ -122,7 +125,7 @@ services:
       retries: 10
 
   router:
-    image: router@sha256:0000000000000000000000000000000000000000000000000000000000000007
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/router@sha256:dc8e100673de973b063328a15fe4b72e8556f434886f0cb0398613e65b45d086
     container_name: of-router
     build:
       context: services/router

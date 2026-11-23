@@ -1,7 +1,7 @@
 # Router 路由注册：固定 IP .14，隔离端口 8083（内部 8080）
 services:
   router:
-    image: router@sha256:0000000000000000000000000000000000000000000000000000000000000007
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/router@sha256:dc8e100673de973b063328a15fe4b72e8556f434886f0cb0398613e65b45d086
     container_name: of-router
     build:
       context: services/router

@@ -1,17 +1,19 @@
 # caddy 唯一入口：隔离端口 8080/8443，固定 IP .10，挂 CA 卷
 services:
   caddy:
-    image: caddy@sha256:0000000000000000000000000000000000000000000000000000000000000003
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/caddy@sha256:7567416ff0f4f59a81fa49176f69bb426fcdc72355900c12825b6abe6497a61b
     container_name: of-caddy
     build:
       context: services/caddy
     environment:
       DOMAIN: ${DOMAIN:-org-devops.local}
       CA_DIR: /ca
+      PUBLIC_PORT: ${PUBLIC_PORT:-18081}
     ports:
       - "${P_CADDY_HTTP:-8080}:80"
       - "${P_CADDY_HTTPS:-8443}:443"
       - "2019:2019"
+      - "${PUBLIC_PORT:-18081}:18081"
     volumes:
       - ca-data:/ca:ro
     networks:

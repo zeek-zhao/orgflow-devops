@@ -1,0 +1,135 @@
+name: Build & Push Images to GHCR
+
+# 自建 7 服务镜像统一由 GitHub Actions 构建并推送到 GHCR。
+# 沙箱/内网无法直连 Docker Hub，GHCR 在国内有可用代理（见 docs/使用说明.md）。
+# 每次构建产出不可变 tag（git sha）与 :latest，并输出按 sha256 锁定的 digest。
+
+on:
+  push:
+    branches:
+      - feat/ghcr-ci-images
+      - feat/m0-minimal
+      - main
+    paths:
+      - "services/**"
+      - "config/images.env"
+      - ".github/workflows/build-images.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NS: zeek-zhao/orgflow-devops
+
+jobs:
+  build:
+    name: 构建并推送 ${{ matrix.service }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - dnsmasq
+          - certs-init
+          - caddy
+          - ldap
+          - ldapadmin
+          - homepage
+          - router
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 镜像元数据
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NS }}/${{ matrix.service }}
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.ref_name }}
+
+      - name: 构建并推送
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./services/${{ matrix.service }}
+          file: ./services/${{ matrix.service }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          sbom: false
+
+      - name: 解析并输出 digest
+        id: export
+        env:
+          SVCN: ${{ matrix.service }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NS }}/${{ matrix.service }}
+          SHA_TAG: ${{ github.sha }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          echo "service=${SVCN}"
+          echo "image=${IMAGE}@${DIGEST}"
+          # 供汇总 job 回填：写入 artifact
+          mkdir -p out
+          printf '%s=%s\n' "${SVCN}" "${DIGEST}" > "out/${SVCN}.digest"
+          cat "out/${SVCN}.digest"
+
+      - name: 上传 digest 片段
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.service }}
+          path: out/${{ matrix.service }}.digest
+          retention-days: 30
+
+  collect:
+    name: 汇总并校验 digest 锁定
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 下载全部 digest 片段
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          path: out/digests
+          merge-multiple: true
+
+      - name: 生成 GHCR 镜像清单
+        run: |
+          set -euo pipefail
+          echo "# 由 CI 自动生成：GHCR 镜像 digest（git sha ${{ github.sha }}）" > out/ghcr-images.env
+          for f in out/digests/*.digest; do
+            svc="$(basename "$f" .digest)"
+            d="$(cat "$f")"
+            # 片段格式为 "<svc>=sha256:<hex>"，只取等号后的纯 digest
+            d="${d##*=}"
+            upper="$(echo "$svc" | tr '[:lower:]' '[:upper:]' | tr '-' '_')"
+            echo "IMAGE_${upper}=ghcr.io/zeek-zhao/orgflow-devops/${svc}@${d}" >> out/ghcr-images.env
+          done
+          cat out/ghcr-images.env
+
+      - name: 上传汇总清单
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghcr-images
+          path: out/ghcr-images.env
+          retention-days: 90

@@ -1,7 +1,7 @@
 # LDAP Admin Web：固定 IP .12，隔离端口 8081
 services:
   ldapadmin:
-    image: ldapadmin@sha256:0000000000000000000000000000000000000000000000000000000000000005
+    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/ldapadmin@sha256:3866f1f4c0e165d5d07f39cfb9e96a7fb15ec5f54113c77e4838b97b5712abe4
     container_name: of-ldapadmin
     build:
       context: services/ldapadmin
