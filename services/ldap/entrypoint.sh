@@ -4,17 +4,24 @@ set -euo pipefail
 DOMAIN="${DOMAIN:-org-devops.local}"
 BASE_DN="${BASE_DN:-dc=orgflow,dc=local}"
 LDAP_PASSWORD="${LDAP_PASSWORD:-change-me}"
+# 用户口令：默认复用管理员口令；可用独立变量覆盖（对齐 main 的分账号口令思路）
+SVC_PASSWORD="${SVC_PASSWORD:-$LDAP_PASSWORD}"
+OWNER_PASSWORD="${OWNER_PASSWORD:-$LDAP_PASSWORD}"
 DATA=/var/lib/ldap
 CONF=/etc/ldap/slapd.d
 
 # 生成 {SSHA} 口令哈希（salt+sha1+base64）
-hash="$(python3 - "$LDAP_PASSWORD" <<'PY'
+ssha() {
+  python3 - "$1" <<'PY'
 import sys, hashlib, base64, os
 pw = sys.argv[1].encode()
 salt = os.urandom(8)
 print('{SSHA}' + base64.b64encode(hashlib.sha1(pw + salt).digest() + salt).decode())
 PY
-)"
+}
+hash="$(ssha "$LDAP_PASSWORD")"
+hash_svc="$(ssha "$SVC_PASSWORD")"
+hash_owner="$(ssha "$OWNER_PASSWORD")"
 
 need_init=0
 # 判断依据必须是"我们自己生成的 slapd.conf"，不能用 apt 预置的 slapd.d/cn=config
@@ -24,7 +31,10 @@ need_init=0
 if [[ "$need_init" -eq 1 ]]; then
   echo "[ldap] 首次初始化目录 $BASE_DN"
   # 用 slapd 临时实例 + ldapadd 灌入 bootstrap LDIF
-  sed "s|{{BASE_DN}}|$BASE_DN|g; s|{{HASH}}|$hash|g" /etc/ldap/bootstrap.ldif.tmpl > /tmp/bootstrap.ldif
+  sed -e "s|{{BASE_DN}}|$BASE_DN|g" \
+      -e "s|{{HASH_SVC}}|$hash_svc|g" \
+      -e "s|{{HASH_OWNER}}|$hash_owner|g" \
+      /etc/ldap/bootstrap.ldif.tmpl > /tmp/bootstrap.ldif
   # 写 slapd 配置（数据库 + ACL：匿名拒，管理员可写）
   cat > /tmp/slapd.conf <<EOF
 # 后端以动态模块提供，必须显式加载，否则 "Unrecognized database type (mdb)"
@@ -33,6 +43,8 @@ moduleload back_mdb
 include /etc/ldap/schema/core.schema
 include /etc/ldap/schema/cosine.schema
 include /etc/ldap/schema/inetorgperson.schema
+# posixAccount/shadowAccount（对齐 main 用户的 inetOrgPerson+posixAccount 结构）需要 nis schema
+include /etc/ldap/schema/nis.schema
 pidfile /var/run/slapd/slapd.pid
 argsfile /var/run/slapd/slapd.args
 database mdb
@@ -41,10 +53,18 @@ suffix "$BASE_DN"
 rootdn "cn=admin,$BASE_DN"
 rootpw $hash
 directory $DATA
-# ACL：默认匿名无权限；管理员可写；认证用户可读
+# ACL：默认匿名无权限；管理员可写；认证用户可读。
+# 关键：userPassword 必须允许 anonymous 的 auth 权限，否则用户绑定（bind 阶段尚是匿名身份）
+# 时 slapd 读不到 userPassword，导致明明口令正确却报 Invalid credentials(49)。
+access to attrs=userPassword
+    by dn.base="cn=admin,$BASE_DN" write
+    by self write
+    by anonymous auth
+    by * none
 access to *
     by dn.base="cn=admin,$BASE_DN" write
     by users read
+    by anonymous auth
     by * none
 EOF
   cp /tmp/slapd.conf /etc/ldap/slapd.conf
