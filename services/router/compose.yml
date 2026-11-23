@@ -1,0 +1,32 @@
+# Router 路由注册：固定 IP .14，隔离端口 8083（内部 8080）
+services:
+  router:
+    image: router@sha256:0000000000000000000000000000000000000000000000000000000000000007
+    container_name: of-router
+    build:
+      context: services/router
+    environment:
+      ROUTES: /etc/router/routes.yaml
+      CADDY_ADMIN: http://caddy:2019
+    ports:
+      - "${P_ROUTER:-8083}:8080"
+    volumes:
+      - ../../config/routes.yaml:/etc/router/routes.yaml:ro
+      - ca-data:/ca:ro
+    networks:
+      orgflow:
+        ipv4_address: ${IP_ROUTER:-192.168.90.14}
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import urllib.request;urllib.request.urlopen(\"http://127.0.0.1:8080/healthz\")'"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  ca-data:
+networks:
+  orgflow:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${NET_SUBNET:-192.168.90.0/24}

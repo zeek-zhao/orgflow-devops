@@ -1,0 +1,8 @@
+# 路由真源：host → upstream。改这里 → make routes → 30s 内新域 200，不重启 Caddy。
+routes:
+  - host: home.org-devops.local
+    upstream: home:3000
+  - host: ldapadmin.org-devops.local
+    upstream: ldapadmin:8080
+  - host: router.org-devops.local
+    upstream: router:8080
