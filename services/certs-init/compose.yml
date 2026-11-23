@@ -1,0 +1,16 @@
+# certs-init —— 一次性证书签发容器（exit 0，非常驻）
+services:
+  certs-init:
+    image: certs-init@sha256:0000000000000000000000000000000000000000000000000000000000000002
+    container_name: of-certs-init
+    build:
+      context: services/certs-init
+    environment:
+      DOMAIN: ${DOMAIN:-org-devops.local}
+      CA_DIR: /ca
+    volumes:
+      - ca-data:/ca
+    restart: "no"
+
+volumes:
+  ca-data:
