@@ -1,0 +1,27 @@
+# dnsmasq 单服务编排：零依赖可起，隔离端口 5353，不占宿主 53。
+services:
+  dnsmasq:
+    image: dnsmasq@sha256:0000000000000000000000000000000000000000000000000000000000000001
+    container_name: of-dnsmasq
+    build:
+      context: services/dnsmasq
+    environment:
+      DOMAIN: ${DOMAIN:-org-devops.local}
+      IP_CADDY: ${IP_CADDY:-192.168.90.10}
+    ports:
+      - "${P_DNSMASQ:-5353}:53/udp"
+    networks:
+      orgflow:
+        ipv4_address: ${IP_DNSMASQ:-192.168.90.15}
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep dnsmasq >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+networks:
+  orgflow:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${NET_SUBNET:-192.168.90.0/24}
