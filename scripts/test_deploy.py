@@ -750,6 +750,13 @@ class InitScriptTests(unittest.TestCase):
             if "docker ps " in line and "--format" in line:
                 self.assertNotIn(".Health", line, line)
 
+    def test_defaults_to_runtime_env_not_dotenv(self):
+        """M0 重构后已无 .env：init 必须默认读渲染产物 out/runtime.env。"""
+        text = self._text()
+        self.assertIn('ENV_FILE="${ENV_FILE:-out/runtime.env}"', text)
+        self.assertNotIn('ENV_FILE="${ENV_FILE:-.env}"', text)
+        self.assertIn('make deploy 渲染出 runtime.env', text)
+
     def test_entry_list_never_prints_a_password_value(self):
         text = self._text()
         self.assertIn("脚本不打印任何口令", text)
@@ -981,6 +988,45 @@ elif os.environ.get("TEST_FAIL_SERVICE") and args[-1] == os.environ["TEST_FAIL_S
         self.assertEqual(self.up("homepage").returncode, 0)
         ups = [call[-1] for call in self.calls() if "up" in call]
         self.assertEqual(ups, ["homepage"])
+
+    def test_certs_init_runs_once_before_the_whole_stack(self):
+        """整栈启动前必须幂等跑 certs-init 签叶子证书（真机 caddy 挂空卷根因）。
+
+        CI harness 用 compose up 一把起、depends_on 生效，所以这条真机路径
+        从未被 CI 覆盖：串行用 --no-deps 起 caddy 时证书还没进卷，caddy 无限重启。
+        """
+        self.assertEqual(self.up().returncode, 0)
+        runs = [call for call in self.calls() if call[0] == "docker" and "run" in call]
+        self.assertTrue(
+            any("certs-init" in call for call in runs),
+            f"整栈启动前没有跑 certs-init：{runs}",
+        )
+        # 反证（静态）：certs-init 只在整栈分支（[ -z "$target" ]）调用，
+        # 单服务分支不会触发；这里校验源码里的条件守卫，不跑第二遍 mock。
+        src = (ROOT / "scripts/30-up-serial.sh").read_text()
+        guard = '[ -z "$target" ]'
+        self.assertIn(guard, src)
+        block = src[src.index("certs-init 幂等") if "certs-init 幂等" in src else src.index("[certs-init]"):]
+        # certs-init 调用必须位于 target 守卫块内
+        self.assertIn("run --rm certs-init", block)
+
+
+
+class JjbComposeMountTests(unittest.TestCase):
+    """tools/jjb/compose.yml 的 .:/repo 在 include 下按片段目录解析。
+
+    真机踩到：写成 .:/repo 时，compose 把挂载源解析成 tools/jjb/，
+    jenkins-jobs 在容器里找不到 /repo/config/job_definitions 而失败。
+    CI harness 的 jjb 走另一条路径，所以这条真机 bug 从未被 CI 覆盖。
+    """
+
+    def test_repo_mount_points_to_repository_root(self):
+        text = (ROOT / "tools/jjb/compose.yml").read_text()
+        self.assertIn("- ../../:/repo", text)
+        self.assertNotIn("- .:/repo", text)
+        # 反证：不能用 ./ 或 ../（那会指向片段目录或 tools/），必须 ../../ 到根
+        self.assertNotIn("- ../:/repo", text)
+        self.assertIn("- ../../:/repo", text)
 
 
 

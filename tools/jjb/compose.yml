@@ -10,7 +10,8 @@ services:
     profiles: ["tools"]
     working_dir: /repo
     volumes:
-      - .:/repo
+      # include 片段里的相对路径按本文件目录解析；../../ 才是仓库根
+      - ../../:/repo
     environment:
       - JJB_CONF=/repo/.jjb/jenkins_jobs.ini
     networks:
