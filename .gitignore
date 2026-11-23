@@ -1,6 +1,7 @@
 out/
 *.env
 !.env.example
+!config/images.env
 __pycache__/
 *.pyc
 *.log
