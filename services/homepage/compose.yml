@@ -1,0 +1,28 @@
+# Homepage 统一面板：纯静态，隔离端口 8082，固定 IP .11
+services:
+  homepage:
+    image: homepage@sha256:0000000000000000000000000000000000000000000000000000000000000006
+    container_name: of-homepage
+    build:
+      context: services/homepage
+    environment:
+      BOOKMARKS: /etc/homepage/bookmarks.yaml
+    ports:
+      - "${P_HOMEPAGE:-8082}:3000"
+    volumes:
+      - ../../config/bookmarks.yaml:/etc/homepage/bookmarks.yaml:ro
+    networks:
+      orgflow:
+        ipv4_address: ${IP_HOMEPAGE:-192.168.90.11}
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import urllib.request;urllib.request.urlopen(\"http://127.0.0.1:3000/\")'"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+networks:
+  orgflow:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${NET_SUBNET:-192.168.90.0/24}
