@@ -12,7 +12,7 @@
 # 这一行由 make images-pin 维护，不要手改。
 # 注意：值是一个提交 SHA，**历史重写会让它失效**（SHA 全变）。遇到「找不到该提交」
 # 时报错是真报错，不是误报 —— 指向新历史里最后一次改动镜像上下文的提交即可。
-# pinned-at: 29fab5b96ee748c4cf843c31bea212908c024cce
+# pinned-at: 2c1cf6345aecf517a170c13eb87d80802417db10
 services:
   caddy:
     image: ghcr.io/zeek-zhao/orgflow-devops/mirror-caddy:2@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
@@ -28,9 +28,9 @@ services:
   # 占位期间的闸门：tests/images.sh ensure 要求 image 为 @sha256:[a-f0-9]{64}；
   # make check-pins 拦 USE_GHCR=1 的 up/deploy（见 Makefile）。
   jenkins:
-    image: ghcr.io/zeek-zhao/orgflow-devops/jenkins:24.04-v3@sha256:2f5974b6663da62186e399c5607ccc7351896d2ed49df6c6bbdeef5c779d3c1a
+    image: ghcr.io/zeek-zhao/orgflow-devops/jenkins:24.04-v3@sha256:624cf38305d9ff2e393fb86187110b96942162a5d4f4af07774216eebcd58ac6
   jenkins-agent:
-    image: ghcr.io/zeek-zhao/orgflow-devops/jenkins-agent:24.04-v1@sha256:61ee50cc61292ec6b77714df758f41a24fca3ddf4ca7e25f1de20f57d36f250d
+    image: ghcr.io/zeek-zhao/orgflow-devops/jenkins-agent:24.04-v1@sha256:6fcca3af16d091f09116b1c79ff7bb65e035848fd4d8d8796337bcd5d1a4a092
   ldap:
     image: ghcr.io/zeek-zhao/orgflow-devops/mirror-openldap:1.5.0@sha256:18742e9c449c9c1afe129d3f2f3ee15fb34cc43e5f940a20f3399728f41d7c28
   ldapadmin:
@@ -46,10 +46,10 @@ services:
   homepage:
     image: ghcr.io/zeek-zhao/orgflow-devops/mirror-homepage:v2.7.0@sha256:19c5c09184458a41b7b5915e71463a39f36cd33540f41bdbed008791b8182d5f
   router:
-    image: ghcr.io/zeek-zhao/orgflow-devops/router:24.04-v1@sha256:043c5d46bad2b7ef7a1ad4f0911b40392ac0e751768fbce3448f0304e288cdc3
+    image: ghcr.io/zeek-zhao/orgflow-devops/router:24.04-v1@sha256:e5fd71d1cd7cec5068a24ce1165e35587856e2cafe7ca2e772a3b50944f9fe87
   jjb:
-    image: ghcr.io/zeek-zhao/orgflow-devops/jjb:24.04-v1@sha256:a78b540e6a99dbc52979a48b25f1e892ce6f5ed02b1149ba1f1780261d08c070
+    image: ghcr.io/zeek-zhao/orgflow-devops/jjb:24.04-v1@sha256:67feda3be35c5ce421d7cd46de840cbbf06837b186773b323558e97ec12fae79
   dnsmasq:
-    image: ghcr.io/zeek-zhao/orgflow-devops/dnsmasq:24.04-v1@sha256:ab8130f132f569f302488ab596169d19d3bfcf81348f419ce6e1f8b18e9d7df5
+    image: ghcr.io/zeek-zhao/orgflow-devops/dnsmasq:24.04-v1@sha256:9f1a5959399d1ff65e258a6f2f477c2430f9d9851764dce16b7779579c3d32f6
 
-x-m0-test-image: ghcr.io/zeek-zhao/orgflow-devops/m0-test:24.04-v1@sha256:083ea5cf9e0f0fd9051007a4ed3ef0c29c6501e3c8f3ff7a14631ac9639813c7
+x-m0-test-image: ghcr.io/zeek-zhao/orgflow-devops/m0-test:24.04-v1@sha256:78595f3e638d2f7061fe6a47cc4c88cd2019f6334ddeb300c93ee4a9eaf28f6d
