@@ -17,7 +17,9 @@ PY
 )"
 
 need_init=0
-[[ ! -d "$CONF/cn=config" ]] && need_init=1
+# 判断依据必须是"我们自己生成的 slapd.conf"，不能用 apt 预置的 slapd.d/cn=config
+# （后者默认就存在，会导致跳过初始化，随后 -f slapd.conf 因文件不存在而启动失败）
+[[ ! -f /etc/ldap/slapd.conf ]] && need_init=1
 
 if [[ "$need_init" -eq 1 ]]; then
   echo "[ldap] 首次初始化目录 $BASE_DN"
@@ -25,6 +27,9 @@ if [[ "$need_init" -eq 1 ]]; then
   sed "s|{{BASE_DN}}|$BASE_DN|g; s|{{HASH}}|$hash|g" /etc/ldap/bootstrap.ldif.tmpl > /tmp/bootstrap.ldif
   # 写 slapd 配置（数据库 + ACL：匿名拒，管理员可写）
   cat > /tmp/slapd.conf <<EOF
+# 后端以动态模块提供，必须显式加载，否则 "Unrecognized database type (mdb)"
+modulepath /usr/lib/ldap
+moduleload back_mdb
 include /etc/ldap/schema/core.schema
 include /etc/ldap/schema/cosine.schema
 include /etc/ldap/schema/inetorgperson.schema
@@ -45,12 +50,19 @@ EOF
   cp /tmp/slapd.conf /etc/ldap/slapd.conf
   mkdir -p "$DATA" /var/run/slapd
   chown -R openldap:openldap "$DATA" /var/run/slapd 2>/dev/null || true
-  slapd -f /etc/ldap/slapd.conf -h "ldap://0.0.0.0:389/" &
+  # -d 0 让临时实例前台运行：否则 slapd 会 daemonize，$! 拿到的是父进程，
+  # kill 后真正持有 389 的子进程残留，导致下面的正式实例 "Address already in use"
+  slapd -f /etc/ldap/slapd.conf -h "ldap://0.0.0.0:389/" -d 0 >/tmp/slapd-init.log 2>&1 &
   pid=$!
   sleep 1
   ldapadd -x -D "cn=admin,$BASE_DN" -w "$LDAP_PASSWORD" -f /tmp/bootstrap.ldif || true
-  kill $pid 2>/dev/null || true
-  sleep 1
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  # 等 389 端口释放（最多 10s），确保正式实例能绑定
+  for i in $(seq 1 20); do
+    python3 -c 'import socket;s=socket.socket();s.settimeout(0.3);exit(0 if s.connect_ex(("127.0.0.1",389))!=0 else 1)' && break
+    sleep 0.5
+  done
   echo "[ldap] 初始化完成"
 fi
 
