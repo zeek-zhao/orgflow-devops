@@ -88,6 +88,35 @@ if args[0] == "inspect":
     def calls(self):
         return [json.loads(line) for line in (self.root / "calls.jsonl").read_text().splitlines()]
 
+    @staticmethod
+    def _ghcr_compose(services, harness="ghcr.io/zeek-zhao/orgflow-devops/"
+                                       "m0-test:24.04-v1@" + DIGEST):
+        return json.dumps({"services": services, "x-m0-test-image": harness})
+
+    def test_ghcr_ensure_skips_local_tag_and_build_only_services(self):
+        # certs-init 复用本地 router tag、docs 是 build-only（image 为空），二者都不从
+        # GHCR 拉；ensure 若把它们当「未 pin」会误报，GHCR 模式 test-bats 永远红。
+        # 这条是放行路径：只 pin 真从 GHCR 拉的服务 + harness 时必须通过。
+        compose = self._ghcr_compose({
+            "router": {"image": "ghcr.io/zeek-zhao/orgflow-devops/router:24.04-v1@" + DIGEST},
+            "certs-init": {"image": "orgflow/router:24.04-v1"},
+            "docs": {"image": ""},
+        })
+        result = self.run_script("tests/images.sh", "ensure",
+                                 USE_GHCR="1", COMPOSE_JSON=compose)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_ghcr_ensure_still_rejects_unpinned_ghcr_service(self):
+        # 反证：跳过非 ghcr.io 服务不能削弱断言。ghcr.io 开头却没 pin 的仍必须失败，
+        # 否则「pin 了才放行」的闸门退化成「什么都不管」。
+        compose = self._ghcr_compose({
+            "router": {"image": "ghcr.io/zeek-zhao/orgflow-devops/router:24.04-v1"},
+        })
+        result = self.run_script("tests/images.sh", "ensure",
+                                 USE_GHCR="1", COMPOSE_JSON=compose)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("missing pinned GHCR image", result.stderr)
+
     def test_hub_missing_fails_fast_by_default(self):
         result = self.run_script("tests/images.sh", "ensure")
         self.assertNotEqual(result.returncode, 0)

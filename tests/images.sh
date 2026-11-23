@@ -36,6 +36,11 @@ import json, re, sys
 services = json.load(sys.stdin)["services"]
 for name, service in services.items():
     image = service.get("image", "")
+    # certs-init 复用本地 router tag、docs 是 build-only（image 为空），二者都不从
+    # GHCR 拉，ensure 的职责只是「确认要从 GHCR 拉的镜像已 pin 且已缓存」，不算它们。
+    # 但 ghcr.io 开头却没 pin 的服务仍必须报错——断言强度不变。
+    if not image.startswith("ghcr.io/"):
+        continue
     if not re.fullmatch(r"ghcr.io/[^@\s]+@sha256:[a-f0-9]{64}", image):
         sys.exit(f"{name}: missing pinned GHCR image; 先跑 images.yml 工作流，再执行 make images-pin")
     print(image)
