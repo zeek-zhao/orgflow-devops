@@ -33,9 +33,12 @@ ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
 REGISTER = DOCS / "文档登记册.md"
 
-# 模板不是配置项（它们没有独立生命周期，随使用者派生而存在）
-EXCLUDE_DIRS = {"_templates"}
-EXCLUDE_FILES = {"文档登记册.md"}
+# 以下不是配置项（无独立生命周期，随运行/使用者派生而存在）：
+#   _templates            —— 模板，随使用者派生
+#   执行日志              —— record.sh 按日期生成的运行产物（artifacts 同理在子目录）
+# 台账由脚本维护、随每次 record 重写，无人工评审生命周期，同登记册一并排除
+EXCLUDE_DIRS = {"_templates", "执行日志"}
+EXCLUDE_FILES = {"文档登记册.md", "M0-变更台账.md"}
 
 LAYERS = {"入口", "规程", "参考", "记录"}
 STATUSES = {"draft", "review", "approved", "superseded", "archived"}
