@@ -64,10 +64,13 @@ services:
     environment:
       DOMAIN: ${DOMAIN:-org-devops.local}
       CA_DIR: /ca
+      PUBLIC_PORT: ${PUBLIC_PORT:-18081}
     ports:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
       - "2019:2019"
+      # 公网入口：Funnel 边缘终止 TLS 后转发到此纯 HTTP 端口
+      - "${PUBLIC_PORT:-18081}:18081"
     volumes:
       - ca-data:/ca:ro
     depends_on:

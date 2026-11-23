@@ -1,3 +1,10 @@
+# 最小底座 LDAP 引导目录。
+# 用户组织对齐 main 分支 services/auth/ldif/users.ldif（inetOrgPerson + posixAccount），
+# 但只保留"现有 7 容器服务"真正需要的账号：平台管理员 + 所有者账号。
+# main 里的 gerrit/nexus/jira/dev/qa 等账号对应的服务本底座不存在，按需不建。
+#
+# 占位符：{{BASE_DN}} 由 entrypoint 注入；{{HASH_ADMIN}}/{{HASH_SVC}}/{{HASH_OWNER}} 为 SSHA 口令哈希。
+
 dn: {{BASE_DN}}
 objectClass: top
 objectClass: dcObject
@@ -15,17 +22,43 @@ objectClass: top
 objectClass: organizationalUnit
 ou: groups
 
+# 平台管理员组（供 ldapadmin/后续服务授权用）
 dn: cn=svc-platform-admin,ou=groups,{{BASE_DN}}
 objectClass: top
 objectClass: groupOfNames
 cn: svc-platform-admin
-member: cn=admin,{{BASE_DN}}
+member: uid=svc-platform-admin,ou=people,{{BASE_DN}}
 
-dn: cn=demo,ou=people,{{BASE_DN}}
+# —— 用户 1：平台管理员服务账号（对齐 main 的 svc-platform-admin）——
+dn: uid=svc-platform-admin,ou=people,{{BASE_DN}}
+cn: svc-platform-admin
+sn: svc-platform-admin
+displayName: svc-platform-admin
+givenName: svc-platform-admin
+uid: svc-platform-admin
+uidNumber: 1000
+gidNumber: 501
+homeDirectory: /home/users/svc-platform-admin
+loginShell: /bin/bash
+mail: svc-platform-admin@orgflow.local
 objectClass: top
-objectClass: person
 objectClass: inetOrgPerson
-cn: demo
-sn: demo
-uid: demo
-userPassword: {{HASH}}
+objectClass: posixAccount
+userPassword: {{HASH_SVC}}
+
+# —— 用户 2：所有者账号（对齐 main 的 zeek.zhao）——
+dn: uid=zeek.zhao,ou=people,{{BASE_DN}}
+cn: Zeek Zhao
+sn: Zhao
+displayName: Zeek Zhao
+givenName: Zeek
+uid: zeek.zhao
+uidNumber: 1008
+gidNumber: 501
+homeDirectory: /home/users/zeek.zhao
+loginShell: /bin/bash
+mail: zeek.zhao@orgflow.local
+objectClass: top
+objectClass: inetOrgPerson
+objectClass: posixAccount
+userPassword: {{HASH_OWNER}}

@@ -2,6 +2,7 @@ out/
 *.env
 !.env.example
 !config/images.env
+!config/defaults.env
 __pycache__/
 *.pyc
 *.log
