@@ -9,11 +9,11 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-ENV_FILE="${ENV_FILE:-.env}"
+ENV_FILE="${ENV_FILE:-out/runtime.env}"
 COMPOSE="${COMPOSE:-docker compose}"
 
 if [ ! -f "$ENV_FILE" ]; then
-  echo "✗ 缺少 $ENV_FILE；先复制 .env.example 并填写，再跑 USE_GHCR=1 make deploy" >&2
+  echo "✗ 缺少 $ENV_FILE；先跑 USE_GHCR=1 make deploy 渲染出 runtime.env" >&2
   exit 1
 fi
 

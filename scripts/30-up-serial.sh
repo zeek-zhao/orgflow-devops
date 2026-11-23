@@ -39,6 +39,17 @@ fi
 
 orgflow_export_runtime_env
 
+# ★ certs-init 是一次性容器（restart:no），负责把站点叶子证书签进 ca_sites 卷；
+#   它不在 config/services.yml 的 start_order 里（那个列表只含常驻业务服务），
+#   而 caddy 的 depends_on 条件是 service_completed_successfully —— 串行用 --no-deps
+#   起 caddy 时这条依赖被绕过，若 certs-init 没先跑，caddy 挂空卷会因缺
+#   /certs/sites/<sub>.<domain>.crt 无限重启。整栈模式必须先幂等跑一次 certs-init。
+#   （CI harness 用 compose up 一把起，depends_on 生效，所以这里从未被覆盖。）
+if [ -z "$target" ]; then
+  echo "-- [certs-init] 幂等签发叶子证书到 ca_sites 卷"
+  "${COMPOSE[@]}" run --rm certs-init >/dev/null 2>&1 ||     orgflow_fail "certs-init 签发叶子证书失败；检查 secrets/ca/ 与 config/routes.yaml"
+fi
+
 echo "== 串行启动（$([ -n "$target" ] && echo "单服务 $target" || echo "${#order[@]} 个服务")）=="
 for svc in "${order[@]}"; do
   up_log="$(mktemp)"
