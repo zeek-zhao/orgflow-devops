@@ -136,7 +136,9 @@ services:
         ipv4_address: ${IP_LDAPADMIN:-192.168.90.12}
     healthcheck:
       # osixia/phpldapadmin 自带 php，监听 80（不是自建版的 8080）
-      test: ["CMD", "php", "-r", "exit(file_get_contents('http://127.0.0.1/') === false ? 1 : 0);"]
+      # osixia phpldapadmin 的 / 会 302→/index.php→/ 循环；不跟随重定向，按「收到 <500 响应即存活」判定
+      # 健康探针：osixia 的 / 会 302 循环，不跟随重定向，收到任意 HTTP 响应即存活
+      test: ["CMD", "php", "-r", "$$c=stream_context_create(['http'=>['follow_location'=>0,'timeout'=>3]]);exit(@fopen('http://127.0.0.1/','r',false,$$c)?0:1);"]
       interval: 5s
       timeout: 3s
       retries: 10
