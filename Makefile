@@ -43,7 +43,7 @@ check: ## 快检查（无 docker）：文档/记录/标签/门禁格式
 	@bash scripts/check-fast.sh
 
 check-all: check ## 全量门禁（含镜像 digest 与基底）
-	@bash scripts/check-images-lock.sh
+	@bash scripts/check-images.sh --mode=lock
 
 test: ## 静态自检（python 语法 + 配置解析）
 	@bash scripts/test-static.sh
@@ -72,7 +72,7 @@ record: ## 记录一条操作（见 scripts/record.sh --help）
 
 # ---------- 镜像 ----------
 images-guard: ## 镜像来源闸门：源码改了没重建则拒绝部署
-	@bash scripts/check-image-source.sh
+	@bash scripts/check-images.sh --mode=source
 
 images-lock: ## 回填镜像 digest 到 tests/images.lock
 	@bash scripts/update-images-lock.sh
@@ -81,4 +81,4 @@ sync-context: ## 把 config/ 真源同步到各服务的自包含构建上下文
 	@bash scripts/sync-build-context.sh
 
 images-upstream: ## 校验 Dockerfile FROM 与上游 digest 登记表一致
-	@bash scripts/check-upstream-digest.sh
+	@bash scripts/check-images.sh --mode=upstream

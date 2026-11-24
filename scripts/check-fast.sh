@@ -7,20 +7,21 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 rc=0
 run() {
-  local label="$1" script="$2"
+  local label="$1" script="$2"; shift 2
+  local extra=("$@")
   if [[ -f "$script" ]]; then
     printf '  ✓ %-12s ' "$label"
-    if bash "$script" >/tmp/check.out 2>&1; then echo "ok"; else echo "红"; cat /tmp/check.out; rc=1; fi
+    if bash "$script" "${extra[@]}" >/tmp/check.out 2>&1; then echo "ok"; else echo "红"; cat /tmp/check.out; rc=1; fi
   else
     printf '  - %-12s 检查项待补（%s）\n' "$label" "${script#./}"
   fi
 }
 echo "快检查（无 docker / 无网络）："
 run 记录留存 scripts/check_record_exists.sh
-run 镜像摘要 scripts/check-image-digest.sh
-run 基底统一 scripts/check-base-image.sh
-run 上游摘要 scripts/check-upstream-digest.sh
-run 摘要一致 scripts/check-images-lock.sh
+run 镜像摘要 scripts/check-images.sh --mode=digest
+run 基底统一 scripts/check-images.sh --mode=base
+run 上游摘要 scripts/check-images.sh --mode=upstream
+run 摘要一致 scripts/check-images.sh --mode=lock
 run 配置解析 scripts/test-static.sh
 run 文档登记 scripts/check-docs.sh
 run 域名配置 scripts/check-domain.sh

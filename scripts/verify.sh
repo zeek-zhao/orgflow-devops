@@ -8,14 +8,14 @@ pass=0; fail=0; skip=0
 P(){ echo "  ✓ AC-$1 $2"; pass=$((pass+1)); }
 F(){ echo "  ✗ AC-$1 $2" >&2; fail=$((fail+1)); }
 S(){ echo "  ~ AC-$1 $2（需真机环境，人工验收时执行）"; skip=$((skip+1)); }
-run(){ bash "$1" >/dev/null 2>&1; }
+run(){ bash "$@" >/dev/null 2>&1; }
 
 echo "== M0 验收矩阵（v1.0 AC-1~22）=="
 # ---- 静态项 ----
-run scripts/check-image-digest.sh && P 1 "digest 全锁定" || F 1 "digest 全锁定"
-run scripts/check-upstream-digest.sh && P 2 "上游 digest 与登记表一致" || F 2 "上游 digest 登记表"
-run scripts/check-base-image.sh && P 2b "基底统一" || F 2b "基底统一"
-run scripts/check-images-lock.sh && P 10 "image Id 幂等（lock 一致代理）" || F 10 "lock 一致"
+run scripts/check-images.sh --mode=digest && P 1 "digest 全锁定" || F 1 "digest 全锁定"
+run scripts/check-images.sh --mode=upstream && P 2 "上游 digest 与登记表一致" || F 2 "上游 digest 登记表"
+run scripts/check-images.sh --mode=base && P 2b "基底统一" || F 2b "基底统一"
+run scripts/check-images.sh --mode=lock && P 10 "image Id 幂等（lock 一致代理）" || F 10 "lock 一致"
 run scripts/check-docs.sh && P 11 "文档登记册双向一致" || F 11 "文档登记册"
 run scripts/check-domain.sh && P 22 "域名配置化（无写死域名）" || F 22 "域名配置化"
 if [[ -f scripts/check_record_exists.sh ]]; then

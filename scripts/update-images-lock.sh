@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# update-images-lock.sh —— 回填镜像上下文快照（配合 check-image-source.sh）
+# update-images-lock.sh —— 回填镜像上下文快照（配合 check-images.sh --mode=source）
 # 2026-11-24 改版：镜像对齐 main 后无本地构建，digest 取自 main 的 tests/images.lock；
 # 本脚本把「以卷注入的配置」当前 hash 记为新基线。
 set -euo pipefail
