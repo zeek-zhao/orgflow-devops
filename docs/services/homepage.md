@@ -3,7 +3,7 @@
 > 状态：适用 | 最后核对：2026-11-24 | 对应分支：feat/m0-v2
 
 ## 1. 职责
-统一面板：HomePage（官方 gethomepage v2.7.0），占公网根路径 `/` 与内网 `home.<DOMAIN>`。渲染两组卡片，**域名一律用占位符**，改配置免重建容器。
+统一面板：HomePage（官方 gethomepage v2.7.0），占公网根路径 `/`（单域名路径型，T6 已删 `home.<DOMAIN>` 子域 vhost）。渲染两组卡片，**域名一律用占位符**，改配置免重建容器。
 
 ## 2. 双分组与卡片（M0-v2 R1）
 两组各 6 卡，`certs-init`（一次性任务）两组都不出现：
@@ -31,7 +31,23 @@ python3 scripts/render-homepage.py --check  # 门禁：与 manifest 不一致返
 - `HOMEPAGE_ALLOWED_HOSTS = ${PUBLIC_HOST},localhost,127.0.0.1`，无 `home.<domain>` 子域写法。
 - `HOMEPAGE_VAR_PUBLIC_HOST` 由 compose 注入，取值 `${PUBLIC_HOST}`（遵循用户拍板：Funnel/ts.net 为默认）。
 
-## 5. 启动 / 健康检查 / 用例 / 排障
+## 5. 图标与样式清单（T7）
+
+所有静态资源均为仓库内真源、随镜像 `COPY`固化，**首页图标区零外链 CDN**（断网不裂图）。真源在 `config/homepage/`，由 `scripts/sync-build-context.sh` 同步到 `services/homepage/build/`，Dockerfile 从 `build/` `COPY` 进镜像。
+
+| 文件（真源 `config/homepage/`） | 内容 | 镜像内落点 | 访问路径 | 来源 |
+|---|---|---|---|---|
+| `favicon.ico` | 真实 ICO，16x16 32bpp，1150 B | `/app/public/favicon.ico` | `/favicon.ico` | 仓库内置，`settings.yaml` 的 `favicon: /favicon.ico` 引用 |
+| `custom.css` | 卡片圆角（`--of-card-radius: 12px`）+ 分组标题字号（`1.05rem`），非空 | `/app/config/custom.css` | `/api/config/custom.css` | 仓库内置最小可用样式 |
+| `android-chrome-192x192.png` | PNG 192x192 RGBA，1514 B | `/app/public/android-chrome-192x192.png` | `/android-chrome-192x192.png` | 按官方 PWA manifest 实际请求名 |
+| `android-chrome-512x512.png` | PNG 512x512 RGBA，4340 B | `/app/public/android-chrome-512x512.png` | `/android-chrome-512x512.png` | 同上（修复文档写 `512x192` 系笔误，按 manifest 实名，不改名） |
+| `LICENSE` | SPDX 许可文本 | `/app/public/LICENSE` | `/LICENSE` | `licenses/MIT.txt` 等 |
+
+> `bookmarks.yaml` 中的 `https://caddyserver.com/...` 等是用户点击才访问的**书签跳转链接**，非首页自动加载资源；`services.yaml` 的 `{{HOMEPAGE_VAR_PUBLIC_HOST}}` 是运行时注入占位符，均不属于外链 CDN 请求。
+
+验收：`/favicon.ico`（image/*、>0B）、`/api/config/custom.css`（>0B）、两张 PWA 图标（200）须在 §10 步骤5 重建 homepage 后逐条 `curl -I` 确认。
+
+## 6. 启动 / 健康检查 / 用例 / 排障
 - 启动：`up.sh --only homepage`（独立命名空间），隔离端口 8082，固定 IP .11。
 - 健康：`curl -H 'Host: localhost' http://127.0.0.1:3000/` → 200；`/favicon.ico` 200。
 - 用例：`tests/bats/S_homepage.bats` + `tests/bats/15_homepage.bats`（全栈）；断言 12 卡、href 全 https 无 `.local`、两分组名。
