@@ -17,28 +17,16 @@
     admin 192.168.90.10:2019
 }
 
-# 内网唯一入口：:80 全量 308 跳 :443
+# 内网 :80 跳转骨架：公网入口走 :PUBLIC_PORT（Funnel 边缘终止 TLS），
+# 内网如有人访问 :80 则跳 https（单域名路径型，不再维护子域 vhost / tls 站点）。
 :80 {
     redir https://{host}{uri} permanent
 }
 
-# 内网 TLS 站点（SAN 由 certs-init 覆盖 *.$DOMAIN 与各子域）
-home.{$DOMAIN:org-devops.com} {
-    tls /ca/site.crt /ca/site.key
-    reverse_proxy homepage:3000
-}
-
-ldapadmin.{$DOMAIN:org-devops.com} {
-    tls /ca/site.crt /ca/site.key
-    reverse_proxy ldapadmin:80
-}
-
-router.{$DOMAIN:org-devops.com} {
-    tls /ca/site.crt /ca/site.key
-    reverse_proxy router:8080
-}
-
 # ===== 公网入口（Funnel → 本端口）=====
+# T6 路由单一真源：本文件 = admin 全局 + :80 跳转 + :PUBLIC_PORT 路径骨架；
+# 动态路由前缀在 config/routes.yaml；二者由 router /render 合成，输出即实跑配置。
+# 不在此文件维护 home./ldapadmin./router. 子域站点（已删，无第二份配置）。
 # TLS 在 Funnel 边缘终止并做合法 *.ts.net 证书，这里只做纯 HTTP 路由。
 :{$PUBLIC_PORT:18081} {
     # 精确匹配优先，必须排在 / 之前

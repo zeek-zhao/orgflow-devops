@@ -50,6 +50,55 @@ UPSTREAM_RE = re.compile(r"^[a-zA-Z0-9_.-]+:\d+$")
 
 _last_hash = None
 
+# T4/T6：/status HTML 说明页（与 config/Caddyfile 内联 HTML 同源；render 输出 == 实跑）
+STATUS_HTML = (
+    '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
+    '<meta name="viewport" content="width=device-width,initial-scale=1">'
+    '<title>OrgFlow 服务状态</title>'
+    '<style>body{font-family:system-ui,sans-serif;max-width:760px;margin:2rem auto;padding:0 1rem;color:#1b2430}'
+    'h1{font-size:1.4rem}table{border-collapse:collapse;width:100%}th,td{border:1px solid #d8dee9;padding:.5rem .7rem;text-align:left}'
+    'th{background:#f2f5f9}code{background:#eef2f7;padding:.1rem .35rem;border-radius:4px}'
+    '.note{margin-top:1.2rem;color:#556}</style></head><body>'
+    '<h1>OrgFlow 底座 · 服务状态</h1>'
+    '<p>本页是 7 个服务的状态说明。各服务入口与探测方式如下（DNS / LDAP / Caddy 无独立 Web UI，状态见<a href="/">首页卡片</a>）。</p>'
+    '<table><thead><tr><th>服务</th><th>探测方式</th><th>公网入口</th></tr></thead><tbody>'
+    '<tr><td>统一面板 homepage</td><td>HTTP 根路径 /</td><td><a href="/">/</a></td></tr>'
+    '<tr><td>LDAP 管理 ldapadmin</td><td>HTTP /ldapadmin/</td><td><a href="/ldapadmin/">/ldapadmin/</a></td></tr>'
+    '<tr><td>路由注册 router</td><td>HTTP /router/healthz</td><td><a href="/router/healthz">/router/healthz</a></td></tr>'
+    '<tr><td>DNS 解析 dnsmasq</td><td>ICMP 探容器 + dig</td><td>无 UI，见首页卡片</td></tr>'
+    '<tr><td>身份目录 ldap</td><td>ldapsearch 探 389</td><td>无 UI，见首页卡片</td></tr>'
+    '<tr><td>Caddy 网关 caddy</td><td>admin /config/ 探活</td><td>无 UI，见首页卡片</td></tr>'
+    '<tr><td>证书初始化 certs-init</td><td>一次性任务 exit 0</td><td>不放假页面</td></tr>'
+    '</tbody></table>'
+    '<p class="note">健康探针：<code>/healthz</code>（纯文本 ok）。配置渲染仅允许容器内本机调用，公网 <code>/router/render</code> 返回 403。</p>'
+    '</body></html>'
+)
+
+# T4：4 条 308 跳转 + /status HTML（render 输出片段，与 config/Caddyfile 公网块一致）
+PUBLIC_FIXED = """    @status path /status
+    handle @status {
+        header Content-Type "text/html; charset=utf-8"
+        respond `STATUS_HTML_PLACEHOLDER` 200
+    }
+
+    @rootHome path /home /home/*
+    handle @rootHome {
+        redir https://{host}/ 308
+    }
+    @noSlashLdap path /ldapadmin
+    handle @noSlashLdap {
+        redir https://{host}/ldapadmin/ 308
+    }
+    @routerBare path /router
+    handle @routerBare {
+        redir https://{host}/router/healthz 308
+    }
+    @caddyLegacy path /caddy /caddy/*
+    handle @caddyLegacy {
+        redir https://{host}/status 308
+    }
+"""
+
 
 def _parse_routes(text):
     """极简 routes.yaml 解析：只认 routes: 下列表项的 prefix/upstream 标量。
@@ -114,8 +163,10 @@ def load_routes():
 def render(routes):
     """渲染**完整路径型 Caddyfile**（== 实跑配置）。
 
-    与 config/Caddyfile 结构一致：admin 内网绑定 / :80 跳 :443 /
-    三个内网 TLS 站点 / 公网入口块（动态路由注入）。
+    与 config/Caddyfile 结构一致：admin 内网绑定 / :80 跳转 /
+    公网入口块（固定片段 status+跳转 + 动态路由注入）。
+    T6：不再生成任何 Host 型子域 TLS 站点（home./ldapadmin./router. 已删），
+    只输出 admin + :80 + :PUBLIC_PORT 骨架，杜绝与实跑配置形成第二份真源。
     根 prefix=/ → 直接反代不 strip；其余 /x → handle_path /x/* strip。
     不含 Host 型站点覆盖公网，杜绝与实跑漂移（拍定 P1）。
     T1：公网块顶部加 @render 403（与 config/Caddyfile 静态挂载一致），
@@ -148,6 +199,9 @@ def render(routes):
         "    }"
     )
 
+    # T6：公网固定片段（status HTML + 4 跳转）用真实 HTML 替换占位符
+    public_fixed = PUBLIC_FIXED.replace("STATUS_HTML_PLACEHOLDER", STATUS_HTML)
+
     return f"""# 由 router /render 生成的完整路径型 Caddyfile（== 实跑配置）
 {{
     admin {CADDY_IP}:2019
@@ -157,32 +211,13 @@ def render(routes):
     redir https://{{host}}{{uri}} permanent
 }}
 
-home.{DOMAIN} {{
-    tls /ca/site.crt /ca/site.key
-    reverse_proxy homepage:3000
-}}
-
-ldapadmin.{DOMAIN} {{
-    tls /ca/site.crt /ca/site.key
-    reverse_proxy ldapadmin:80
-}}
-
-router.{DOMAIN} {{
-    tls /ca/site.crt /ca/site.key
-    reverse_proxy router:8080
-}}
-
 :{PUBLIC_PORT} {{
     @healthz path /healthz
     handle @healthz {{
         respond "ok" 200
     }}
 
-    @status path /status
-    handle @status {{
-        respond "ok" 200
-    }}
-
+{public_fixed}
 {render_guard}
 
 {dyn_block}

@@ -48,5 +48,16 @@ for f in "${files[@]}"; do
   done < "$f"
 done
 
-[[ $rc -eq 0 ]] && echo "✓ 域名配置化：配置文件无写死网关域名，全部来自 \${DOMAIN}/占位符"
+# T6 路由单一真源：Caddyfile 只保留 admin 全局 + :80 跳转 + :PUBLIC_PORT 路径骨架，
+# 不得再声明 <label>.{$DOMAIN...} 子域站点（否则与 routes.yaml 形成第二份路由真源）。
+# 这类行用占位符写法，上面的 GW_RE 去占位符后抓不到，需单独断言。
+SUBDOMAIN_VHOST_RE='^[[:space:]]*[a-zA-Z0-9_-]+\.\{\$DOMAIN'
+sub_hits="$(grep -nE "$SUBDOMAIN_VHOST_RE" config/Caddyfile || true)"
+if [[ -n "$sub_hits" ]]; then
+  echo "✗ config/Caddyfile 仍含子域站点块（唯一真源=路径型 routes.yaml）：" >&2
+  echo "$sub_hits" >&2
+  rc=1
+fi
+
+[[ $rc -eq 0 ]] && echo "✓ 域名配置化：配置文件无写死网关域名，全部来自 \${DOMAIN}/占位符；Caddyfile 无子域 vhost（路径型单一真源）"
 exit $rc
