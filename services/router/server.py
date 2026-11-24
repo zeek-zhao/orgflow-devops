@@ -5,6 +5,13 @@
   router 只渲染「路径型」配置（handle_path prefix → upstream + strip），
   禁止生成 Host 型 vhost；render 输出 == Caddy 实跑配置。
 
+修复轮 T1（安全收口）：
+  - POST /render 仅允许容器内本机（127.0.0.1/::1）；公网由 Caddy @render 403 兜底。
+  - 被拒来源 IP 打到 stdout（docker logs 可见）。
+  - GET /render 仍 405（不放宽为可用）。
+  - GET /routes 展示层脱敏：去 admin IP 与 /ca/ 证书绝对路径（下发实跑配置不脱敏）。
+  - 新增 CLI 入口 `python3 /app/server.py --render`，供容器内本机触发（容器无 curl）。
+
 设计：render() 生成一份**完整且自洽的 Caddyfile**（admin 内网绑定 / :80 跳转 /
   内网站点 / 公网入口块），routes.yaml 的动态前缀注入公网入口块。
   /render 流程：load → render 完整配置 → POST /load（Content-Type: text/caddyfile，
@@ -13,8 +20,11 @@
 
 端点：
   GET  /healthz  → 200
-  GET  /routes   → 渲染出的完整路径型 Caddyfile（便于断言，== 实跑配置）
-  POST /render   → 见上；坏 prefix/upstream 或 caddy validate 失败 → 422；Caddy 不可达 → 503
+  GET  /routes   → 脱敏后的路径型 Caddyfile（展示用，去内网 IP 与证书路径）
+  POST /render   → 仅本机；见上；坏 prefix/upstream 或 caddy validate 失败 → 422；
+                   非本机 → 403；Caddy 不可达 → 503
+CLI：
+  python3 /app/server.py --render  → 容器内本机触发 reload（容器无 curl 时的正式入口）
 
 依赖：对齐 main render.py「零第三方依赖」，本服务跑 main 的 router:24.04-v1
 镜像（内含 python3，无 PyYAML），routes.yaml 用极简 schema 手写解析。
@@ -24,6 +34,7 @@ import html
 import json
 import os
 import re
+import sys
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -32,6 +43,8 @@ CADDY_ADMIN = os.environ.get("CADDY_ADMIN", "http://192.168.90.10:2019")
 DOMAIN = os.environ.get("DOMAIN", os.environ.get("GATEWAY_DOMAIN", "org-devops.com")).strip().strip(".")
 PUBLIC_PORT = os.environ.get("PUBLIC_PORT", "18081").strip()
 CADDY_IP = os.environ.get("IP_CADDY", "192.168.90.10").strip()
+# T1：仅这些来源可触发 POST /render（容器内本机回环）
+ALLOW = {"127.0.0.1", "::1"}
 PREFIX_RE = re.compile(r"^/(?:[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*)?$")
 UPSTREAM_RE = re.compile(r"^[a-zA-Z0-9_.-]+:\d+$")
 
@@ -105,6 +118,8 @@ def render(routes):
     三个内网 TLS 站点 / 公网入口块（动态路由注入）。
     根 prefix=/ → 直接反代不 strip；其余 /x → handle_path /x/* strip。
     不含 Host 型站点覆盖公网，杜绝与实跑漂移（拍定 P1）。
+    T1：公网块顶部加 @render 403（与 config/Caddyfile 静态挂载一致），
+    必须排在 handle_path /router/* 之前，防止 reload 后公网又能触发渲染。
     """
     # 公网动态路由片段
     dyn = []
@@ -123,6 +138,13 @@ def render(routes):
         "    # 根路径：HomePage 唯一门面，直接反代不 strip\n"
         "    handle {\n"
         f"        reverse_proxy {root_up}\n"
+        "    }"
+    )
+    # T1：公网 POST /render 兜底拒绝（Caddy 按顺序匹配，必须先于 /router/*）
+    render_guard = (
+        "    @render path /router/render\n"
+        "    handle @render {\n"
+        "        respond 403\n"
         "    }"
     )
 
@@ -161,11 +183,29 @@ router.{DOMAIN} {{
         respond "ok" 200
     }}
 
+{render_guard}
+
 {dyn_block}
 
 {root_block}
 }}
 """
+
+
+def sanitize_for_display(text):
+    """T1（§2.3）：GET /routes 展示层脱敏，去掉内网 admin IP 与 /ca/ 证书绝对路径。
+    仅作用于展示输出；POST /render 下发给 Caddy 的实跑配置不经过此函数。"""
+    out = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        indent = line[: len(line) - len(line.lstrip())]
+        if stripped.startswith("admin ") and ":2019" in stripped:
+            out.append(indent + "# admin: 仅内网（展示已脱敏）")
+        elif stripped.startswith("tls /ca/"):
+            out.append(indent + "# tls: 证书由 CA 卷提供（展示已脱敏）")
+        else:
+            out.append(line)
+    return "\n".join(out) + "\n"
 
 
 def reload_caddy(caddyfile_text):
@@ -188,6 +228,27 @@ def reload_caddy(caddyfile_text):
         return 503, f"caddy 不可达: {e}"
 
 
+def do_render():
+    """执行渲染流程（HTTP POST 与 CLI --render 共用）。
+    返回 (http_code, message)，与调用方无关。"""
+    global _last_hash
+    try:
+        routes = load_routes()
+    except ValueError as e:
+        return 422, f"拒绝 reload（坏 prefix/upstream）: {html.escape(str(e))}"
+    config_text = render(routes)
+    h = hashlib.sha256(config_text.encode()).hexdigest()
+    if h == _last_hash:
+        return 200, "幂等：配置未变，跳过 reload"
+    status, rmsg = reload_caddy(config_text)
+    if status == 422:
+        return 422, f"拒绝 reload（caddy validate 失败）: {html.escape(rmsg)}"
+    if status >= 500:
+        return 503, rmsg
+    _last_hash = h
+    return 200, f"reload ok（{len(routes)} 条路径路由，validate 通过，输出==实跑）"
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, text):
         body = text.encode()
@@ -202,40 +263,40 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "ok"); return
         if self.path == "/routes":
             try:
-                self._send(200, render(load_routes()))
+                # T1：展示层脱敏，去内网 IP 与证书路径（下发实跑配置不受影响）
+                self._send(200, sanitize_for_display(render(load_routes())))
             except ValueError as e:
                 self._send(422, f"配置错误: {html.escape(str(e))}")
             return
+        if self.path == "/render":
+            # T1：GET 不得因放宽变成可用
+            self._send(405, "method not allowed"); return
         self._send(404, "not found")
 
     def do_POST(self):
-        global _last_hash
+        # T1：来源校验，仅容器内本机可触发渲染
         if self.path != "/render":
             self._send(404, "not found"); return
-        try:
-            routes = load_routes()
-        except ValueError as e:
-            self._send(422, f"拒绝 reload（坏 prefix/upstream）: {html.escape(str(e))}")
-            return
-        config_text = render(routes)
-        h = hashlib.sha256(config_text.encode()).hexdigest()
-        if h == _last_hash:
-            self._send(200, "幂等：配置未变，跳过 reload")
-            return
-        # 以 text/caddyfile 下发；Caddy 内置 adapter 即 validate，语法错返回 422 且不改状态。
-        # 下发的是 render 的原始 Caddyfile → 输出即实跑配置（拍定 P1）。
-        status, rmsg = reload_caddy(config_text)
-        if status == 422:
-            self._send(422, f"拒绝 reload（caddy validate 失败）: {html.escape(rmsg)}")
-            return
-        if status >= 500:
-            self._send(503, rmsg); return
-        _last_hash = h
-        self._send(200, f"reload ok（{len(routes)} 条路径路由，validate 通过，输出==实跑）")
+        client_ip = self.client_address[0]
+        if client_ip not in ALLOW:
+            print(f"[render] DENY 来源 {client_ip} 访问 POST /render", flush=True)
+            self._send(403, "render 仅允许容器内本机调用"); return
+        code, msg = do_render()
+        self._send(code, msg)
 
     def log_message(self, *args):
         pass
 
 
+def cli_render():
+    """T1 CLI 入口：容器内本机触发渲染（容器无 curl 时的正式入口）。"""
+    code, msg = do_render()
+    stream = sys.stdout if code < 400 else sys.stderr
+    print(f"[render] {code}: {msg}", file=stream, flush=True)
+    return 0 if code < 400 else 1
+
+
 if __name__ == "__main__":
+    if "--render" in sys.argv:
+        sys.exit(cli_render())
     ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever()

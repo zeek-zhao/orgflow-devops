@@ -52,6 +52,13 @@ router.{$DOMAIN:org-devops.com} {
         respond "ok" 200
     }
 
+    # T1 安全收口：公网禁止触发渲染（必须在 /router/* 之前，先命中先执行）。
+    # 容器内本机 POST /render 经 docker exec 直连 127.0.0.1:8080，不走公网。
+    @render path /router/render
+    handle @render {
+        respond 403
+    }
+
     handle_path /ldapadmin/* {
         reverse_proxy ldapadmin:80
     }
