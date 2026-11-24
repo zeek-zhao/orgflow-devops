@@ -103,7 +103,8 @@ services:
     container_name: of-homepage
     restart: unless-stopped
     environment:
-      HOMEPAGE_ALLOWED_HOSTS: home.${DOMAIN:-org-devops.local},orgflow-sandbox.tail0b7621.ts.net
+      # 白名单与网关域名全部来自 .env，无写死域名（v1.0 §6）
+      HOMEPAGE_ALLOWED_HOSTS: home.${DOMAIN:-org-devops.local}${PUBLIC_HOST:+,${PUBLIC_HOST}}
       HOMEPAGE_VAR_GATEWAY_DOMAIN: ${DOMAIN:-org-devops.local}
       PUID: "1000"
       PGID: "1000"
@@ -116,7 +117,7 @@ services:
         ipv4_address: ${IP_HOMEPAGE:-192.168.90.11}
     healthcheck:
       # 官方 homepage 有 node（运行时），用它探测；Host 用白名单内子域。
-      test: ["CMD", "node", "-e", "require('http').get({host:'127.0.0.1',port:3000,path:'/',headers:{Host:'home.org-devops.local'}},r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
+      test: ["CMD-SHELL", "node -e \"require('http').get({host:'127.0.0.1',port:3000,path:'/',headers:{Host:'home.${DOMAIN:-org-devops.local}'}},r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -153,6 +154,8 @@ services:
     environment:
       ROUTES: /etc/router/routes.yaml
       CADDY_ADMIN: http://caddy:2019
+      # routes.yaml 的子域由 router 渲染时拼上此后缀（来自 .env 的 DOMAIN）
+      GATEWAY_DOMAIN: ${DOMAIN:-org-devops.local}
     volumes:
       - ./services/router/server.py:/app/server.py:ro
       - ./config/routes.yaml:/etc/router/routes.yaml:ro

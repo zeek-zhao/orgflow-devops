@@ -129,7 +129,7 @@ a:hover{{text-decoration:underline}} code{{background:#21262d;padding:.1rem .35r
 <table><thead><tr><th>服务</th><th>状态</th><th>公网路径</th><th>说明</th></tr></thead>
 <tbody>{body}</tbody></table>
 <p class="sub" style="margin-top:1.2rem">机器可读取:<a href="/api/health">/api/health</a> ·
-入口域名 <code>{html.escape(os.environ.get('PUBLIC_HOST','orgflow-sandbox.tail0b7621.ts.net'))}</code></p>
+入口域名 <code>{html.escape(os.environ.get('PUBLIC_HOST','(未设置 PUBLIC_HOST)'))}</code></p>
 </div></body></html>"""
 
 

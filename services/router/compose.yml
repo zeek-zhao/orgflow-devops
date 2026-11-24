@@ -8,6 +8,8 @@ services:
     environment:
       ROUTES: /etc/router/routes.yaml
       CADDY_ADMIN: http://caddy:2019
+      # 域名后缀唯一真源：routes.yaml 只写子域，render 时拼 ${GATEWAY_DOMAIN}
+      GATEWAY_DOMAIN: ${DOMAIN:-org-devops.local}
     ports:
       - "${P_ROUTER:-8083}:8080"
     volumes:

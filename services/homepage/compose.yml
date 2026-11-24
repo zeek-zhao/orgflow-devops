@@ -4,7 +4,9 @@ services:
     image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-homepage@sha256:19c5c09184458a41b7b5915e71463a39f36cd33540f41bdbed008791b8182d5f
     container_name: of-homepage
     environment:
-      HOMEPAGE_ALLOWED_HOSTS: home.${DOMAIN:-org-devops.local},orgflow-sandbox.tail0b7621.ts.net
+      # 白名单与网关域名全部来自 .env（GATEWAY_DOMAIN 即 DOMAIN，PUBLIC_HOST 为可选公网入口），
+      # 无任何写死域名；改一处 DOMAIN 全链路跟随（v1.0 §6）。
+      HOMEPAGE_ALLOWED_HOSTS: home.${DOMAIN:-org-devops.local}${PUBLIC_HOST:+,${PUBLIC_HOST}}
       HOMEPAGE_VAR_GATEWAY_DOMAIN: ${DOMAIN:-org-devops.local}
       PUID: "1000"
       PGID: "1000"
@@ -16,7 +18,8 @@ services:
       orgflow:
         ipv4_address: ${IP_HOMEPAGE:-192.168.90.11}
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get({host:'127.0.0.1',port:3000,path:'/',headers:{Host:'home.org-devops.local'}},r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
+      # ${DOMAIN:-...} 由 compose 解析时注入字面域名；node 拿到的是最终 Host，无需容器环境变量。
+      test: ["CMD-SHELL", "node -e \"require('http').get({host:'127.0.0.1',port:3000,path:'/',headers:{Host:'home.${DOMAIN:-org-devops.local}'}},r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""]
       interval: 5s
       timeout: 3s
       retries: 10

@@ -23,6 +23,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROUTES = os.environ.get("ROUTES", "/etc/router/routes.yaml")
 CADDY_ADMIN = os.environ.get("CADDY_ADMIN", "http://caddy:2019")
+# v1.0 §6 / AC-22：域名后缀唯一真源来自 .env 的 DOMAIN，经 compose 注入。
+# routes.yaml 只写子域（home/ldapadmin/router），render 时拼成 sub.domain；
+# 仍兼容写死完整 host（含点）的旧配置，便于测试与平滑迁移。
+GATEWAY_DOMAIN = os.environ.get("GATEWAY_DOMAIN", "").strip().strip(".")
 HOST_RE = re.compile(r"^[a-z0-9.-]+$", re.I)
 UPSTREAM_RE = re.compile(r"^[a-zA-Z0-9_.-]+:\d+$")
 
@@ -66,6 +70,16 @@ def _parse_routes(text):
     return routes
 
 
+def full_host(host):
+    """子域 → 完整域名。host 已含点视为完整域名（向后兼容），否则拼 GATEWAY_DOMAIN。"""
+    host = str(host).strip().strip(".")
+    if "." in host:
+        return host
+    if not GATEWAY_DOMAIN:
+        raise ValueError("routes.yaml 用了子域但未设置 GATEWAY_DOMAIN（应由 .env 的 DOMAIN 注入）")
+    return f"{host}.{GATEWAY_DOMAIN}"
+
+
 def load_routes():
     with open(ROUTES, encoding="utf-8") as f:
         routes = _parse_routes(f.read())
@@ -78,6 +92,8 @@ def load_routes():
             raise ValueError(f"非法 host: {host}")
         if not UPSTREAM_RE.match(up):
             raise ValueError(f"非法 upstream: {up}（应形如 service:port）")
+        # 尽早校验：子域缺 GATEWAY_DOMAIN 时在 load 阶段就报错，不拖到 render
+        full_host(host)
     return routes
 
 
@@ -85,7 +101,7 @@ def render(routes):
     blocks = []
     for r in routes:
         blocks.append(
-            f"{r['host']} {{\n"
+            f"{full_host(r['host'])} {{\n"
             f"    tls /ca/site.crt /ca/site.key\n"
             f"    reverse_proxy {r['upstream']}\n"
             "}\n"

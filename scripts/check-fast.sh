@@ -23,5 +23,6 @@ run 上游摘要 scripts/check-upstream-digest.sh
 run 摘要一致 scripts/check-images-lock.sh
 run 配置解析 scripts/test-static.sh
 run 文档登记 scripts/check-docs.sh
+run 域名配置 scripts/check-domain.sh
 if [[ $rc -eq 0 ]]; then echo "✓ 快检查通过"; else echo "✗ 快检查未通过" >&2; fi
 exit $rc

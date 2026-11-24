@@ -1,9 +1,11 @@
-# 路由真源：host → upstream。改这里 → make routes → 30s 内新域 200，不重启 Caddy。
+# 路由真源：subdomain → upstream。改这里 → make routes → 30s 内新域 200，不重启 Caddy。
+# 域名后缀不写死：只填子域（home / ldapadmin / router），由 router 渲染时拼上
+# GATEWAY_DOMAIN（来自 .env 的 DOMAIN）。改一处 DOMAIN，全链路跟随（v1.0 §6 / AC-22）。
 # 服务名用 compose 服务名（homepage 不是 home；ldapadmin 官方镜像监听 80）。
 routes:
-  - host: home.org-devops.local
+  - host: home
     upstream: homepage:3000
-  - host: ldapadmin.org-devops.local
+  - host: ldapadmin
     upstream: ldapadmin:80
-  - host: router.org-devops.local
+  - host: router
     upstream: router:8080

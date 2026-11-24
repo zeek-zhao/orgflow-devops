@@ -1,11 +1,13 @@
-# Homepage 卡片（≤5 张）。改本文件免重启生效；解析失败会显式报错，不静默丢项。
+# 旧版卡片文件（保留兼容）。域名不写死：用 {{HOMEPAGE_VAR_GATEWAY_DOMAIN}} 占位，
+# 由 compose 的 HOMEPAGE_VAR_GATEWAY_DOMAIN 注入（真源 .env 的 DOMAIN，v1.0 §6）。
+# 实际生效的官方格式配置在 config/homepage/bookmarks.yaml。
 cards:
   - name: 统一入口
-    href: https://home.org-devops.local/
+    href: https://home.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}/
     desc: 本面板
   - name: 目录管理
-    href: https://ldapadmin.org-devops.local/
+    href: https://ldapadmin.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}/
     desc: LDAP Admin
   - name: 路由状态
-    href: https://router.org-devops.local/healthz
+    href: https://router.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}/healthz
     desc: Router 健康
