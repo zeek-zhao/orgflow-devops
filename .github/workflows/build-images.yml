@@ -15,6 +15,13 @@ on:
       - "scripts/sync-build-context.sh"
       - ".github/workflows/build-images.yml"
   workflow_dispatch:
+    # T11：参数化回填 PENDING-BUILD 服务（默认 homepage,ldapadmin，逗号分隔，须在 BUILDABLE 内）
+    inputs:
+      services:
+        description: "待回填 imageId 的服务（逗号分隔，如 homepage,ldapadmin）"
+        required: false
+        default: "homepage,ldapadmin"
+        type: string
 
 # T8：镜像以本机构建为准（scripts/build-images.sh）。本 workflow 的 GHCR 推送为可选增强：
 # 仅当仓库变量 vars.PUSH_IMAGES='true'（有 packages:write 权限）时才 login + push；
@@ -75,17 +82,75 @@ jobs:
           load: ${{ vars.PUSH_IMAGES != 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-      - name: 输出 digest
+      - name: 输出 imageId 与 digest（T11：回填 lock 第3列需要真实 imageId）
         env:
           IMAGE: ${{ matrix.image }}
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
-          printf '%s\t%s\n' "$IMAGE" "$DIGEST" | tee -a "$GITHUB_STEP_SUMMARY"
+          # load 模式下 build-push-action 把镜像载入本地 daemon，取真实 imageId
+          IID="$(docker image inspect "ghcr.io/${GITHUB_REPOSITORY}/${IMAGE}:m0-v2" --format '{{.Id}}' 2>/dev/null || echo '')"
+          printf '%s\timageId=%s\tdigest=%s\n' "$IMAGE" "$IID" "$DIGEST" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "$IMAGE=$IID" > "imageid-${IMAGE}.env"
           echo "$IMAGE=$DIGEST" >> digests.env
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: digest-${{ matrix.image }}
-          path: digests.env
+          path: |
+            digests.env
+            imageid-*.env
+
+  # T11：把 PENDING-BUILD 回填为真实 imageId，以 PR 形式提交（不直接 push 到 feat/m0-v2）。
+  # 仅在 workflow_dispatch 手动触发时运行；overlay2 + 充足磁盘的 ubuntu-24.04 满足大镜像导出。
+  fill-pending:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/m0-v2
+      - name: 下载全部 imageId artifact
+        uses: actions/download-artifact@fa0a91a85d183aa8ff73ea5e9ad1e6c665d6e7bde # v4
+        with:
+          pattern: digest-*
+          merge-multiple: true
+      - name: 回填 tests/images.lock 中 PENDING-BUILD 行（仅 imageId 第3列）
+        env:
+          SERVICES: ${{ inputs.services }}
+        run: |
+          set -euo pipefail
+          declare -A IID
+          while IFS='=' read -r name val; do IID["$name"]="$val"; done < <(cat imageid-*.env 2>/dev/null)
+          # artifact 里的 key 形如 m0-homepage，lock 的 service 列是 homepage
+          changed=0
+          for raw in ${SERVICES//,/ }; do
+            svc="${raw#m0-}"
+            iid="${IID[m0-$svc]:-}"
+            [[ -n "$iid" && "$iid" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::$svc 无有效 imageId（拒绝手填/猜测）"; exit 1; }
+            awk -F'\t' -v OFS='\t' -v s="$svc" -v id="$iid" '
+              $1==s && $3=="PENDING-BUILD" { $3=id; changed=1 }
+              { print }
+            ' tests/images.lock > tests/images.lock.tmp
+            mv tests/images.lock.tmp tests/images.lock
+            changed=$((changed+1))
+          done
+          echo "回填 $changed 个服务"
+      - name: 校验回填后零 PENDING
+        run: bash scripts/check-images.sh --mode=lock
+      - name: 创建回填 PR（不直接 push）
+        uses: peter-evans/create-pull-request@271a8d0340265f705b12bdd2b134d63f6f4268ba # v6
+        with:
+          branch: ci/fill-pending-imageids
+          base: feat/m0-v2
+          title: "build(m0-v3-t11): 回填 PENDING-BUILD 镜像 imageId"
+          body: |
+            由 workflow_dispatch 在 overlay2 runner 构建后自动生成，imageId 来自 `docker image inspect`。
+            回填后 `check-images.sh --mode=lock` 零 PENDING。禁止手工编辑哈希。
+          commit-message: "build(m0-v3-t11): 回填 PENDING-BUILD imageId (auto)"
+          add-paths: tests/images.lock,config/images.env
 
   # certs-init 复用本分支重建后的 m0-router，不单独出镜像（v1.0 表格第 2 行）。
   verify-upstream:
