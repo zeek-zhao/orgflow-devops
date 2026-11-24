@@ -2,11 +2,11 @@
 
 一套从零构建的最小 DevOps 底座：7 个服务、**单域名路径型**统一入口、内部 CA、统一身份、配置即代码。
 
-- **逐服务 compose**：每个服务一个 `services/<svc>/compose.yml`，`up.sh` 按依赖顺序启动（dnsmasq → certs-init → caddy → ldap → ldapadmin → homepage → router）。
+- **逐服务 compose**：每个服务一个 `services/<svc>/compose.yml`，`up.sh` 按依赖顺序启动（dnsmasq → certs-init → ldap → caddy → homepage → ldapadmin → router，以 `services/manifest.tsv` 为准，详见 `docs/运维/启动顺序.md`）。
 - **镜像全部本分支构建**：6 个 Dockerfile 真薄封装（官方上游 `@sha256` digest 固定 + 配置/图标/license 打进镜像），`certs-init` 复用 router。本机构建为准（`scripts/build-images.sh`）；CI 在有推送权限时可推 GHCR 出 digest artifact。
 - **单域名路径型入口**：HomePage 占根 `/`，`/ldapadmin/`、`/router/`、`/status` 走路径前缀；Tailscale Funnel 在边缘终止 TLS 后回源 Caddy `:PUBLIC_PORT`。无子域 vhost。
 - **配置即代码**：域名/端口用占位符（`.env` 的 `DOMAIN`/`PUBLIC_HOST`），`check-domain.sh` 门禁；路由单一真源 = `config/Caddyfile` 骨架 + `config/routes.yaml` 片段，router 合成后 reload，输出即实跑。
-- 集成分支 `feat/m0-v2`；一个任务 = 一个 Issue = 一个 PR（T1~T8 修复轮、T9~T12 M0-v3），`main` 仅作写法参考。
+- **交付主线 `feat/m0-release`**（从 `feat/m0-v2` 拉出的长期分支）；整理分支 `feat/m0-release-rc`，一个任务 = 一个 Issue = 一个 PR → 合入 release；`main` 为只读历史参考分支，不参与 M0 交付。封版 = 在 `feat/m0-release` 打 tag `m0-v1.0`（main 不动）。
 
 ## 镜像模式（默认 GHCR digest）
 
@@ -37,4 +37,4 @@ make check && make test         # 门禁与静态自检
 - 验收与记录：`docs/records/`（执行日志、验收矩阵、变更台账、截图清单）
 - 使用说明：`docs/使用说明.md`
 
-> 本分支从零实现，`main` 仅作参考。工作区规范、禁止事项见 `docs/运维/` 与修复轮文档。
+> 本分支从零实现，`main` 为历史参考分支，M0 交付主线是 `feat/m0-release`。工作区规范、禁止事项见 `docs/运维/` 与修复轮文档。
