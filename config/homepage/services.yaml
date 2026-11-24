@@ -6,7 +6,7 @@
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/status"
         description: "[LAN] 容器内 DNS · 无 HTTP 端点 · TCP/ICMP 探测 · 无独立 Web UI，见状态页"
         icon: "mdi-dns"
-        ping: "dnsmasq"
+        ping: "192.168.90.15"
     - LDAP 目录:
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/status"
         description: "[LAN] 身份目录 · ldap:389 · ICMP 探容器 + verify.sh 探 389 · 无独立 Web UI，见状态页"
@@ -16,7 +16,7 @@
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/status"
         description: "[LAN] 反向代理入口 · admin 仅内网 · 无独立 Web UI，见状态页"
         icon: "mdi-web"
-        siteMonitor: "http://caddy:2019/config/"
+        siteMonitor: "http://192.168.90.10:2019/config/"
         ping: "caddy"
     - 统一面板:
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/"

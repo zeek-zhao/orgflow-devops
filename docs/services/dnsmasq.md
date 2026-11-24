@@ -15,6 +15,8 @@ make up-dnsmasq（单起，隔离端口 5353，不占宿主 53）。容器名 `o
 ## 4. 健康检查
 pgrep dnsmasq；`dig @127.0.0.1 -p 5353 home.<DOMAIN> +short` → .10。
 
+**面板探测（T9）**：HomePage 的 DNS 卡用 ICMP ping **固定 IP `192.168.90.15`**（非容器名 `dnsmasq`）——HomePage 容器内解析不到 `dnsmasq` 容器名会红卡；固定 IP 与其余服务地址口径一致，不依赖容器名解析。真实 DNS 功能校验仍用 `dig @192.168.90.15`。
+
 ## 5. 用例
 tests/bats/S_dnsmasq.bats（健康/dig/通配/NXDOMAIN/日志）
 

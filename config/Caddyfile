@@ -74,6 +74,12 @@ th{background:#f2f5f9}code{background:#eef2f7;padding:.1rem .35rem;border-radius
     handle @routerBare {
         redir https://{host}/router/healthz 308
     }
+    # T9(P0)：/router/ 命中 handle_path /router/* 被 strip 成 /，router(BaseHTTP) 无 / 路由→404。
+    # 在此处先于 handle_path 拦截，308 到 /router/healthz（不改 router 应用代码）。
+    @routerRoot path /router/
+    handle @routerRoot {
+        redir https://{host}/router/healthz 308
+    }
     @caddyLegacy path /caddy /caddy/*
     handle @caddyLegacy {
         redir https://{host}/status 308
