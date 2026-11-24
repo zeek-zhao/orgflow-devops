@@ -1,20 +1,20 @@
 # orgflow M0 最小 DevOps 底座 · 文档入口
 
-> 7 容器单机自托管底座：DNS → 证书 → Caddy 唯一入口 → OpenLDAP → HomePage → Router。
-> 全部镜像 @sha256 锁定，配置真源单一（.env 的 DOMAIN），一功能一 Issue 一 PR。
+> 7 服务单机自托管底座：DNS → 证书 → Caddy 唯一入口 → OpenLDAP → HomePage → Router。
+> 全部镜像 @sha256 锁定，逐服务 compose 按 manifest 顺序拉起，一功能一 Issue 一 PR。
 
 ## 是什么
 
-在一台云主机上用 Docker Compose 起一套最小 DevOps 底座，7 个容器按依赖顺序启动：
+在一台云主机上起一套最小 DevOps 底座，7 个服务按依赖顺序启动：
 
 | # | 服务 | 职责 | 长驻 |
 |---|---|---|---|
 | 1 | dnsmasq | `*.DOMAIN` → Caddy 固定 IP | 是 |
 | 2 | certs-init | 内部 CA + 站点证书签发（exit 0） | 否 |
-| 3 | caddy | 唯一入口，按 Host 分站点 + 公网 path 反代 | 是 |
+| 3 | caddy | 唯一入口，路径反代 + 内网 TLS 站点 | 是 |
 | 4 | ldap | OpenLDAP 身份目录 | 是 |
 | 5 | ldapadmin | phpLDAPadmin 管理页 | 是 |
-| 6 | homepage | 统一面板 | 是 |
+| 6 | homepage | 占根 `/` 的统一面板（双分组卡片） | 是 |
 | 7 | router | routes.yaml 渲染 + Caddy reload | 是 |
 
 ## 前置
@@ -26,9 +26,9 @@
 
 ```bash
 cp .env.example .env          # 改 DOMAIN（= GATEWAY_DOMAIN）一处
-make render                   # 渲染配置产物
+make render                   # 渲染配置产物（含 HomePage 卡片）
 make check                    # 静态门禁（无 docker）
-make up                       # 顺序启动，失败即停（五段输出）
+make up                       # 按 manifest 顺序逐服务启动，失败即停
 make status                   # 查看健康状态
 make verify                   # 全量验收矩阵 AC-1~22
 ```
@@ -37,24 +37,66 @@ make verify                   # 全量验收矩阵 AC-1~22
 
 | 入口 | 地址 | 说明 |
 |---|---|---|
-| 统一面板（内网） | `https://home.DOMAIN/` | 默认首页 |
-| LDAP 管理（内网） | `https://ldapadmin.DOMAIN/` | 需登录 |
-| 路由状态（内网） | `https://router.DOMAIN/` | /healthz /render |
-| 公网入口（默认） | `https://PUBLIC_HOST/` | Tailscale Funnel 边缘 TLS + Caddy 按 path 反代；`/` 即 HomePage 门面 |
-| 公网入口（可选生产） | Caddy 直听 `:443` + acme | 需可解析公网域名 + 80/443，见 `engineering/证书与CA.md` |
+| 统一面板（公网） | `https://PUBLIC_HOST/` | Tailscale Funnel 边缘 TLS + Caddy 路径反代；`/` 即 HomePage |
+| LDAP 管理（公网） | `https://PUBLIC_HOST/ldapadmin/` | 需登录 |
+| 路由状态（公网） | `https://PUBLIC_HOST/router/healthz` | 健康探针 |
+| 内网面板 | `https://home.DOMAIN/` | 内网 TLS 站点 |
+| 可选生产入口 | Caddy 直听 `:443` + acme | 需可解析公网域名 + 80/443，见[证书与CA](engineering/证书与CA.md) |
 | 网关域名真源 | `.env` 的 `DOMAIN` | 改一处全链路跟随 |
 
 > 默认公网路径：Funnel 边缘终止 TLS → 明文 `:PUBLIC_PORT`（18081）→ Caddy；admin（`:2019`）只绑内网，公网无 `/caddy/*`。
 
-## 文档地图
+## 按角色阅读
 
-- 网络拓扑与排查：[network/arch.md](network/arch.md)
+| 你是 | 先读 |
+|---|---|
+| 想了解整体 | [架构总览](架构.md) |
+| 想部署/运维 | [使用说明](使用说明.md) |
+| 想改某个服务 | `docs/services/` 下对应手册 |
+| 想知道治理规则 | `docs/records/M0-治理约定.md` |
+
+## 目录索引
+
+- 架构总览：[架构.md](架构.md)（吸收原 network/arch.md：拓扑、固定 IP、分层排查）
+- 使用说明：[使用说明.md](使用说明.md)（吸收原 engineering/使用说明.md：登录、改域名）
 - 启动顺序：[engineering/启动顺序.md](engineering/启动顺序.md)
 - 证书与 CA：[engineering/证书与CA.md](engineering/证书与CA.md)
 - 路由注册：[engineering/路由注册.md](engineering/路由注册.md)
 - 镜像与供应链：[engineering/镜像与供应链.md](engineering/镜像与供应链.md)
-- 使用说明：[engineering/使用说明.md](engineering/使用说明.md)
 - 排障：[engineering/排障.md](engineering/排障.md)
+- 公网访问：[公网访问.md](公网访问.md)
 - 架构决策记录：[records/ADR-*.md](records/)
 - 服务手册：[services/](services/)
-- 文档登记册：[文档登记册.md](文档登记册.md)
+
+## 门禁
+
+- `make check`：快检查（记录/镜像/基底/文档/配置）
+- `make verify`：全量验收矩阵（静态必过，行为项需真机）
+
+## 附录：文档登记册（IEEE 828 配置标识）
+
+> 一篇文档在不在这里、什么状态，全看这张表。门禁 `bash scripts/check-docs.sh` 从本表第 3 列解析路径，做路径双向一致校验。运行产物（执行日志/台账/验收单）不登记；本表自身不登记。
+
+| DOC-ID | 标题 | 路径 | 层级 | 状态 | 负责人 | 复审(月) | 关联 |
+|---|---|---|---|---|---|---|---|
+| DOC-E-001 | 文档入口（README，含文档地图+登记册） | docs/README.md | 入口 | review | zeek.zhao | 6 | T9 |
+| DOC-E-002 | 架构总览（含 network/arch） | docs/架构.md | 入口 | review | zeek.zhao | 6 | T4 T7 |
+| DOC-P-001 | 使用说明（含工程使用说明） | docs/使用说明.md | 规程 | review | zeek.zhao | 6 | T8 |
+| DOC-P-002 | M0 治理约定（分支/PR/记录留存） | docs/records/M0-治理约定.md | 规程 | review | zeek.zhao | 6 | T0 |
+| DOC-P-003 | 公网访问（Tailscale Funnel + Caddy 唯一入口） | docs/公网访问.md | 规程 | review | zeek.zhao | 6 | Funnel |
+| DOC-R-001 | 问题解决方案记录 | docs/records/问题解决方案记录.md | 参考 | review | zeek.zhao | 6 | 真机 |
+| DOC-E-003 | 镜像与供应链（双层 digest） | docs/engineering/镜像与供应链.md | 参考 | review | zeek.zhao | 6 | T2 |
+| DOC-E-005 | 启动顺序 | docs/engineering/启动顺序.md | 规程 | review | zeek.zhao | 6 | T8 |
+| DOC-E-006 | 证书与 CA | docs/engineering/证书与CA.md | 规程 | review | zeek.zhao | 6 | T4 |
+| DOC-E-007 | 路由注册 | docs/engineering/路由注册.md | 规程 | review | zeek.zhao | 6 | T7 |
+| DOC-E-009 | 排障 | docs/engineering/排障.md | 参考 | review | zeek.zhao | 6 | T9 |
+| DOC-A-001 | ADR-01 Tailscale 接入 | docs/records/ADR-01-Tailscale接入.md | 参考 | approved | zeek.zhao | 6 | 公网 |
+| DOC-A-002 | ADR-02 内部 CA vs ACME | docs/records/ADR-02-内部CA-vs-ACME.md | 参考 | approved | zeek.zhao | 6 | T4 |
+| DOC-A-003 | ADR-03 双层 digest | docs/records/ADR-03-双层digest.md | 参考 | approved | zeek.zhao | 6 | T2 |
+| DOC-S-001 | dnsmasq 服务手册 | docs/services/dnsmasq.md | 参考 | review | zeek.zhao | 6 | T3 |
+| DOC-S-002 | certs-init 服务手册 | docs/services/certs-init.md | 参考 | review | zeek.zhao | 6 | T4 |
+| DOC-S-003 | caddy 服务手册 | docs/services/caddy.md | 参考 | review | zeek.zhao | 6 | T4 |
+| DOC-S-004 | ldap 服务手册 | docs/services/ldap.md | 参考 | review | zeek.zhao | 6 | T5 |
+| DOC-S-005 | ldapadmin 服务手册 | docs/services/ldapadmin.md | 参考 | review | zeek.zhao | 6 | T5 |
+| DOC-S-006 | homepage 服务手册 | docs/services/homepage.md | 参考 | review | zeek.zhao | 6 | T6 |
+| DOC-S-007 | router 服务手册 | docs/services/router.md | 参考 | review | zeek.zhao | 6 | T7 |
