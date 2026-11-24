@@ -3,7 +3,7 @@
 一套从零构建的最小 DevOps 底座：7 个服务、**单域名路径型**统一入口、内部 CA、统一身份、配置即代码。
 
 - **逐服务 compose**：每个服务一个 `services/<svc>/compose.yml`，`up.sh` 按依赖顺序启动（dnsmasq → certs-init → ldap → caddy → homepage → ldapadmin → router，以 `services/manifest.tsv` 为准，详见 `docs/运维/启动顺序.md`）。
-- **镜像全部本分支构建**：6 个 Dockerfile 真薄封装（官方上游 `@sha256` digest 固定 + 配置/图标/license 打进镜像），`certs-init` 复用 router。本机构建为准（`scripts/build-images.sh`）；CI 在有推送权限时可推 GHCR 出 digest artifact。
+- **镜像默认 GHCR digest，本地自建为可选**：线上默认走 GHCR `@sha256` digest（`USE_LOCAL_IMAGES=0`，零停机、不依赖本地构建状态）；本地自建镜像（`USE_LOCAL_IMAGES=1`）为可选模式，须 lock 无 PENDING 且本地镜像存在才启用，否则告警回退 GHCR。6 个 Dockerfile 真薄封装（官方上游 digest 固定 + 配置/图标/license 打进镜像），`certs-init` 复用 router；CI 在有推送权限时可推 GHCR 出 digest artifact。详见[镜像与供应链](docs/运维/镜像与供应链.md)。
 - **单域名路径型入口**：HomePage 占根 `/`，`/ldapadmin/`、`/router/`、`/status` 走路径前缀；Tailscale Funnel 在边缘终止 TLS 后回源 Caddy `:PUBLIC_PORT`。无子域 vhost。
 - **配置即代码**：域名/端口用占位符（`.env` 的 `DOMAIN`/`PUBLIC_HOST`），`check-domain.sh` 门禁；路由单一真源 = `config/Caddyfile` 骨架 + `config/routes.yaml` 片段，router 合成后 reload，输出即实跑。
 - **交付主线 `feat/m0-release`**（从 `feat/m0-v2` 拉出的长期分支）；整理分支 `feat/m0-release-rc`，一个任务 = 一个 Issue = 一个 PR → 合入 release；`main` 为只读历史参考分支，不参与 M0 交付。封版 = 在 `feat/m0-release` 打 tag `m0-v1.0`（main 不动）。
