@@ -19,7 +19,7 @@ services:
       orgflow:
         ipv4_address: ${IP_CADDY:-192.168.90.10}
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:2019/config/"]
+      test: ["CMD", "wget", "--spider", "-q", "http://192.168.90.10:2019/config/"]
       interval: 5s
       timeout: 3s
       retries: 10

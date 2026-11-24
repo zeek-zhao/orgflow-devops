@@ -93,7 +93,8 @@ services:
         ipv4_address: ${IP_CADDY:-192.168.90.10}
     healthcheck:
       # 官方 caddy:2 镜像无 curl，用 wget（busybox）探测 admin。
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:2019/config/"]
+      # admin 绑内网固定 IP（公网不可达、容器网可达），探针用该 IP 而非 127.0.0.1。
+      test: ["CMD", "wget", "--spider", "-q", "http://192.168.90.10:2019/config/"]
       interval: 5s
       timeout: 3s
       retries: 10
