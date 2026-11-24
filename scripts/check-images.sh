@@ -70,15 +70,16 @@ check_source() {
 
 # ---------- digest ----------
 check_digest() {
-  local rc=0 svc iid
+  local rc=0 svc iid real=0 pending=0
   read_lock || { echo "✗ 缺 tests/images.lock" >&2; return 1; }
   for svc in "${BUILDABLE[@]}"; do
     iid="${LK_iid[$svc]:-}"
     if [[ -z "$iid" ]]; then echo "✗ lock 缺 $svc imageId" >&2; rc=1
-    elif [[ "$iid" == "PENDING-BUILD" ]]; then echo "  · $svc imageId=PENDING-BUILD（沙箱磁盘受限，待 CI 回填）"
-    elif [[ ! "$iid" =~ ^[0-9a-f]{64}$ ]]; then echo "✗ $svc imageId 非 64hex: $iid" >&2; rc=1; fi
+    elif [[ "$iid" == "PENDING-BUILD" ]]; then echo "  · $svc imageId=PENDING-BUILD（待 CI 回填）"; pending=$((pending+1))
+    elif [[ ! "$iid" =~ ^[0-9a-f]{64}$ ]]; then echo "✗ $svc imageId 非 64hex: $iid" >&2; rc=1
+    else real=$((real+1)); fi
   done
-  [[ $rc -eq 0 ]] && echo "✓ 镜像摘要：6 条 imageId 格式合法（4 真实 + 2 PENDING）"
+  [[ $rc -eq 0 ]] && echo "✓ 镜像摘要：${#BUILDABLE[@]} 条 imageId 格式合法（${real} 真实 + ${pending} PENDING）"
   return $rc
 }
 

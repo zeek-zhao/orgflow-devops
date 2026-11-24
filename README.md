@@ -6,7 +6,18 @@
 - **镜像全部本分支构建**：6 个 Dockerfile 真薄封装（官方上游 `@sha256` digest 固定 + 配置/图标/license 打进镜像），`certs-init` 复用 router。本机构建为准（`scripts/build-images.sh`）；CI 在有推送权限时可推 GHCR 出 digest artifact。
 - **单域名路径型入口**：HomePage 占根 `/`，`/ldapadmin/`、`/router/`、`/status` 走路径前缀；Tailscale Funnel 在边缘终止 TLS 后回源 Caddy `:PUBLIC_PORT`。无子域 vhost。
 - **配置即代码**：域名/端口用占位符（`.env` 的 `DOMAIN`/`PUBLIC_HOST`），`check-domain.sh` 门禁；路由单一真源 = `config/Caddyfile` 骨架 + `config/routes.yaml` 片段，router 合成后 reload，输出即实跑。
-- 集成分支 `feat/m0-v2`；一个任务 = 一个 Issue = 一个 PR（T1~T8 修复轮），`main` 仅作写法参考。
+- 集成分支 `feat/m0-v2`；一个任务 = 一个 Issue = 一个 PR（T1~T8 修复轮、T9~T12 M0-v3），`main` 仅作写法参考。
+
+## 镜像模式（默认 GHCR digest）
+
+**线上默认走 GHCR `@sha256` digest 镜像**（`USE_LOCAL_IMAGES=0`，零停机、不依赖本地是否构建过）。本地自建镜像是可选模式，**默认关闭**，须显式开启且满足前置校验：
+
+| 模式 | 开关 | 注入配置 | 生效镜像 |
+|---|---|---|---|
+| **默认（线上）** | `USE_LOCAL_IMAGES=0` | 仅 `config/defaults.env` | GHCR `@sha256` digest |
+| **本地自建** | `USE_LOCAL_IMAGES=1` | defaults + `config/images.env`（后者覆盖） | `orgflow/m0-*:v2`（须 lock 无 PENDING 且本地镜像存在，否则告警回退 GHCR） |
+
+> 不要把 `orgflow/m0-*` 写进 `defaults.env`（会让默认路径依赖本地构建状态）。详见 `docs/运维/镜像与供应链.md` §3.5；`./up.sh --dry-run` 可查看实际解析镜像。
 
 ## 快速开始
 

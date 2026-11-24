@@ -88,7 +88,9 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           # load 模式下 build-push-action 把镜像载入本地 daemon，取真实 imageId
-          IID="$(docker image inspect "ghcr.io/${GITHUB_REPOSITORY}/${IMAGE}:m0-v2" --format '{{.Id}}' 2>/dev/null || echo '')"
+          # 去 sha256: 前缀，保持 tests/images.lock 第3列为统一 64hex（与 check-images.sh --mode=digest 一致）
+          IID_RAW="$(docker image inspect "ghcr.io/${GITHUB_REPOSITORY}/${IMAGE}:m0-v2" --format '{{.Id}}' 2>/dev/null || echo '')"
+          IID="${IID_RAW#sha256:}"
           printf '%s\timageId=%s\tdigest=%s\n' "$IMAGE" "$IID" "$DIGEST" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "$IMAGE=$IID" > "imageid-${IMAGE}.env"
           echo "$IMAGE=$DIGEST" >> digests.env
@@ -129,7 +131,8 @@ jobs:
           for raw in ${SERVICES//,/ }; do
             svc="${raw#m0-}"
             iid="${IID[m0-$svc]:-}"
-            [[ -n "$iid" && "$iid" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::$svc 无有效 imageId（拒绝手填/猜测）"; exit 1; }
+            iid="${iid#sha256:}"  # 兼容旧 artifact 带前缀，统一为 64hex 写回 lock
+            [[ -n "$iid" && "$iid" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::$svc 无有效 64hex imageId（拒绝手填/猜测）"; exit 1; }
             awk -F'\t' -v OFS='\t' -v s="$svc" -v id="$iid" '
               $1==s && $3=="PENDING-BUILD" { $3=id; changed=1 }
               { print }
