@@ -9,9 +9,11 @@ services:
       CA_DIR: /ca
     volumes:
       - ca-data:/ca
-      - ./services/certs-init/gen-ca.sh:/gen-ca.sh:ro
+      - ./gen-ca.sh:/gen-ca.sh:ro
     entrypoint: ["/bin/bash", "/gen-ca.sh"]
     restart: "no"
 
 volumes:
   ca-data:
+    external: true
+    name: ${CA_DATA_VOLUME:-orgflow-minimal_ca-data}

@@ -28,7 +28,5 @@ services:
 
 networks:
   orgflow:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: ${NET_SUBNET:-192.168.90.0/24}
+    external: true
+    name: ${ORG_NETWORK:-orgflow-minimal_orgflow}

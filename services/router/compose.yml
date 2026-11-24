@@ -28,9 +28,9 @@ services:
 
 volumes:
   ca-data:
+    external: true
+    name: ${CA_DATA_VOLUME:-orgflow-minimal_ca-data}
 networks:
   orgflow:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: ${NET_SUBNET:-192.168.90.0/24}
+    external: true
+    name: ${ORG_NETWORK:-orgflow-minimal_orgflow}

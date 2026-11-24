@@ -30,11 +30,13 @@ services:
 
 volumes:
   ldap_data:
+    external: true
+    name: ${LDAP_DATA_VOLUME:-orgflow-minimal_ldap_data}
   ldap_config:
+    external: true
+    name: ${LDAP_CONFIG_VOLUME:-orgflow-minimal_ldap_config}
 
 networks:
   orgflow:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: ${NET_SUBNET:-192.168.90.0/24}
+    external: true
+    name: ${ORG_NETWORK:-orgflow-minimal_orgflow}

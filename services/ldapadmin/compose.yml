@@ -8,7 +8,7 @@ services:
       PHPLDAPADMIN_HTTPS: "false"
     ports:
       - "${P_LDAPADMIN:-8081}:80"
-    # 单服务编排零依赖；宿主栈的 depends_on 在 docker-compose.yml 里声明
+    # 逐服务编排：依赖顺序由 services/manifest.tsv 的 depends_on 声明（up.sh 读取）
     networks:
       orgflow:
         ipv4_address: ${IP_LDAPADMIN:-192.168.90.12}
@@ -21,7 +21,5 @@ services:
 
 networks:
   orgflow:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: ${NET_SUBNET:-192.168.90.0/24}
+    external: true
+    name: ${ORG_NETWORK:-orgflow-minimal_orgflow}
