@@ -7,3 +7,5 @@ __pycache__/
 *.pyc
 *.log
 .DS_Store
+# 镜像构建上下文是 config/ 真源的生成物（sync-build-context.sh 生成），不入库
+services/*/build/

@@ -8,7 +8,7 @@ SERVICES := dnsmasq certs-init caddy ldap ldapadmin homepage router
 
 .PHONY: help render up down up-% down-% check check-all test verify doctor \
         routes hosts ca ca-rotate record images-lock images-guard \
-        test-svc-%
+        test-svc-% sync-context images-upstream
 
 # ---------- 帮助 ----------
 help: ## 列出全部目标
@@ -72,3 +72,9 @@ images-guard: ## 镜像来源闸门：源码改了没重建则拒绝部署
 
 images-lock: ## 回填镜像 digest 到 tests/images.lock
 	@bash scripts/update-images-lock.sh
+
+sync-context: ## 把 config/ 真源同步到各服务的自包含构建上下文 build/
+	@bash scripts/sync-build-context.sh
+
+images-upstream: ## 校验 Dockerfile FROM 与上游 digest 登记表一致
+	@bash scripts/check-upstream-digest.sh

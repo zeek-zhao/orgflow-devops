@@ -19,6 +19,7 @@ echo "快检查（无 docker / 无网络）："
 run 记录留存 scripts/check_record_exists.sh
 run 镜像摘要 scripts/check-image-digest.sh
 run 基底统一 scripts/check-base-image.sh
+run 上游摘要 scripts/check-upstream-digest.sh
 run 摘要一致 scripts/check-images-lock.sh
 run 配置解析 scripts/test-static.sh
 run 文档登记 scripts/check-docs.sh

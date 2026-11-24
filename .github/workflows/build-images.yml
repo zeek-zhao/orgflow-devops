@@ -1,52 +1,88 @@
-name: Verify Image Pins
+name: Build M0 Images
 
-# 2026-11-24 改版（Issue #194）：镜像全部对齐 main 分支同款（官方 mirror-* 原样搬运
-# + main CI 产物），本仓不再基于 ubuntu 自建镜像，因此不再有 build/push job。
-# 本 workflow 改为「镜像 pin 校验」：确认 config/images.env 引用的每个 digest
-# 在 GHCR（public）真实存在且可拉取，防止手改 lock 写进一个不存在的 sha256。
-# 真正的镜像构建由 main 的 .github/workflows/images.yml 与 mirror.yml 负责。
+# v1.0 §4 / AC-20：7 个镜像全部在本分支 CI 构建推 GHCR，不引用 main 产物。
+# 构建产物以 m0-<svc> 命名，避免与 main 的同名镜像冲突；digest 由 build job 输出，
+# 由 make images-lock 回填到 tests/images.lock（人不手改）。
 
 on:
   push:
-    branches: [main, "feat/m0-minimal", "feat/m0-adopt-main-images"]
+    branches: [feat/m0-final-pr, feat/m0-t2-images, main]
     paths:
-      - "config/images.env"
-      - "tests/images.lock"
-      - ".github/workflows/build-images.yml"
-  pull_request:
-    paths:
-      - "config/images.env"
-      - "tests/images.lock"
+      - "services/**"
+      - "config/Caddyfile"
+      - "config/ldap/**"
+      - "config/homepage/**"
+      - "scripts/sync-build-context.sh"
       - ".github/workflows/build-images.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
 
 jobs:
-  verify-pins:
-    name: 校验镜像 digest 可拉取
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: m0-dnsmasq
+            context: services/dnsmasq
+          - image: m0-caddy
+            context: services/caddy
+          - image: m0-ldap
+            context: services/ldap
+          - image: m0-ldapadmin
+            context: services/ldapadmin
+          - image: m0-homepage
+            context: services/homepage
+          - image: m0-router
+            context: services/router
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: 同步自包含构建上下文
+        run: bash scripts/sync-build-context.sh
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}/${{ matrix.image }}
+          tags: |
+            type=sha,format=short
+            type=raw,value=m0-v1
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        id: build
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+      - name: 输出 digest
+        env:
+          IMAGE: ${{ matrix.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          printf '%s\t%s\n' "$IMAGE" "$DIGEST" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "$IMAGE=$DIGEST" >> digests.env
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: digest-${{ matrix.image }}
+          path: digests.env
+
+  # certs-init 复用本分支重建后的 m0-router，不单独出镜像（v1.0 表格第 2 行）。
+  verify-upstream:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-
-      - name: 校验每个 IMAGE_* 的 digest 在 GHCR 可解析
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          n=0
-          while IFS='=' read -r key val; do
-            [[ "$key" == IMAGE_* ]] || continue
-            # val 形如 ghcr.io/zeek-zhao/orgflow-devops/<pkg>@sha256:<64hex>
-            [[ "$val" =~ @sha256:[0-9a-f]{64}$ ]] || { echo "✗ $key 未锁合法 digest: $val" >&2; exit 1; }
-            ref="${val//ghcr.nju.edu.cn/ghcr.io}"
-            echo "检查 $key -> $ref"
-            for i in 1 2 3; do
-              docker manifest inspect "$ref" >/dev/null 2>&1 && break
-              (( i == 3 )) && { echo "✗ $ref 不可解析" >&2; exit 1; }
-              sleep 5
-            done
-            n=$((n+1))
-          done < <(grep -vE '^\s*#|^\s*$' config/images.env)
-          echo "✓ $n 个镜像 digest 全部可在 GHCR 解析"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: 上游 digest 登记表一致性
+        run: bash scripts/check-upstream-digest.sh
