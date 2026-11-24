@@ -1,7 +1,7 @@
 # Jenkins controller（M1）：CI 构建推 GHCR，部署按 digest 拉取；不发布宿主端口。
-# 镜像默认值里的 @sha256:<64hex> 由 CI（build-images.yml fill-pending）回填，
-# 禁止手填；下方全 0 值只是占位，CI 回填前 it 会一直指向占位（部署前应完成回填）。
-# 切换镜像源只改 IMAGE_JENKINS 环境变量，不改本文件（ghcr.io ↔ ghcr.nju.edu.cn 同 digest）。
+# 镜像默认值里的 @sha256:<64hex> 由 CI（build-images.yml fill-pending）回填，禁止手填；
+# digest 已由 CI 回填（见 tests/images.lock）。切换镜像源只改 IMAGE_JENKINS 环境变量
+# （ghcr.io ↔ ghcr.nju.edu.cn 同 digest），不改本文件。
 services:
   jenkins:
     image: ${IMAGE_JENKINS:-ghcr.io/zeek-zhao/orgflow-devops/m1-jenkins@sha256:0804cd953119e05c3a0ad27eb37c8247b5d0dbb104fae696acbc6f2ad7665799}
@@ -14,17 +14,19 @@ services:
       JENKINS_OPTS: --prefix=/jenkins
       JAVA_OPTS: -Djenkins.install.runSetupWizard=false -Djava.util.logging.config.file=/var/jenkins_home/logging.properties -Xmx1g -Xms512m
       CASC_JENKINS_CONFIG: /var/jenkins_home/casc/jenkins.yaml
-      # JENKINS_URL 由 defaults.env 注入（不写死域名，check-domain 门禁要求）
-      JENKINS_URL: ${JENKINS_URL}
+      # T9.6：JENKINS_URL 由 PUBLIC_HOST 派生，避免与 defaults.env 的 JENKINS_URL 双处硬编码。
+      # defaults.env 的 JENKINS_URL 保留仅作 fallback（供脚本读取），此处为 compose 实际值。
+      JENKINS_URL: https://${PUBLIC_HOST}/jenkins/
       # 插件源固定官方（避免镜像站点漂移导致装不上/升级失败）
       JENKINS_UC: https://updates.jenkins.io
       JENKINS_UC_DOWNLOAD: https://updates.jenkins.io/download
       # LDAP 管理员口令（JCasC managerPasswordSecret）：沿用 ldap 服务的 LDAP_PASSWORD 默认值
       LDAP_ADMIN_PASSWORD: ${LDAP_PASSWORD:-change-me}
-      # agent SSH 私钥 / host key 公钥：从宿主环境透传（gen-jenkins-secrets.sh 生成 secrets/ 后 export）
-      # 不进仓库、不进 .env；JCasC 用 directEntry + manuallyProvided 引用。
-      - JENKINS_AGENT_SSH_KEY
-      - JENKINS_AGENT_HOST_KEY
+      # agent SSH 私钥 / host key 公钥：由 up.sh 从 secrets/ 注入（见 T9.1）；
+      # 缺省空值只为让 compose 解析通过，缺值由 up.sh 拦截（不进仓库、不进 .env）。
+      JENKINS_AGENT_SSH_KEY: ${JENKINS_AGENT_SSH_KEY:-}
+      JENKINS_AGENT_HOST_KEY: ${JENKINS_AGENT_HOST_KEY:-}
+      TZ: Asia/Shanghai
     volumes:
       - jenkins_home:/var/jenkins_home
       # JCasC 配置与 Job DSL 目录整目录只读挂载（jobs/*.groovy 需进容器）

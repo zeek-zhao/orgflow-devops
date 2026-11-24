@@ -8,7 +8,7 @@ def services = ['dnsmasq', 'ldap', 'caddy', 'homepage', 'ldapadmin', 'router', '
 services.each { svc ->
     pipelineJob("verify-${svc}") {
         description("局域网探测：${svc}（check-lan.sh ${svc}，在 orgflow-agent 上执行）")
-        logrotate {
+        logRotator {
             daysToKeep(7)
             numToKeep(20)
         }

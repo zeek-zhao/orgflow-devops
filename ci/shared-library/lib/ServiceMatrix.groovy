@@ -1,9 +1,10 @@
 // 服务清单与探测类型（M1，可选）。
 // Jenkins 的 load 在 agent 侧对绝对路径支持不稳定且受 Script Security 沙箱约束，
 // 故 Jenkinsfile 一律用纯 shell 调 check-lan.sh，不依赖本文件。
-// 此处仅作为"服务矩阵"的文档化真源，供人工核对 7+2 个探测目标。
+// 此处仅作为"服务矩阵"的文档化真源，供人工核对 8 个探测目标。
+// Job 名 verify-dnsmasq 与 manifest 服务名一致，探测 key 用 dnsmasq（脚本同时认别名 dns）。
 return [
-    dns:          [probe: 'dig',        expect: '192.168.90.10'],
+    'dnsmasq (alias dns)': [probe: 'dig', expect: '192.168.90.10'],
     ldap:         [probe: 'ldapsearch', expect: 'dn:'],
     caddy:        [probe: 'curl',       expect: 'HTTP 200 /config/'],
     homepage:     [probe: 'curl',       expect: 'HTTP 200 /'],

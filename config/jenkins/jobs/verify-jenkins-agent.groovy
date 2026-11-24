@@ -3,7 +3,7 @@ def pipelineText = new File('/opt/orgflow/ci/jenkins/pipelines/verify-jenkins-ag
 
 pipelineJob('verify-jenkins-agent') {
     description('验证 orgflow-agent：SSH 会话用户 jenkins(uid1000)、java/dig/ldapsearch/curl 可用')
-    logrotate {
+    logRotator {
         daysToKeep(7)
         numToKeep(20)
     }

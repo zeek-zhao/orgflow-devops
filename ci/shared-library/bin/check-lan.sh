@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 单服务局域网探测（M1，唯一真源）——从 agent 容器内执行（在 orgflow 网络、DNS 指向 dnsmasq）。
-# 用法：check-lan.sh <service>     service ∈ dns|ldap|caddy|homepage|ldapadmin|router|jenkins|jenkins-agent
+# 用法：check-lan.sh <service>     service ∈ dns|dnsmasq|ldap|caddy|homepage|ldapadmin|router|jenkins|jenkins-agent
 # 退出码即结果（0 成功，非 0 失败）；原始输出（含 dig/curl 退出码）打到 console，便于回看。
 #
 # 挂载即共享库：本脚本位于宿主 ci/shared-library/bin，挂进 agent /opt/orgflow/shared:ro。
@@ -8,9 +8,20 @@
 set -uo pipefail
 
 SVC="${1:-}"
-# DOMAIN 由 Jenkinsfile/compose 从 ${DOMAIN} 注入（不写死业务网关域名，check-domain 门禁要求）
-DOMAIN="${DOMAIN:?DOMAIN 未注入}"
+# DOMAIN 按需解析（curl 类探针不依赖它）：优先 env，其次只读挂载的 defaults.env，最后才报错。
+# 不写死业务网关域名（check-domain 门禁要求）。DEFAULTS_FILE 由 agent compose 挂载。
+DEFAULTS_FILE="${DEFAULTS_FILE:-/opt/orgflow/config/defaults.env}"
+need_domain() {
+  if [[ -z "${DOMAIN:-}" && -r "$DEFAULTS_FILE" ]]; then
+    DOMAIN="$(sed -n 's/^DOMAIN=//p' "$DEFAULTS_FILE" | head -1)"
+    export DOMAIN
+  fi
+  [[ -n "${DOMAIN:-}" ]] || { echo "DOMAIN 未注入：env 为空且读不到 $DEFAULTS_FILE" >&2; exit 2; }
+}
 DNS_IP="${IP_DNSMASQ:-192.168.90.15}"
+# Caddy admin 只绑 192.168.90.10:2019 且校验 Host（服务名 caddy:2019 被拒 403），
+# 用固定 IP（IP_CADDY）访问；该 IP 是本底座固定编排地址，非业务域名。
+CADDY_ADMIN="${IP_CADDY:-192.168.90.10}:2019"
 LDAP_BASE="${LDAP_BASE:-dc=orgflow,dc=local}"
 LDAP_DN="${LDAP_ADMIN_DN:-cn=admin,dc=orgflow,dc=local}"
 LDAP_PW_FILE=""
@@ -22,7 +33,8 @@ pass() { echo "  ✓ $1"; return 0; }
 fail() { echo "  ✗ $1" >&2; return 1; }
 
 case "$SVC" in
-  dns)
+  dns|dnsmasq)
+    need_domain
     echo "[dns] dig home.$DOMAIN @$DNS_IP → 期望 192.168.90.10"
     out="$(dig +short "home.$DOMAIN" "@$DNS_IP" 2>&1)"; rc=$?
     echo "$out"; [[ $rc -eq 0 && "$out" == *"192.168.90.10"* ]] && pass dns || { fail "dns rc=$rc out=$out"; exit 1; }
@@ -39,13 +51,15 @@ case "$SVC" in
     echo "$out" | head -5; [[ $rc -eq 0 && "$out" == *"dn:"* ]] && pass ldap || { fail "ldap rc=$rc"; exit 1; }
     ;;
   caddy)
-    echo "[caddy] curl http://caddy:2019/config/"
-    code="$(curl -s -o /dev/null -w '%{http_code}' http://caddy:2019/config/)"; rc=$?
+    echo "[caddy] curl http://$CADDY_ADMIN/config/（admin 固定 IP，服务名 Host 被白名单拒）"
+    code="$(curl -s -o /dev/null -w '%{http_code}' "http://$CADDY_ADMIN/config/")"; rc=$?
     [[ $rc -eq 0 && "$code" == "200" ]] && pass "caddy HTTP $code" || { fail "caddy rc=$rc code=$code"; exit 1; }
     ;;
   homepage)
-    echo "[homepage] curl http://homepage:3000/"
-    code="$(curl -s -o /dev/null -w '%{http_code}' http://homepage:3000/)"; rc=$?
+    # HomePage 有 Host 白名单（HOMEPAGE_ALLOWED_HOSTS 含 localhost/公网域名），
+    # 服务名/IP 作 Host 会 400；用 localhost 头（白名单必有）走服务名解析。
+    echo "[homepage] curl http://homepage:3000/ -H 'Host: localhost'"
+    code="$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: localhost' http://homepage:3000/)"; rc=$?
     [[ $rc -eq 0 && "$code" == "200" ]] && pass "homepage HTTP $code" || { fail "homepage rc=$rc code=$code"; exit 1; }
     ;;
   ldapadmin)
@@ -64,13 +78,16 @@ case "$SVC" in
     [[ $rc -eq 0 && "$code" == "200" ]] && pass "jenkins HTTP $code" || { fail "jenkins rc=$rc code=$code"; exit 1; }
     ;;
   jenkins-agent)
-    echo "[jenkins-agent] id + java -version + dig"
-    id; /opt/java/openjdk/bin/java -version 2>&1 | head -1
-    dig +short "home.$DOMAIN" "@$DNS_IP" | head -1
-    pass jenkins-agent
+    need_domain
+    [[ "$(id -u)" == "1000" ]] || { fail "会话用户不是 jenkins(1000)"; exit 1; }
+    /opt/java/openjdk/bin/java -version >/dev/null 2>&1 || { fail "java 不可用"; exit 1; }
+    dig -v >/dev/null 2>&1 || { fail "dig 不可用"; exit 1; }
+    ip="$(dig +short "home.$DOMAIN" "@$DNS_IP" | head -1)"
+    [[ -n "$ip" ]] || { fail "DNS 解析 home.$DOMAIN 失败"; exit 1; }
+    pass "jenkins-agent uid=1000 java/dig/dns ok ($ip)"
     ;;
   *)
-    echo "用法：$0 <dns|ldap|caddy|homepage|ldapadmin|router|jenkins|jenkins-agent>" >&2
+    echo "用法：$0 <dns|dnsmasq|ldap|caddy|homepage|ldapadmin|router|jenkins|jenkins-agent>" >&2
     exit 2
     ;;
 esac

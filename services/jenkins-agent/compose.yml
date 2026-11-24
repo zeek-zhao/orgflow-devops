@@ -21,6 +21,8 @@ services:
       - ../../secrets/agent_ssh_key.pub:/run/secrets/agent_ssh_pub:ro
       # 共享库挂载：宿主改脚本下一次构建立即生效（不配 Git SCM、不挂 docker.sock）
       - ../../ci/shared-library:/opt/orgflow/shared:ro
+      # 探针脚本 DOMAIN/IP_DNSMASQ 兜底真源（env 快路径缺失时只读回退）
+      - ../../config/defaults.env:/opt/orgflow/config/defaults.env:ro
     expose:
       - "22"
     # 启动顺序（jenkins fully up → agent）由 manifest.tsv depends_on + up.sh 保证。

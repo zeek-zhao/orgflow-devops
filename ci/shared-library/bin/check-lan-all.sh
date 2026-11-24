@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # 全服务局域网检测（M1）——并行调用 check-lan.sh 探测全部服务，输出 Markdown 汇总表。
-# 用法：check-lan-all.sh [服务列表...]   默认探测 7 个核心服务。
+# 用法：check-lan-all.sh [服务列表...]   默认探测 8 项（7 服务 + jenkins-agent 自身断言）。
 # 退出码：任一服务失败即非 0；lan-report.md 写到当前目录（Jenkins archiveArtifacts 存档）。
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$HERE/check-lan.sh"
 
-ALL=(dns ldap caddy homepage ldapadmin router jenkins)
+ALL=(dns ldap caddy homepage ldapadmin router jenkins jenkins-agent)
 SERVICES=("$@")
 [[ ${#SERVICES[@]} -eq 0 ]] && SERVICES=("${ALL[@]}")
 
@@ -28,7 +28,7 @@ for p in "${pids[@]}"; do wait "$p" 2>/dev/null || true; done
 
 echo ""
 echo "| 服务 | 结果 | 开始 | 结束 |"
-|---|---|---|---|
+echo "|---|---|---|---|"
 failed=0
 for svc in "${SERVICES[@]}"; do
   if [[ -f "$TMP/$svc.status" ]]; then
