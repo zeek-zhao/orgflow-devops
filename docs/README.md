@@ -1,9 +1,9 @@
-# orgflow M0 最小 DevOps 底座 · 文档入口
+# orgflow 最小 DevOps 底座 · 文档入口
 
-> 状态：适用 | 最后核对：2026-11-24 | 对应分支：feat/m0-v2
+> 状态：适用 | 最后核对：2026-11-25 | 对应分支：feat/m1-jenkins（M1 二轮修复 T1~T9）
 
 
-> 7 服务单机自托管底座：DNS → 证书 → Caddy 唯一入口 → OpenLDAP → HomePage → Router。
+> 9 服务单机自托管底座：M0 七服务（DNS → 证书 → Caddy 唯一入口 → OpenLDAP → HomePage → Router）+ M1 两服务（Jenkins controller + SSH agent）。Jenkins 手册见 [jenkins.md](services/jenkins.md)（含 LDAP 账号、深色主题、Job 冒烟、匿名 403 勘误）。
 > 全部镜像 @sha256 锁定，逐服务 compose 按 manifest 顺序拉起，一功能一 Issue 一 PR。
 
 ## 是什么

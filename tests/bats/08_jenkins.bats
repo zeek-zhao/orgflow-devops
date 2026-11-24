@@ -28,11 +28,15 @@
   [ "$output" = "200" ]
 }
 
-@test "匿名不可读 Job API（未登录 403/重定向登录）" {
+@test "匿名看不到 Job（T5 后：Overall/Read 200 但 jobs 为空）" {
+  # T5 加 Hudson.Read:anonymous 消除匿名白屏后，api/json 变 200（登录页可读），
+  # 但无 Item.Read 权限 → jobs 列表为空。断言"看不到 Job"这一安全目标，而非旧状态码。
   PH="$(grep '^PUBLIC_HOST=' config/defaults.env | cut -d= -f2-)"
   PP="$(grep '^PUBLIC_PORT=' config/defaults.env | cut -d= -f2-)"
-  run curl -s -o /dev/null -w '%{http_code}' -H "Host: $PH" "http://127.0.0.1:${PP:-18081}/jenkins/api/json"
-  [[ "$output" == "403" || "$output" == "302" ]]
+  local body n
+  body="$(curl -s --noproxy '*' -H "Host: $PH" "http://127.0.0.1:${PP:-18081}/jenkins/api/json")"
+  n="$(printf '%s' "$body" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("jobs",[])))')"
+  [ "$n" = "0" ]
 }
 
 @test "Job 全绿（verify-lan-all 与 7 条子 Job）" {
@@ -43,6 +47,8 @@
 }
 
 @test "8080 未发布宿主端口" {
-  run bash -c '! ss -tln 2>/dev/null | grep -q ":8080 "'
-  [ "$status" -eq 0 ]
+  # 注意：宿主 8080 由 of-caddy 合法发布（8080->80，M0 公网 HTTP 入口），
+  # 不能用全局 ss 判断；只检查 jenkins 容器自身没有 8080/tcp 的宿主映射。
+  run docker inspect -f '{{json .HostConfig.PortBindings}}' "${PFX:-of}-jenkins"
+  [[ "$output" != *'8080/tcp'* ]]
 }

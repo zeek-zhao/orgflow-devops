@@ -19,6 +19,16 @@
 - **门禁/CI**（M1-T0.5）：`check-images.sh` SERVICES/BUILDABLE 加 jenkins 两项、pull_policy 放宽 `never|missing`；`build-images.yml` matrix 加两个镜像、分支触发 `feat/m1-jenkins`、fill-pending ref/base 动态化并把 CI digest 回填两个 compose；仓库变量 `PUSH_IMAGES=true`。
 - **GitHub 清理**（M1-T0）：25 条历史 open issue 关单（#147 打 icebox）、5 个里程碑删除。
 
+### Fixed（2026-11-25 二轮实测修复，T1~T9）
+- **compose YAML**（T1）：`services/jenkins/compose.yml` 的 `environment` map/list 混用改统一 mapping，密钥两项改 `${VAR:-}`；补 `TZ`。
+- **Job 全红根因**（T2/T3）：`check-lan.sh` 顶部 `DOMAIN:?` 断言改 `need_domain()` 按需解析（curl 探针不依赖 DOMAIN），case 认 `dns|dnsmasq`；agent compose 只读挂 `config/defaults.env` 兜底；`jenkins-agent` 分支加 uid/java/dig/DNS 真断言并纳入全服务检测（8 项）。
+- **LDAP 固化**（T4）：账号/组从 `50-users.ldif` 拆到 `config/ldap/51-jenkins.ldif`（空卷首启按序导入）；`jenkins-admins` 含 jenkins-ci + zeek.zhao 两 member；给出已有卷 ldapadd 补齐命令（文档）。
+- **匿名 403 白屏**（T5）：`jenkins.yaml` 加 `Hudson.Read:anonymous`（只 Overall/Read，不泄漏 Job），消除白底 "Authentication required"。
+- **scheme 泄漏**（T6）：Caddyfile 与 router render 两处 `header_up X-Forwarded-Proto https`/`X-Forwarded-Host`，外链 `report-uri` 由 http 变 https。
+- **深色主题**（T7）：`plugins.txt` + `plugins.lock.md` 钉 theme-manager/dark-theme（update-center 实解析），`jenkins.yaml` 顶层 `appearance.themeManager`（待镜像重建后生效）。
+- **Job 冒烟**（T8）：新增 `scripts/jenkins-smoke.sh` + `make smoke` + `tests/bats/10_jenkins_smoke.bats`；反代 crumb 403 时用 `JENKINS_CONTAINER` 走容器内通道；日志落 `artifacts/jenkins-smoke/`（gitignore）。
+- **收口**（T9）：`up.sh` 自动从 secrets 注入 SSH 密钥；`images.lock` 回填 jenkins 两行真实 imageId（零 PENDING）；`manifest.tsv` health_url 改容器内地址并标注为文档字段；`test-static.sh` 加 YAML 解析校验 + JENKINS_URL/PUBLIC_HOST 一致性断言；`JENKINS_URL` 由 PUBLIC_HOST 派生去重。
+
 ## [m0-v1.1] — 2026-11-24（已打 tag）
 
 > 分支 `feat/m0-release`，tag `m0-v1.1` @ `abf5034`。本轮为展示层优化与清理，不动 `main`、不重建网络/数据卷。

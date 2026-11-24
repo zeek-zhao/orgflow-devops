@@ -28,6 +28,15 @@ IMAGES_ENV="${IMAGES_ENV:-config/images.env}"
 USE_LOCAL_IMAGES="${USE_LOCAL_IMAGES:-0}"
 PREFIX="${CONTAINER_PREFIX:-of}"
 
+# M1 T9.1：Jenkins SSH 密钥不在 .env（安全基线），重建/单起时自动从 secrets/ 注入，
+# 避免 JCasC 拿到空私钥导致 agent 节点脱机。已有 env 值（显式 export）优先，不覆盖。
+if [[ -z "${JENKINS_AGENT_SSH_KEY:-}" && -s secrets/agent_ssh_key ]]; then
+  export JENKINS_AGENT_SSH_KEY="$(cat secrets/agent_ssh_key)"
+fi
+if [[ -z "${JENKINS_AGENT_HOST_KEY:-}" && -s secrets/agent_host_key.pub ]]; then
+  export JENKINS_AGENT_HOST_KEY="$(awk '{print $1" "$2}' secrets/agent_host_key.pub)"
+fi
+
 # ---- 读 manifest（顺序 + 依赖 + 健康地址）----
 declare -a ORDER=()
 declare -A DEPS=() HEALTHURL=()
@@ -106,6 +115,12 @@ while (( $# )); do
   esac
 done
 start_ts=$(date +%s)
+
+# M1 T9.1：实起 jenkins（非 dry-run）时缺密钥直接拦，避免 JCasC 空私钥让节点脱机。
+if (( ! DRY )) && [[ "$TARGET" == "jenkins" && ( -z "${JENKINS_AGENT_SSH_KEY:-}" || -z "${JENKINS_AGENT_HOST_KEY:-}" ) ]]; then
+  echo "✗ 起 jenkins 缺 SSH 密钥：先跑 scripts/gen-jenkins-secrets.sh 生成 secrets/（见 docs/services/jenkins.md）" >&2
+  exit 2
+fi
 
 emit() {
   local svc="$1" phase="$2" img="$3" ms="$4" cid="$5" healthy="$6" note="${7:-}"

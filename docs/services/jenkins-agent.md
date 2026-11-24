@@ -21,7 +21,8 @@ SSH 构建执行节点：9 条局域网检测 Job 全部在 `orgflow-agent` 节�
 - 无持久化数据卷（探测无状态）；SSH host key 与登录密钥是受管产物，由 `scripts/gen-jenkins-secrets.sh` 幂等生成 `secrets/`（gitignore，不进仓库）：
   - `agent_host_key` → 挂 `/etc/ssh/ssh_host_ed25519_key`（跨容器重建稳定）；
   - `agent_ssh_key.pub` → 挂 `/run/secrets/agent_ssh_pub`（入口脚本写 authorized_keys）；
-  - `agent_ssh_key` → 宿主 export `JENKINS_AGENT_SSH_KEY`（JCasC directEntry 凭据，不落仓库）。
+  - `agent_ssh_key` → `up.sh` 自动从 `secrets/` 注入 `JENKINS_AGENT_SSH_KEY`（JCasC directEntry 凭据，不落仓库；T9.1 起无需手动 export）。
+- 只读挂载 `../../config/defaults.env:/opt/orgflow/config/defaults.env:ro`（M1 T2）：`check-lan.sh` 的 `need_domain()` 在 env 快路径 `DOMAIN` 为空时回退读它（`DEFAULTS_FILE` 默认指向此路径），避免探针因 DOMAIN 未注入而在第一个服务前退出；`IP_DNSMASQ` 同理。
 - host key 校验用 `manuallyProvidedKeyVerificationStrategy.key`（显式期望值），**不用** `manuallyTrusted`（容器重建换 key 会脱机）。
 
 ## 5. 运维
@@ -30,6 +31,8 @@ SSH 构建执行节点：9 条局域网检测 Job 全部在 `orgflow-agent` 节�
 - **普通用户身份**：容器 PID 1 是 root（sshd 绑 22 需要），但 SSH 会话用户是普通用户 jenkins（uid 1000，非 root、无 sudo、无 docker 组）。验收必须 `docker exec -u jenkins ...` 或真实 Job 里 `id` 验证，root 能跑不算通过。
 - **不要切 USER**：Dockerfile 末尾保持 `USER root`，只在 apt install 前显式 `USER root`；切回 jenkins 会让 entrypoint 无法启动 sshd。
 - 挂载权限：宿主 `chmod -R a+rX ci/shared-library`（脚本已自动做）；Job 不得往 `/opt/orgflow/shared` 写文件（ro 挂载）。
+- 探针 Host 白名单适配（M1 二轮）：caddy admin 只绑 `192.168.90.10:2019` 且校验 Host（服务名 `caddy:2019` 被拒 403）→ check-lan.sh 用 `IP_CADDY`；HomePage 有 `HOMEPAGE_ALLOWED_HOSTS`（不含服务名/IP）→ homepage 探针加 `Host: localhost`。两者都是 R1 安全收口后的 Host 白名单，探针按白名单访问，不是绕过。
+- `check-lan.sh <svc>` 的 `dns` 与 `dnsmasq` 等价（Job 名 `verify-dnsmasq` 保留以不断 history）；`jenkins-agent` 分支真断言 uid=1000 + java/dig/dns；`check-lan-all.sh` 默认探测 8 项（7 服务 + jenkins-agent 自身）。
 - 资源：`mem_limit: 512m`（探测足够），`restart: unless-stopped`。
 - 健康：`timeout 2 bash -c '</dev/tcp/127.0.0.1/22'`（不依赖 curl/nc；up.sh 只认容器 Health，不看 manifest 的 `health_url`）。
 
