@@ -10,7 +10,7 @@ Caddy（唯一入口，192.168.90.10）
     ├─ home.DOMAIN      → homepage:3000   (192.168.90.11)
     ├─ ldapadmin.DOMAIN → ldapadmin:80    (192.168.90.12)
     ├─ router.DOMAIN    → router:8080     (192.168.90.14)
-    └─ :PUBLIC_PORT 按 path 反代（公网总览/healthz/home//ldapadmin//router//caddy/）
+    └─ :PUBLIC_PORT 按 path 反代（/ → homepage；/_next /ldapadmin/ /router/；/healthz /status 探针；无 /caddy/）
 
 内网 docker 网桥 orgflow（192.168.90.0/24）：
     dnsmasq .15 (53/udp)   ldap .13 (389)   certs-init 一次性

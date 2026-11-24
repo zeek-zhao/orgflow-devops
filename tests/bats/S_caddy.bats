@@ -6,8 +6,8 @@
   [ "$output" = "healthy" ]
 }
 
-@test "Admin API 200" {
-  run docker exec of-caddy curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1:2019/config/
+@test "Admin API 200（仅内网 IP，127 不再监听）" {
+  run docker exec of-caddy curl -fsS -o /dev/null -w '%{http_code}' http://192.168.90.10:2019/config/
   [ "$output" = "200" ]
 }
 

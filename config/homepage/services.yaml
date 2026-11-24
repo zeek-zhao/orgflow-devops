@@ -25,8 +25,8 @@
         ping: http://router:8080/healthz
 - 基础组件:
     - Caddy 网关:
-        href: https://home.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}/caddy/config/
-        description: 网关配置只读查看 · caddy:2019 · 见 docs/services/caddy.md
+        href: https://router.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}/
+        description: 网关配置经 router /render 热更新 · admin 仅内网 · 见 docs/services/caddy.md
         icon: mdi-web
         siteMonitor: http://caddy:2019/config/
         ping: http://caddy:2019/config/

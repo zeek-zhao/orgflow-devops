@@ -30,4 +30,4 @@
 
 ## 验证方式
 
-`curl -s https://<PUBLIC_HOST>/healthz` 返回 200；`/home/`、`/ldapadmin/`、`/router/`、`/caddy/` 各 200（真机人工验收 AC-21）。
+`curl -s https://<PUBLIC_HOST>/healthz` 返回 200；`/`（HomePage 门面）、`/ldapadmin/`、`/router/routes`、`/_next/static/*` 各 200；`/caddy/*` 公网不可达（安全收紧，真机人工验收 AC-21）。

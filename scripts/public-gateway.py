@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
-"""PublicGateway —— 公网统一入口（配合 Tailscale Funnel）。
+"""PublicGateway —— 【已停用·历史诊断工具】早期旁路公网网关。
+
+> 当前默认公网入口是 Tailscale Funnel 边缘终止 TLS → 明文 :PUBLIC_PORT(18081)
+> → Caddy 按 path 反代。唯一配置真源是 config/Caddyfile（router /render 可热更新），
+> 路由口径见 docs/公网访问.md。本脚本已被 Caddy 取代，仅保留作诊断，不参与启动链。
+> 下方路径表为历史方案记录，与当前实跑不同：当前 `/` 即 HomePage 门面，
+> `/_next/static/*` 随根命中；`/caddy/*` 已从公网删除，admin 只绑内网 192.168.90.10:2019。
 
 Funnel 只暴露一个 *.ts.net 域名，底座各服务又用内网域名/内部 CA，公网无法解析。
-本网关跑在宿主机，把单一入口按路径反代到各容器，并提供汇总状态页：
+本网关曾跑在宿主机，把单一入口按路径反代到各容器，并提供汇总状态页（历史方案）：
 
   /                → 状态总览（每个服务的健康 + 公网快捷链接）
   /api/health      → JSON 健康清单（供监控/自检）
-  /home/           → homepage   容器 :3000
+  /home/           → homepage   容器 :3000（历史路径，当前已改由 Caddy 根路径承载）
   /ldapadmin/      → ldapadmin  容器 :8080
   /router/         → router     容器 :8080
-  /caddy/          → caddy admin :2019（只读健康用）
+  /caddy/          → caddy admin :2019（当前已删除，公网不可达）
 
 设计约束：
 - 只用 Python 标准库（宿主机无额外依赖）。

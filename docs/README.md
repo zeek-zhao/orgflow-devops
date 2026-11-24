@@ -37,11 +37,14 @@ make verify                   # 全量验收矩阵 AC-1~22
 
 | 入口 | 地址 | 说明 |
 |---|---|---|
-| 统一面板 | `https://home.DOMAIN/` | 默认首页 |
-| LDAP 管理 | `https://ldapadmin.DOMAIN/` | 需登录 |
-| 路由状态 | `https://router.DOMAIN/` | /healthz /render |
-| 公网入口 | `https://PUBLIC_HOST/` | Tailscale Funnel，按 path 反代 |
+| 统一面板（内网） | `https://home.DOMAIN/` | 默认首页 |
+| LDAP 管理（内网） | `https://ldapadmin.DOMAIN/` | 需登录 |
+| 路由状态（内网） | `https://router.DOMAIN/` | /healthz /render |
+| 公网入口（默认） | `https://PUBLIC_HOST/` | Tailscale Funnel 边缘 TLS + Caddy 按 path 反代；`/` 即 HomePage 门面 |
+| 公网入口（可选生产） | Caddy 直听 `:443` + acme | 需可解析公网域名 + 80/443，见 `engineering/证书与CA.md` |
 | 网关域名真源 | `.env` 的 `DOMAIN` | 改一处全链路跟随 |
+
+> 默认公网路径：Funnel 边缘终止 TLS → 明文 `:PUBLIC_PORT`（18081）→ Caddy；admin（`:2019`）只绑内网，公网无 `/caddy/*`。
 
 ## 文档地图
 

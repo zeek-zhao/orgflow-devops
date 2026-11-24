@@ -4,10 +4,12 @@
 
 | 模式 | 说明 | 适用 |
 |---|---|---|
-| acme（默认） | Caddy 自动向公网 CA 申请证书，浏览器无告警 | 有公网域名 + 80/443 可达 |
-| internal | 内部 CA 自签，需客户端装根证书 | 内网/断网环境 |
+| internal + Funnel（默认） | 内网 CA 自签（`*.DOMAIN`），公网由 Tailscale Funnel 边缘用合法 `*.ts.net` 证书终止 TLS，Caddy 只做明文反代 | 当前默认部署：沙箱/无公网 IP/无自有公网域名 |
+| acme（可选生产） | Caddy 直接监听公网 `:443`，自动向公网 CA 申请证书 | 有可解析到本机的公网域名 + 80/443 放行 |
 
-本底座默认 internal（certs-init 用内部 CA 签发到共享卷 ca-data），SAN 覆盖 `*.DOMAIN` 与各子域。
+**默认采用 internal + Funnel**：公网入口走 Funnel 边缘终止 TLS，回源明文 `:PUBLIC_PORT`（默认 18081）；内网站点用 certs-init 签发的内部 CA 证书，SAN 覆盖 `*.DOMAIN` 与各子域。这条路已在沙箱实测可用，无需公网 IP。
+
+**切到 acme 可选生产模式的启用条件**（当前默认不启用）：① 有一个可解析到本机公网 IP 的域名（如 `org-devops.com`）；② 80/443 入站放行；③ 将 `DOMAIN` 设为该域名、令 Caddy 直接监听 `:443` 并去掉 Funnel 转发。沙箱不含条件 ①，强切会导致部署不可达，故仅作为文档化的生产选项，不在默认路径中执行。详见 `records/ADR-01-Tailscale接入.md` 与 `records/ADR-02-内部CA-vs-ACME.md`。
 
 ## 签发流程
 
