@@ -2,11 +2,19 @@
 #
 # 内网部分：按 Host 分站点，TLS 用共享 ca-data 卷里的站点证书（certs-init 签发）。
 # 公网部分：Tailscale Funnel 在边缘终止 TLS 后转发到 :PUBLIC_PORT 纯 HTTP，
-#           Caddy 按 path 反代到各服务，并提供存活探针与服务总览页。
+#           Caddy 按 path 反代到各服务。HomePage 占根路径 /（唯一门面），
+#           /_next/ /api/ /site.webmanifest 等静态资源随根路径一起命中 homepage，杜绝裂图。
 # 域名/端口用 Caddyfile 环境变量占位，由 compose environment 注入（改域名不用改本文件）。
+#
+# 拍定决策（orgflow-AI-提示词-最终版）：
+#   - 单域名 + 路径前缀，不用子域名对外；HomePage 占 /。
+#   - Admin 只绑内网 IP（容器网可达、公网不可达），删除公网 /caddy/*，
+#     任何人不得从公网 POST /load 换掉反代（P0）。
 
 {
-    admin 0.0.0.0:2019
+    # 只绑内网固定 IP：router 容器经 caddy:2019(=192.168.90.10) 可达；
+    # Funnel 只转发 :PUBLIC_PORT，公网无法触达 2019。
+    admin 192.168.90.10:2019
 }
 
 # 内网唯一入口：:80 全量 308 跳 :443
@@ -15,71 +23,47 @@
 }
 
 # 内网 TLS 站点（SAN 由 certs-init 覆盖 *.$DOMAIN 与各子域）
-home.{$DOMAIN:org-devops.local} {
+home.{$DOMAIN:org-devops.com} {
     tls /ca/site.crt /ca/site.key
     reverse_proxy homepage:3000
 }
 
-ldapadmin.{$DOMAIN:org-devops.local} {
+ldapadmin.{$DOMAIN:org-devops.com} {
     tls /ca/site.crt /ca/site.key
     reverse_proxy ldapadmin:80
 }
 
-router.{$DOMAIN:org-devops.local} {
+router.{$DOMAIN:org-devops.com} {
     tls /ca/site.crt /ca/site.key
     reverse_proxy router:8080
 }
 
 # ===== 公网入口（Funnel → 本端口）=====
 # TLS 在 Funnel 边缘终止并做合法 *.ts.net 证书，这里只做纯 HTTP 路由。
-# 所有服务统一经此 Caddy 反代；健康与状态页也由 Caddy 提供。
 :{$PUBLIC_PORT:18081} {
+    # 精确匹配优先，必须排在 / 之前
     @healthz path /healthz
     handle @healthz {
         respond "ok" 200
     }
 
-    @root path /
-    handle @root {
-        respond <<HTML
-<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OrgFlow DevOps · 服务总览</title>
-<style>
-body{font-family:system-ui,sans-serif;margin:0;background:#0d1117;color:#e6edf3}
-.wrap{max-width:820px;margin:2.5rem auto;padding:0 1rem}
-h1{font-size:1.5rem} .sub{color:#8b949e;margin-bottom:1.5rem}
-a{display:block;padding:.7rem .9rem;margin:.4rem 0;background:#161b22;border:1px solid #30363d;
-border-radius:8px;color:#58a6ff;text-decoration:none}
-a:hover{border-color:#58a6ff} code{color:#8b949e;font-size:.85rem}
-</style></head><body><div class="wrap">
-<h1>OrgFlow DevOps · 最小底座服务总览</h1>
-<div class="sub">公网入口经 Tailscale Funnel → Caddy 唯一入口 → 各服务。点下方链接直达。</div>
-<a href="/home/"><b>统一导航面板</b> <code>/home/ → homepage:3000</code></a>
-<a href="/ldapadmin/"><b>LDAP 管理页</b> <code>/ldapadmin/ → ldapadmin:80</code></a>
-<a href="/router/routes"><b>路由状态/热更新</b> <code>/router/routes → router:8080/routes</code></a>
-<a href="/router/healthz"><b>Router 健康探针</b> <code>/router/healthz</code></a>
-<a href="/caddy/config/"><b>Caddy Admin（只读查看）</b> <code>/caddy/config/ → caddy:2019/config/</code></a>
-<a href="/healthz"><b>入口存活探针</b> <code>/healthz</code></a>
-<p class="sub">ldap(389)/dnsmasq(53udp) 为非 HTTP 内部服务，不提供公网 Web 路径。</p>
-</div></body></html>
-HTML
+    @status path /status
+    handle @status {
+        respond "ok" 200
     }
 
-    handle_path /home/* {
-        reverse_proxy homepage:3000
-    }
     handle_path /ldapadmin/* {
         reverse_proxy ldapadmin:80
     }
+
     handle_path /router/* {
         reverse_proxy router:8080
     }
-    handle_path /caddy/* {
-        reverse_proxy localhost:2019
-    }
 
+    # HomePage 占根路径，直接反代不 strip：
+    # /_next/static/*、/api/config/*、/site.webmanifest、/favicon.ico 全部命中，杜绝裂图。
+    # 必须是最后一个 handle（兜底），且用 handle 而非 handle_path 保留原始 URI。
     handle {
-        respond "404 not found" 404
+        reverse_proxy homepage:3000
     }
 }

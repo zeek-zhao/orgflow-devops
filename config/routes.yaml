@@ -1,11 +1,15 @@
-# 路由真源：subdomain → upstream。改这里 → make routes → 30s 内新域 200，不重启 Caddy。
-# 域名后缀不写死：只填子域（home / ldapadmin / router），由 router 渲染时拼上
-# GATEWAY_DOMAIN（来自 .env 的 DOMAIN）。改一处 DOMAIN，全链路跟随（v1.0 §6 / AC-22）。
+# 路由真源：路径前缀 prefix → upstream（单域名路径型，拍定决策：不用子域 vhost）。
+# 改这里 → make routes → 30s 内新前缀 200，不重启 Caddy。
+# prefix 语义：
+#   /            → 根路径，直接反代（homepage 占根，静态资源随根命中）
+#   /ldapadmin   → handle_path /ldapadmin/*，strip 前缀后反代 ldapadmin:80
+#   /router      → handle_path /router/*，strip 前缀后反代 router:8080
+# router 渲染出的路径型配置片段与 Caddy 实跑的公网入口块保持一致（拍定 P1）。
 # 服务名用 compose 服务名（homepage 不是 home；ldapadmin 官方镜像监听 80）。
 routes:
-  - host: home
+  - prefix: /
     upstream: homepage:3000
-  - host: ldapadmin
+  - prefix: /ldapadmin
     upstream: ldapadmin:80
-  - host: router
+  - prefix: /router
     upstream: router:8080
