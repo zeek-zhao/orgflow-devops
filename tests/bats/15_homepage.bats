@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# 15_homepage —— 双分组 / 12 卡 / href 全 https 无 .local / favicon（§8.3）
+# 15_homepage —— 双分组 / 6+4 卡 / href 全 https 无 .local / favicon（R6 后）
 # 静态断言（config 真源）+ 运行态页面（可选 $PUBLIC 只读 curl）。
 
 @test "config/ 无 .local 字面域名" {
@@ -7,16 +7,18 @@
   [ "$status" -eq 0 ]
 }
 
-@test "services.yaml 两分组各 6 卡，href 全 https 无 .local" {
+@test "services.yaml 服务状态 6 卡 + 公网入口 4 卡，href 全 https 无 .local" {
   run python3 - <<'PY'
 import re
 s=open("config/homepage/services.yaml",encoding="utf-8").read()
-groups=re.findall(r'^\s{2}(\S.*):\s*$',s,re.M)
 hrefs=re.findall(r'href:\s*["\']?([^"\'\s]+)',s)
-assert len(hrefs)==12, f"href 数={len(hrefs)}"
+assert len(hrefs)==10, f"href 数={len(hrefs)}"
 assert all(h.startswith("https://") for h in hrefs)
 assert not any(".local" in h for h in hrefs)
-assert "局域网服务状态" in s and "域名入口" in s
+assert "服务状态" in s and "公网入口" in s
+assert not re.search(r'\[(?:lan|domain|LAN|DOMAIN|NO-UI)\]',s), "存在 R6 前的方括号前缀"
+pub=s.split("- 公网入口:")[1]
+assert pub.count("/status")==1, "公网入口组应只有 1 张 /status 卡（状态总览）"
 print("ok")
 PY
   [ "$status" -eq 0 ]

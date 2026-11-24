@@ -1,5 +1,8 @@
 /* OrgFlow 统一面板自定义样式（真源；由镜像 COPY 到 /app/config/custom.css） */
-/* 卡片圆角 + 分组标题字号：最小可用，断网零外链 */
+/* 卡片圆角 + 分组标题/间距微调：最小可用，断网零外链字体 */
 :root { --of-card-radius: 12px; }
 .card, .service, [class*="tile"] { border-radius: var(--of-card-radius) !important; }
 h2, .group-title, [class*="title"] { font-size: 1.05rem; letter-spacing: .02em; }
+/* R6：分组标题与卡片间距微调，让「服务状态」6 张 / 「公网入口」4 张更透气 */
+h2, .group-title, [class*="title"] { margin-top: .4rem; margin-bottom: .7rem; }
+.card, .service, [class*="tile"] { margin: .3rem; }
