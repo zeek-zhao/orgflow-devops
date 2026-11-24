@@ -12,7 +12,7 @@ rc=0
 mapfile -t disk < <(find docs -name '*.md' -type f \
   ! -path 'docs/文档登记册.md' \
   ! -path 'docs/records/执行日志/*' \
-  ! -name 'M0-变更台账.md' ! -name 'M0-人工验收单.md' | sort)
+  ! -name 'M0-变更台账.md' ! -name 'M0-人工验收单.md' ! -name 'M0-截图清单.md' | sort)
 
 # 册子里的路径（第 3 列）
 mapfile -t reg < <(grep -oE 'docs/[^ |]+\.md' "$REG" | sort -u)
