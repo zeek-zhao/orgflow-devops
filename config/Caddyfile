@@ -57,9 +57,9 @@ a:hover{border-color:#58a6ff} code{color:#8b949e;font-size:.85rem}
 <div class="sub">公网入口经 Tailscale Funnel → Caddy 唯一入口 → 各服务。点下方链接直达。</div>
 <a href="/home/"><b>统一导航面板</b> <code>/home/ → homepage:3000</code></a>
 <a href="/ldapadmin/"><b>LDAP 管理页</b> <code>/ldapadmin/ → ldapadmin:80</code></a>
-<a href="/router/"><b>路由状态/热更新</b> <code>/router/ → router:8080</code></a>
+<a href="/router/routes"><b>路由状态/热更新</b> <code>/router/routes → router:8080/routes</code></a>
 <a href="/router/healthz"><b>Router 健康探针</b> <code>/router/healthz</code></a>
-<a href="/caddy/"><b>Caddy Admin（只读查看）</b> <code>/caddy/ → caddy:2019</code></a>
+<a href="/caddy/config/"><b>Caddy Admin（只读查看）</b> <code>/caddy/config/ → caddy:2019/config/</code></a>
 <a href="/healthz"><b>入口存活探针</b> <code>/healthz</code></a>
 <p class="sub">ldap(389)/dnsmasq(53udp) 为非 HTTP 内部服务，不提供公网 Web 路径。</p>
 </div></body></html>
