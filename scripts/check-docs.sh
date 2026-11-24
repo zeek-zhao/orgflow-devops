@@ -13,7 +13,8 @@ rc=0
 mapfile -t disk < <(find docs -name '*.md' -type f \
   ! -path 'docs/README.md' \
   ! -path 'docs/records/执行日志/*' \
-  ! -name 'M0-变更台账.md' ! -name 'M0-人工验收单.md' ! -name 'M0-截图清单.md' | sort)
+  ! -name 'M0-变更台账.md' ! -name 'M0-人工验收单.md' ! -name 'M0-截图清单.md' \
+  ! -name 'M0-v2-复检修复对照表.md' | sort)
 
 # 登记表中的路径：只取「| DOC-... 」行的第 3 列（反引号里的角色阅读链接不算）
 mapfile -t reg < <(grep -E '^\| DOC-[A-Z]-[0-9]+' "$REG" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $4); print $4}' | grep '^docs/' | sort -u)
