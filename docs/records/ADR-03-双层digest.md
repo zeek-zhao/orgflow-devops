@@ -14,7 +14,7 @@
 ## 决策
 
 采用双层 digest：
-- **上游层**：每个 Dockerfile 的 FROM 用官方/基底镜像 @sha256（照抄 main 登记表），真源 `docs/engineering/镜像与供应链.md`，由 `check-upstream-digest.sh` 校验。
+- **上游层**：每个 Dockerfile 的 FROM 用官方/基底镜像 @sha256（照抄 main 登记表），真源 `docs/运维/镜像与供应链.md`，由 `check-images.sh --mode=upstream` 校验。
 - **产物层**：本分支 CI（build-images.yml）构建推 GHCR 的 `m0-*` 镜像 digest，记录 `tests/images.lock`，由 `make images-lock` 回填，人不手改。
 - 薄封装层叠加配置（Caddyfile/LDIF/homepage yaml），自建层（dnsmasq/router）FROM ubuntu:24.04@fe815609。
 
@@ -34,4 +34,4 @@
 
 ## 验证方式
 
-`bash scripts/check-upstream-digest.sh` 输出 6 个 Dockerfile FROM 与登记表一致；`make check-all` 全绿；新克隆仅 checkout 本分支 `bash scripts/sync-build-context.sh && docker compose build` 成功（AC-20）。
+`bash scripts/check-images.sh --mode=upstream` 输出 6 个 Dockerfile FROM 与登记表一致；`make check-all` 全绿；新克隆仅 checkout 本分支 `bash scripts/sync-build-context.sh && docker compose build` 成功（AC-20）。

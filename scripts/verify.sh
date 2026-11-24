@@ -38,7 +38,7 @@ if grep -rqE 'icon: https?://|icon: [a-z_]+\.(png|jpg|svg)' config/homepage/*.ya
 # AC-20 独立构建：7 镜像的 Dockerfile + CI + 登记表齐全
 built=0
 for svc in dnsmasq caddy ldap ldapadmin homepage router; do [[ -f "services/$svc/Dockerfile" ]] && built=$((built+1)); done
-[[ -f .github/workflows/build-images.yml && -f docs/engineering/镜像与供应链.md && $built -eq 6 ]] \
+[[ -f .github/workflows/build-images.yml && -f docs/运维/镜像与供应链.md && $built -eq 6 ]] \
   && P 20 "独立构建（$built Dockerfile+CI+登记表）" || F 20 "独立构建资产缺失"
 
 # ---- 行为项（需真机）----

@@ -1,5 +1,8 @@
 # orgflow M0 最小 DevOps 底座 · 文档入口
 
+> 状态：适用 | 最后核对：2026-11-24 | 对应分支：feat/m0-v2
+
+
 > 7 服务单机自托管底座：DNS → 证书 → Caddy 唯一入口 → OpenLDAP → HomePage → Router。
 > 全部镜像 @sha256 锁定，逐服务 compose 按 manifest 顺序拉起，一功能一 Issue 一 PR。
 
@@ -41,7 +44,7 @@ make verify                   # 全量验收矩阵 AC-1~22
 | LDAP 管理（公网） | `https://PUBLIC_HOST/ldapadmin/` | 需登录 |
 | 路由状态（公网） | `https://PUBLIC_HOST/router/healthz` | 健康探针 |
 | 内网面板 | `https://home.DOMAIN/` | 内网 TLS 站点 |
-| 可选生产入口 | Caddy 直听 `:443` + acme | 需可解析公网域名 + 80/443，见[证书与CA](engineering/证书与CA.md) |
+| 可选生产入口 | Caddy 直听 `:443` + acme | 需可解析公网域名 + 80/443，见[证书与CA](运维/证书与CA.md) |
 | 网关域名真源 | `.env` 的 `DOMAIN` | 改一处全链路跟随 |
 
 > 默认公网路径：Funnel 边缘终止 TLS → 明文 `:PUBLIC_PORT`（18081）→ Caddy；admin（`:2019`）只绑内网，公网无 `/caddy/*`。
@@ -58,13 +61,13 @@ make verify                   # 全量验收矩阵 AC-1~22
 ## 目录索引
 
 - 架构总览：[架构.md](架构.md)（吸收原 network/arch.md：拓扑、固定 IP、分层排查）
-- 使用说明：[使用说明.md](使用说明.md)（吸收原 engineering/使用说明.md：登录、改域名）
-- 启动顺序：[engineering/启动顺序.md](engineering/启动顺序.md)
-- 证书与 CA：[engineering/证书与CA.md](engineering/证书与CA.md)
-- 路由注册：[engineering/路由注册.md](engineering/路由注册.md)
-- 镜像与供应链：[engineering/镜像与供应链.md](engineering/镜像与供应链.md)
-- 排障：[engineering/排障.md](engineering/排障.md)
-- 公网访问：[公网访问.md](公网访问.md)
+- 使用说明：[使用说明.md](使用说明.md)（已吸收旧「使用说明（工程）」：登录、改域名）
+- 启动顺序：[运维/启动顺序.md](运维/启动顺序.md)
+- 证书与 CA：[运维/证书与CA.md](运维/证书与CA.md)
+- 路由注册：[运维/路由注册.md](运维/路由注册.md)
+- 镜像与供应链：[运维/镜像与供应链.md](运维/镜像与供应链.md)
+- 排障：[运维/排障.md](运维/排障.md)
+- 公网访问：[运维/公网访问.md](运维/公网访问.md)
 - 架构决策记录：[records/ADR-*.md](records/)
 - 服务手册：[services/](services/)
 
@@ -83,13 +86,13 @@ make verify                   # 全量验收矩阵 AC-1~22
 | DOC-E-002 | 架构总览（含 network/arch） | docs/架构.md | 入口 | review | zeek.zhao | 6 | T4 T7 |
 | DOC-P-001 | 使用说明（含工程使用说明） | docs/使用说明.md | 规程 | review | zeek.zhao | 6 | T8 |
 | DOC-P-002 | M0 治理约定（分支/PR/记录留存） | docs/records/M0-治理约定.md | 规程 | review | zeek.zhao | 6 | T0 |
-| DOC-P-003 | 公网访问（Tailscale Funnel + Caddy 唯一入口） | docs/公网访问.md | 规程 | review | zeek.zhao | 6 | Funnel |
+| DOC-P-003 | 公网访问（Tailscale Funnel + Caddy 唯一入口） | docs/运维/公网访问.md | 规程 | review | zeek.zhao | 6 | Funnel |
 | DOC-R-001 | 问题解决方案记录 | docs/records/问题解决方案记录.md | 参考 | review | zeek.zhao | 6 | 真机 |
-| DOC-E-003 | 镜像与供应链（双层 digest） | docs/engineering/镜像与供应链.md | 参考 | review | zeek.zhao | 6 | T2 |
-| DOC-E-005 | 启动顺序 | docs/engineering/启动顺序.md | 规程 | review | zeek.zhao | 6 | T8 |
-| DOC-E-006 | 证书与 CA | docs/engineering/证书与CA.md | 规程 | review | zeek.zhao | 6 | T4 |
-| DOC-E-007 | 路由注册 | docs/engineering/路由注册.md | 规程 | review | zeek.zhao | 6 | T7 |
-| DOC-E-009 | 排障 | docs/engineering/排障.md | 参考 | review | zeek.zhao | 6 | T9 |
+| DOC-E-003 | 镜像与供应链（双层 digest） | docs/运维/镜像与供应链.md | 参考 | review | zeek.zhao | 6 | T2 |
+| DOC-E-005 | 启动顺序 | docs/运维/启动顺序.md | 规程 | review | zeek.zhao | 6 | T8 |
+| DOC-E-006 | 证书与 CA | docs/运维/证书与CA.md | 规程 | review | zeek.zhao | 6 | T4 |
+| DOC-E-007 | 路由注册 | docs/运维/路由注册.md | 规程 | review | zeek.zhao | 6 | T7 |
+| DOC-E-009 | 排障 | docs/运维/排障.md | 参考 | review | zeek.zhao | 6 | T9 |
 | DOC-A-001 | ADR-01 Tailscale 接入 | docs/records/ADR-01-Tailscale接入.md | 参考 | approved | zeek.zhao | 6 | 公网 |
 | DOC-A-002 | ADR-02 内部 CA vs ACME | docs/records/ADR-02-内部CA-vs-ACME.md | 参考 | approved | zeek.zhao | 6 | T4 |
 | DOC-A-003 | ADR-03 双层 digest | docs/records/ADR-03-双层digest.md | 参考 | approved | zeek.zhao | 6 | T2 |

@@ -111,7 +111,7 @@ check_lock() {
 
 # ---------- upstream: Dockerfile FROM 与登记表一致（原 check-upstream-digest.sh） ----------
 check_upstream() {
-  local REG="docs/engineering/镜像与供应链.md"
+  local REG="docs/运维/镜像与供应链.md"
   local rc=0 name ref digest df from img dg
   local n=0
   [[ -f "$REG" ]] || { echo "✗ 缺 $REG" >&2; return 1; }

@@ -1,5 +1,8 @@
 # router 服务手册
 
+> 状态：适用 | 最后核对：2026-11-24 | 对应分支：feat/m0-v2
+
+
 ## 1. 职责
 路由注册：读 `routes.yaml` 渲染并调 Caddy admin reload：`/healthz` 200，坏 upstream 422 不 reload，Caddy 不可达 503 降级，相同配置幂等跳过。
 

@@ -10,7 +10,7 @@
 #
 # 开机自启（任选其一，按环境支持情况）：
 #   cron:     @reboot sleep 20 && bash /path/to/scripts/funnel-up.sh >>/var/log/funnel.log 2>&1
-#   systemd:  见 docs/公网访问.md 的 funnel-up.service 示例
+#   systemd:  见 docs/运维/公网访问.md 的 funnel-up.service 示例
 set -uo pipefail
 PORT="${PORT:-${PUBLIC_PORT:-18081}}"
 HOST_PORT="127.0.0.1:${PORT}"

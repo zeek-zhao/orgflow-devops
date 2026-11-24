@@ -1,5 +1,8 @@
 # caddy 服务手册
 
+> 状态：适用 | 最后核对：2026-11-24 | 对应分支：feat/m0-v2
+
+
 ## 1. 职责
 反向代理入口：唯一对外入口。内网 `:80 → 308 :443` 按 Host 分站点；公网入口 `:PUBLIC_PORT`（默认 18081，纯 HTTP，TLS 由 Tailscale Funnel 边缘终止）按 path 反代，HomePage 占根路径 `/`。Admin API 只绑内网 IP `192.168.90.10:2019`，公网不可达，无 `/caddy/*` 路由。无证书时生成 bootstrap 自签占位。
 

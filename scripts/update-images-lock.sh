@@ -12,4 +12,4 @@ CTX_FILES=(services/*/Dockerfile config/images.env config/Caddyfile config/ldap/
 cur="$( { for f in "${CTX_FILES[@]}"; do echo "--- $f"; sha256sum "$f"; done; } | sha256sum | awk '{print $1}' )"
 echo "$cur" > out/images.context.sha
 echo "✓ 已回填镜像上下文基线：$cur"
-echo "  提示：镜像 digest 为本分支 CI 构建产物（m0-*），由 CI 回填；上游摘要见 docs/engineering/镜像与供应链.md"
+echo "  提示：镜像 digest 为本分支 CI 构建产物（m0-*），由 CI 回填；上游摘要见 docs/运维/镜像与供应链.md"
