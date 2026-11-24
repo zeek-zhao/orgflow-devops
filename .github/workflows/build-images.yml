@@ -113,7 +113,7 @@ jobs:
         with:
           ref: feat/m0-v2
       - name: 下载全部 imageId artifact
-        uses: actions/download-artifact@fa0a91a85d183aa8ff73ea5e9ad1e6c665d6e7bde # v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: digest-*
           merge-multiple: true
@@ -141,7 +141,7 @@ jobs:
       - name: 校验回填后零 PENDING
         run: bash scripts/check-images.sh --mode=lock
       - name: 创建回填 PR（不直接 push）
-        uses: peter-evans/create-pull-request@271a8d0340265f705b12bdd2b134d63f6f4268ba # v6
+        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6
         with:
           branch: ci/fill-pending-imageids
           base: feat/m0-v2
