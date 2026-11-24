@@ -1,7 +1,8 @@
 # LDAP Admin Web：osixia/phpldapadmin（main 同款），固定 IP .12，隔离端口 8081→容器 80
 services:
   ldapadmin:
-    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-phpldapadmin@sha256:d112b82be1336f91e028b0348755133fda333992355b533419355a65c32ff9ad
+    image: ${IMAGE_LDAPADMIN:-ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-phpldapadmin@sha256:d112b82be1336f91e028b0348755133fda333992355b533419355a65c32ff9ad}
+    pull_policy: never
     container_name: ${CONTAINER_PREFIX:-of}-ldapadmin
     environment:
       PHPLDAPADMIN_LDAP_HOSTS: ldap

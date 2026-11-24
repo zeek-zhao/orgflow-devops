@@ -12,6 +12,9 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod 0755 /usr/local/bin/entrypoint.sh
+# 修复轮 T2：内置 dnsmasq.conf 模板 + 健康检查脚本（真叠加内容）
+COPY dnsmasq.conf.template /etc/dnsmasq.d/00-orgflow.conf.template
+COPY healthcheck.sh /usr/local/bin/healthcheck.sh
+RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/healthcheck.sh
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

@@ -10,5 +10,10 @@ COPY build/settings.yaml /app/config/settings.yaml
 COPY build/services.yaml /app/config/services.yaml
 COPY build/bookmarks.yaml /app/config/bookmarks.yaml
 COPY build/widgets.yaml   /app/config/widgets.yaml
-# favicon 真实文件随镜像固化（M0-v2 §3.5）：根治 /favicon.ico 404（由 sync 脚本送到 build/）
-COPY build/favicon.ico /app/public/favicon.ico
+# 修复轮 T7：favicon / custom.css / 两张 PWA 图标随镜像固化（真叠加内容）。
+# 目录挂载保留（config/homepage:/app/config 便于改配置），图标同时在镜像里 → 双保险。
+COPY build/favicon.ico            /app/public/favicon.ico
+COPY build/custom.css             /app/config/custom.css
+COPY build/android-chrome-192x192.png /app/public/android-chrome-192x192.png
+COPY build/android-chrome-512x512.png /app/public/android-chrome-512x512.png
+COPY build/LICENSE                /app/public/LICENSE

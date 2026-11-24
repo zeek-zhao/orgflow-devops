@@ -2,7 +2,8 @@
 # 官方 caddy:2 镜像（main 同款），静态 Caddyfile 挂载，本仓不自建。
 services:
   caddy:
-    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-caddy@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
+    image: ${IMAGE_CADDY:-ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-caddy@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e}
+    pull_policy: never
     container_name: ${CONTAINER_PREFIX:-of}-caddy
     environment:
       DOMAIN: ${DOMAIN:-org-devops.local}

@@ -1,9 +1,15 @@
-# 镜像 digest 锁定表（全部对齐 main 的 tests/images.lock / docker-compose.ghcr.yml，
-# 经国内代理 ghcr.nju.edu.cn 引用；与 config/images.env 同源逐项一致）
-dnsmasq=ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/dnsmasq@sha256:9f1a5959399d1ff65e258a6f2f477c2430f9d9851764dce16b7779579c3d32f6
-certs-init=ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/router@sha256:e5fd71d1cd7cec5068a24ce1165e35587856e2cafe7ca2e772a3b50944f9fe87
-caddy=ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-caddy@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
-ldap=ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-openldap@sha256:18742e9c449c9c1afe129d3f2f3ee15fb34cc43e5f940a20f3399728f41d7c28
-ldapadmin=ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-phpldapadmin@sha256:d112b82be1336f91e028b0348755133fda333992355b533419355a65c32ff9ad
-homepage=ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-homepage@sha256:19c5c09184458a41b7b5915e71463a39f36cd33540f41bdbed008791b8182d5f
-router=ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/router@sha256:e5fd71d1cd7cec5068a24ce1165e35587856e2cafe7ca2e772a3b50944f9fe87
+# 镜像锁定表（修复轮 T2：本分支自建 orgflow/m0-*；由 scripts/build-images.sh 回填）
+# 字段: service / tag / imageId / upstreamDigest / contextSha256
+# certs-init 复用 router，不单独构建。
+# 说明：ldapadmin/homepage 基础层 262~302MB，vfs 驱动叠加需 ~2x 峰值空间；
+#       本沙箱 /var/lib/docker 仅 ~9.8G 且长期 96%+，实测无法完成这两个的构建导出，
+#       imageId 记为 PENDING-BUILD，待 CI（overlay2/充足空间）执行 build-images.sh 回填真实值。
+#       其余 4 项为本次沙箱真实构建所得 imageId。
+service	tag	imageId	upstreamDigest	contextSha256
+homepage	orgflow/m0-homepage:v2	PENDING-BUILD	sha256:19c5c09184458a41b7b5915e71463a39f36cd33540f41bdbed008791b8182d5f	-
+ldapadmin	orgflow/m0-ldapadmin:v2	PENDING-BUILD	sha256:d112b82be1336f91e028b0348755133fda333992355b533419355a65c32ff9ad	-
+caddy	orgflow/m0-caddy:v2	ae4c63a8b595118e58a929dc477a2ed31dfa46a0eb1d151c4c75f128a2889f15	sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e	d2fd6edeffde965cb16e9ce8676de63769dc6ef55c1121f2c9a4d8c7909439fe
+ldap	orgflow/m0-ldap:v2	e6f2df6cdc576349760691f227ca632d7b26405c8c82537bb623573c1868d341	sha256:18742e9c449c9c1afe129d3f2f3ee15fb34cc43e5f940a20f3399728f41d7c28	d97bfd6dcaee1576b5d5f4c26c1a712c0cdb7f26f1d9cc09bb0a40f7606329b2
+dnsmasq	orgflow/m0-dnsmasq:v2	bdbb9471d1037c83fa194acad869713ce9e0da5261d96bc97a52ffe10e9f7146	sha256:9f1a5959399d1ff65e258a6f2f477c2430f9d9851764dce16b7779579c3d32f6	1476a849385b5df3c16c8eb33059ff7dae00cc077d54ce28ca3d7b2baec7e644
+router	orgflow/m0-router:v2	6c4edabeebc95eb816396647d79ef1cb7985875440103040f8f97a1acc737e27	sha256:e5fd71d1cd7cec5068a24ce1165e35587856e2cafe7ca2e772a3b50944f9fe87	30553536fd75c15bd3a9f9d1a20b84388ff00c32fbe71b58db617032ddf3b505
+certs-init	orgflow/m0-router:v2	6c4edabeebc95eb816396647d79ef1cb7985875440103040f8f97a1acc737e27	sha256:e5fd71d1cd7cec5068a24ce1165e35587856e2cafe7ca2e772a3b50944f9fe87	30553536fd75c15bd3a9f9d1a20b84388ff00c32fbe71b58db617032ddf3b505

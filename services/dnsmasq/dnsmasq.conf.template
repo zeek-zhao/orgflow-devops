@@ -1,0 +1,9 @@
+# dnsmasq 内置模板（修复轮 T2 真叠加内容；真源）。
+# 运行时由 entrypoint.sh 结合 GATEWAY_DOMAIN / GATEWAY_IP 生成最终 orgflow.conf。
+# 此处固化与域名无关的公共选项，避免镜像是"裸 ubuntu"。
+domain-needed
+bogus-priv
+no-resolv
+server=127.0.0.11
+bind-interfaces
+cache-size=1000

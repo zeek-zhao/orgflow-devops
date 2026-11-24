@@ -1,0 +1,5 @@
+/* OrgFlow 统一面板自定义样式（真源；由镜像 COPY 到 /app/config/custom.css） */
+/* 卡片圆角 + 分组标题字号：最小可用，断网零外链 */
+:root { --of-card-radius: 12px; }
+.card, .service, [class*="tile"] { border-radius: var(--of-card-radius) !important; }
+h2, .group-title, [class*="title"] { font-size: 1.05rem; letter-spacing: .02em; }

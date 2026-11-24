@@ -1,7 +1,8 @@
 # Homepage 统一面板：官方 gethomepage/homepage（main 同款），隔离端口 8082，固定 IP .11
 services:
   homepage:
-    image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-homepage@sha256:19c5c09184458a41b7b5915e71463a39f36cd33540f41bdbed008791b8182d5f
+    image: ${IMAGE_HOMEPAGE:-ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-homepage@sha256:19c5c09184458a41b7b5915e71463a39f36cd33540f41bdbed008791b8182d5f}
+    pull_policy: never
     container_name: ${CONTAINER_PREFIX:-of}-homepage
     environment:
       # 白名单与网关域名全部来自 .env（GATEWAY_DOMAIN 即 DOMAIN，PUBLIC_HOST 为可选公网入口），

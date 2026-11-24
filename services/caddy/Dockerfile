@@ -7,3 +7,6 @@ LABEL org.opencontainers.image.licenses.note="Caddy is Apache-2.0; upstream dige
 # Caddyfile 里域名用 {$GATEWAY_DOMAIN} 占位符，运行时由 compose 的 environment 注入，
 # 因此镜像里没有任何写死域名（check-domain.sh 门禁）。
 COPY build/Caddyfile /etc/caddy/Caddyfile
+# 修复轮 T2：健康检查脚本 + license（真叠加内容，至少两项）
+COPY build/health.sh /usr/local/bin/health.sh
+COPY build/LICENSE   /etc/caddy/LICENSE

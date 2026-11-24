@@ -7,3 +7,7 @@ LABEL org.opencontainers.image.licenses.note="phpLDAPadmin is GPL-2.0; upstream 
 # 改后端 LDAP 地址无需重建镜像。这里仅固化默认值说明，作为可独立重建的最小薄封装层。
 ENV PHPLDAPADMIN_LDAP_HOSTS=ldap \
     PHPLDAPADMIN_HTTPS=false
+# 修复轮 T2：健康检查脚本 + 自定义 favicon + license（真叠加内容，至少两项）
+COPY build/health.sh  /usr/local/bin/health.sh
+COPY build/favicon.ico /var/www/html/favicon.ico
+COPY build/LICENSE    /var/www/html/LICENSE
