@@ -5,9 +5,12 @@
   分组一「局域网服务状态」：状态来自容器内网探测，description 前缀 [LAN]
   分组二「域名入口」：href = https://{{HOMEPAGE_VAR_PUBLIC_HOST}}<public_path>，前缀 [DOMAIN]
 
-为什么用 description 前缀而不是 tags/weight：官方 gethomepage v2.7.0 的
-services.yaml 字段清单没有 tags/weight（已查证 gethomepage.dev/configs/services），
-用「分组名 + 前缀」达成标签语义，order 决定顺序。
+标签语义（R3 查证结论，2026-11-24）：官方 gethomepage v2.7.0 的 services.yaml
+字段清单**没有 tags 字段**（已查证 https://gethomepage.dev/configs/services/：
+仅 href/description/icon/ping/siteMonitor/widget/group 等，无 tags；weight 由顺序隐式生成）。
+故按 M0 收口提示词 R3 的降级方案：manifest.tags 列（值 lan,domain）不再被忽略，
+渲染为 description 前缀 [lan][domain] + 保留分组名与 [NO-UI] 标记；不写 services.yaml 的 tags 字段。
+两组卡片数量与顺序由 manifest order 决定，每组 6 张，不得变化。
 
 用法：
   python3 scripts/render-homepage.py            # 渲染写入 config/homepage/services.yaml
@@ -59,6 +62,13 @@ def q(s):
     return '"' + (s or "").replace('"', '\\"') + '"'
 
 
+def tags_prefix(row):
+    """R3：把 manifest.tags 列（如 'lan,domain'）渲染为 '[lan][domain]' 前缀。
+    HomePage services schema 无 tags 字段，降级为 description 前缀（见顶部注释）。"""
+    tags = [t.strip() for t in (row.get("tags") or "").split(",") if t.strip()]
+    return "".join(f"[{t}]" for t in tags)
+
+
 def card_lines(name, icon, href, description, monitor="", ping=""):
     lines = [
         f"    - {name}:",
@@ -76,7 +86,7 @@ def card_lines(name, icon, href, description, monitor="", ping=""):
 def render(rows):
     out = [
         GENERATED,
-        "# 由 services/manifest.tsv 渲染；标签语义用分组名 + description 前缀 [LAN]/[DOMAIN]。",
+        "# 由 services/manifest.tsv 渲染；tags 列降级为 description 前缀 [lan][domain]，分组名 + [LAN]/[DOMAIN]/[NO-UI] 保留。",
         "# 域名一律用 {{HOMEPAGE_VAR_PUBLIC_HOST}} 占位，运行时由 compose 注入，禁止字面域名。",
     ]
     # 分组一：局域网服务状态（排除 certs-init 一次性任务）
@@ -90,7 +100,8 @@ def render(rows):
         # 公网入口路径以 / 开头；/status 也是 Caddy 探针，合法
         if not href.startswith("{{HOMEPAGE_VAR_PUBLIC_HOST}}/"):
             href = "{{HOMEPAGE_VAR_PUBLIC_HOST}}/" + r["public_path"].strip("/")
-        out += card_lines(name, icon, "https://" + href, "[LAN] " + note,
+        desc = tags_prefix(r) + "[LAN] " + note
+        out += card_lines(name, icon, "https://" + href, desc,
                           r.get("monitor_url", ""), r.get("ping_url", ""))
     # 分组二：域名入口（排除 certs-init）
     # 修复轮 T5：真实入口 = [DOMAIN]；3 个无 UI 服务 = [NO-UI]，href 由 manifest public_path 指向 /status
@@ -103,9 +114,10 @@ def render(rows):
         path = r["public_path"]
         if not path.startswith("/"):
             path = "/" + path.lstrip("/")
-        prefix = "[NO-UI] " if svc in NO_UI else "[DOMAIN] "
+        flag = "[NO-UI] " if svc in NO_UI else "[DOMAIN] "
+        desc = tags_prefix(r) + flag + note
         out += card_lines(name, icon, "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}" + path,
-                          prefix + note)
+                          desc)
     return "\n".join(out) + "\n"
 
 
