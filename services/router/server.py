@@ -93,6 +93,11 @@ PUBLIC_FIXED = """    @status path /status
     handle @routerBare {
         redir https://{host}/router/healthz 308
     }
+    # T9(P0)：/router/ strip 成 / 致 router(BaseHTTP) 404，先于 handle_path 拦截 308
+    @routerRoot path /router/
+    handle @routerRoot {
+        redir https://{host}/router/healthz 308
+    }
     @caddyLegacy path /caddy /caddy/*
     handle @caddyLegacy {
         redir https://{host}/status 308

@@ -15,7 +15,7 @@
 
 - **为什么用 description 前缀而不是 tags/weight**：官方 v2.7.0 的 service 字段无 `tags`/`weight`（已查证 https://gethomepage.dev/configs/services/），用「分组名 + 前缀」达成标签语义，顺序由 manifest 的 `order` 决定。
 - **为什么 LDAP 目录不做 HTTP 探测**：LDAP 是 389 目录协议无 HTTP 端点，UI 侧经 ldapadmin 代理探测（description 已注明）；**真实 LDAP 校验在 `verify.sh` 的 `ldapsearch`**。
-- **为什么 DNS 不做 HTTP 探测**：dnsmasq 是 53/udp，HTTP 探测恒红；卡片只用 `ping: dnsmasq`，真实 DNS 校验用 `dig @dnsmasq`。
+- **为什么 DNS 不做 HTTP 探测**：dnsmasq 是 53/udp，HTTP 探测恒红；卡片只用 ICMP 探测。T9 起 `ping` 目标由容器名 `dnsmasq` 改为**固定 IP `192.168.90.15`**（HomePage 容器内解析不到 `dnsmasq` 容器名会红卡，固定 IP 与其余 6 服务地址口径一致，不依赖容器名解析）；真实 DNS 校验仍用 `dig @192.168.90.15`。
 - **自身卡探测用 localhost**：homepage 卡用 `http://localhost:3000/`，写域名会撞 `HOMEPAGE_ALLOWED_HOSTS`。
 
 ## 3. 动态注册（manifest 驱动，R2）
