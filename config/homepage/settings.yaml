@@ -1,6 +1,37 @@
-# 官方 gethomepage/homepage 站点外观配置（对齐 main 的 config/homepage/settings.yaml）。
+# 官方 gethomepage/homepage v2.7.0 站点外观配置。
+# 域名不写在这里：卡片链接用 {{HOMEPAGE_VAR_GATEWAY_DOMAIN}}（compose 注入，真源 .env 的 DOMAIN）。
+# 每项开启项都写明「为什么开」，便于 review（v1.0 §8）。
+
+# ---- 基础标识 ----
 title: OrgFlow DevOps
-language: zh-CN
-theme: dark
-color: slate
-headerStyle: boxed
+description: 最小 DevOps 底座统一面板 · 7 容器 · DNS→证书→网关→目录→面板
+language: zh-CN                # 为什么开：界面中文化，降低团队成员使用门槛
+startUrl: home                  # 为什么开：新标签页从面板起步，而不是默认搜索引擎
+favicon: mdi-view-dashboard     # 为什么开：用内置 mdi 图标，断网也有图标，不依赖外网 CDN
+
+# ---- 主题与外观 ----
+theme: dark                     # 为什么开：深色背景，长时间盯屏更省眼
+color: slate                    # 为什么开：冷色系与 dark 主题协调
+headerStyle: boxed              # 为什么开：标题栏分块，视觉分区更清晰
+iconStyle: theme                # 为什么开：图标跟随主题色，风格统一（main 未开，这里补上）
+cardBlur: true                  # 为什么开：卡片轻微模糊，提升层次感（与 background 二选一选 cardBlur）
+fullWidth: false                # 为什么开：保持限宽居中，卡片不会在大屏上过度拉伸
+maxGroupColumns: 3              # 为什么开：每行最多 3 列，避免分组被挤压成窄条
+statusStyle: dot                # 为什么开：状态用圆点显示，比文字更省空间一眼可辨
+disableIndexing: true           # 为什么开：面板含内部服务信息，禁止搜索引擎收录
+hideWidgetErrors: true          # 为什么开：widget 出错时不显示红字，避免公开页面难看
+target: _blank                  # 为什么开：卡片新标签打开，离开面板不丢当前页
+blockHighlights: true           # 为什么开：关闭首页高亮营销区块，保持面板纯粹
+quicklaunch:                    # 为什么开：顶部快捷搜索，快速跳转服务（免凭据）
+  - search: https://duckduckgo.com/?q=
+pwa: true                       # 为什么开：可添加到主屏像 App 一样打开，移动端友好
+
+# ---- 分组布局 ----
+layout:
+  服务入口:                      # 为什么开：常用服务单列一行，卡片大、好点
+    style: row
+    columns: 3
+  基础组件:                      # 为什么开：基础设施单列一行，与服务入口区分开
+    style: row
+    columns: 3
+  useEqualHeights: true          # 为什么开：同组卡片等高，排版整齐

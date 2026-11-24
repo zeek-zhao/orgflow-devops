@@ -1,18 +1,44 @@
-# 服务卡片（官方 homepage 格式）。只列本最小底座实际存在的服务。
-# 卡片链接用公网路径（经 Funnel → Caddy /home/ /ldapadmin/ /router/），
-# 换域名不用改 yaml；siteMonitor 探测走 compose 内网服务名直连。
+# 服务卡片（官方 homepage v2.7.0 格式），两分组：服务入口 / 基础组件。
+# 每张卡必备 href/description/icon/siteMonitor/ping（v1.0 §8）：
+#   href 用 {{HOMEPAGE_VAR_GATEWAY_DOMAIN}} 占位，改 .env 的 DOMAIN 全链路跟随；
+#   siteMonitor（HTTP 探测）与 ping（ICMP）走 compose 内网服务名直连，不经网关、无需 Host 白名单。
+# 图标统一 mdi-*（镜像自带），断网零裂图（AC-18）。
 - 服务入口:
+    - 统一面板:
+        href: https://home.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}/
+        description: 就是这一页 · homepage:3000 · 怎么用：见 docs/services/homepage.md
+        icon: mdi-home
+        # 自身卡用内置白名单 localhost，写 home.<domain> 会撞 Host 校验恒异常
+        siteMonitor: http://localhost:3000/
+        ping: http://localhost:3000/
     - LDAP 管理页:
-        href: /ldapadmin/
-        description: 用户与部门管理 · ldapadmin:80
+        href: https://ldapadmin.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}/
+        description: 用户与部门管理 · ldapadmin:80 · 需登录 · 见 docs/services/ldapadmin.md
         icon: mdi-account-group
         siteMonitor: http://ldapadmin:80/
+        ping: http://ldapadmin:80/
     - 路由状态:
-        href: /router/
-        description: 路由注册与热更新 · router:8080
+        href: https://router.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}/
+        description: 路由注册与热更新 · router:8080 · 见 docs/services/router.md
         icon: mdi-lan
         siteMonitor: http://router:8080/healthz
-    - Caddy Admin:
-        href: /caddy/config/
-        description: 网关配置只读查看 · caddy:2019
+        ping: http://router:8080/healthz
+- 基础组件:
+    - Caddy 网关:
+        href: https://home.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}/caddy/config/
+        description: 网关配置只读查看 · caddy:2019 · 见 docs/services/caddy.md
         icon: mdi-web
+        siteMonitor: http://caddy:2019/config/
+        ping: http://caddy:2019/config/
+    - LDAP 目录:
+        href: https://ldapadmin.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}/
+        description: 身份目录 · ldap:389 · 匿名拒/管理员成 · 见 docs/services/ldap.md
+        icon: mdi-shield-account
+        siteMonitor: http://ldapadmin:80/
+        ping: http://ldapadmin:80/
+    - DNS 解析:
+        href: https://router.{{HOMEPAGE_VAR_GATEWAY_DOMAIN}}/
+        description: 容器内 DNS · dnsmasq:53/udp · 见 docs/services/dnsmasq.md
+        icon: mdi-dns
+        siteMonitor: http://dnsmasq:53/
+        ping: http://dnsmasq:53/

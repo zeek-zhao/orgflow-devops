@@ -11,3 +11,23 @@
     format:
       dateStyle: short
       timeStyle: short
+
+# 天气：Open-Meteo 免 key 端点（非商业 <10000 次/日无需 apikey），URL 不含 key/apikey/token。
+# 经纬度为示例坐标（上海），换城市只改 latitude/longitude。
+- customapi:
+    label: 天气 · Open-Meteo
+    url: "https://api.open-meteo.com/v1/forecast?latitude=31.2304&longitude=121.4737&current=temperature_2m,relative_humidity_2m,weather_code&timezone=auto"
+    refreshInterval: 300000
+    icon: mdi-weather-partly-cloudy
+    mappings:
+      - field: current.temperature_2m
+        label: 气温
+        format: text
+      - field: current.relative_humidity_2m
+        label: 湿度
+        format: text
+
+# search：纯前端搜索引擎，不依赖凭据。
+- search:
+    provider: duckduckgo
+    target: _blank

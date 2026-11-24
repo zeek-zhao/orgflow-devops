@@ -1,6 +1,7 @@
 # 书签（官方 homepage 格式）。值必须是列表，不能直接写映射，
 # 否则 homepage 静默丢 href → 前端 new URL(undefined) 整页报错（main 的实测教训）。
-- 运维参考:
+# 两段：官方文档 / 本地文档。值必须是列表（不是映射），否则前端 new URL(undefined) 整页崩。
+- 官方文档:
     - Caddy:
         - abbr: CD
           href: https://caddyserver.com/docs/
@@ -17,3 +18,25 @@
         - abbr: TS
           href: https://tailscale.com/kb/1223/funnel
           icon: mdi-web
+# 本地文档指向本仓库 M0 分支的服务手册（六段体例），点开前先知道该看哪份。
+- 本地文档:
+    - dnsmasq · 容器内 DNS:
+        - abbr: DS
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/feat/m0-final-pr/docs/services/dnsmasq.md
+          icon: mdi-file-document
+    - caddy · 网关与证书:
+        - abbr: CD
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/feat/m0-final-pr/docs/services/caddy.md
+          icon: mdi-file-document
+    - ldap · 目录服务排查:
+        - abbr: LD
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/feat/m0-final-pr/docs/services/ldap.md
+          icon: mdi-file-document
+    - homepage · 就是这一页:
+        - abbr: HP
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/feat/m0-final-pr/docs/services/homepage.md
+          icon: mdi-file-document
+    - router · 渲染与热加载:
+        - abbr: RT
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/feat/m0-final-pr/docs/services/router.md
+          icon: mdi-file-document
