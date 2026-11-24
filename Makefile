@@ -15,8 +15,9 @@ help: ## 列出全部目标
 	@grep -E '^[a-zA-Z0-9_%-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*##' '{printf "  %-18s %s\n", $$1, $$2}'
 
 # ---------- 配置 ----------
-render: ## 渲染配置产物到 out/（非敏感值来自 defaults.env）
+render: ## 渲染配置产物（含 HomePage services.yaml；非敏感值来自 defaults.env）
 	@mkdir -p out && bash scripts/render.sh
+	@python3.11 scripts/render-homepage.py
 
 # ---------- 部署 ----------
 up: images-guard ## 按顺序起全栈（up.sh 五段输出/就绪断言/失败中止）
@@ -29,10 +30,10 @@ status: ## 只读查看各容器健康状态（STATUS=1 机读）
 	@bash status.sh
 
 up-%: ## 只起单个服务（隔离端口，零依赖可起）：make up-dnsmasq
-	@bash scripts/boot.sh up-$*
+	@bash up.sh --only $*
 
 down-%: ## 只停单个服务：make down-dnsmasq
-	@bash scripts/boot.sh down-$*
+	@docker compose --env-file $(ENV_FILE) -p orgflow-$* -f services/$*/compose.yml down
 
 test-%: ## 单服务自测：make test-dnsmasq（S_<svc> 行为用例）
 	@bash scripts/test-svc.sh $*

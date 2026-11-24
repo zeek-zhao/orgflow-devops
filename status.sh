@@ -1,25 +1,35 @@
 #!/usr/bin/env bash
-# status.sh —— 只读查看各容器健康状态（v1.0 §5.3 配套脚本）。
+# status.sh —— M0-v2 只读查看各服务状态（表格/JSON；--render 先渲染首页再查）
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
-ORDER=(dnsmasq certs-init ldap caddy homepage ldapadmin router)
-JSON=0
-[[ "${JSON:-0}" == "1" ]] && JSON=1
-for a in "$@"; do [[ "$a" == --json ]] && JSON=1; done
-
-(( JSON )) || printf '%-12s %-12s %s\n' SERVICE STATUS CONTAINER_ID
+JSON=0; RENDER=0
+for a in "$@"; do
+  case "$a" in
+    --json) JSON=1 ;;
+    --render) RENDER=1 ;;
+    -h|--help) echo "用法: status.sh [--json] [--render]"; exit 0 ;;
+  esac
+done
+if (( RENDER )); then python3.11 scripts/render-homepage.py >/dev/null; fi
+mapfile -t ORDER < <(python3.11 -c "import csv; [print(r['service']) for r in csv.DictReader(open('services/manifest.tsv',encoding='utf-8-sig'),delimiter='\t')]")
+(( JSON )) || printf '%-13s %-14s %-14s %-20s %s\n' SERVICE STATUS HEALTH PORTS STARTED
 rc=0
 for svc in "${ORDER[@]}"; do
   cid="$(docker ps -aq -f "name=^of-${svc}\$" 2>/dev/null | head -1)"
-  if [[ -z "$cid" ]]; then st="absent"; else
-    st="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$cid" 2>/dev/null)"
-    [[ "$st" == "exited" ]] && ec="$(docker inspect -f '{{.State.ExitCode}}' "$cid" 2>/dev/null)" && st="exited($ec)"
+  if [[ -z "$cid" ]]; then
+    st="absent"; health="-"; ports="-"; started="-"
+  else
+    st="$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null)"
+    health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}-{{end}}' "$cid" 2>/dev/null)"
+    ports="$(docker inspect -f '{{range $p,$v := .NetworkSettings.Ports}}{{$p}} {{end}}' "$cid" 2>/dev/null | tr -s ' ' | cut -c1-18)"
+    started="$(docker inspect -f '{{.State.StartedAt}}' "$cid" 2>/dev/null | cut -c1-19)"
+    [[ "$st" == "exited" ]] && st="exited($(docker inspect -f '{{.State.ExitCode}}' "$cid" 2>/dev/null))"
   fi
   if (( JSON )); then
-    python3.11 -c "import json;print(json.dumps({'service':'$svc','status':'$st','id':'${cid:0:12}'}))"
+    python3.11 -c "import json;print(json.dumps({'service':'$svc','status':'$st','health':'$health','started':'$started'},ensure_ascii=False))"
   else
-    printf '%-12s %-12s %s\n' "$svc" "$st" "${cid:0:12}"
+    printf '%-13s %-14s %-14s %-20s %s\n' "$svc" "$st" "$health" "$ports" "$started"
   fi
   case "$st" in healthy|exited\(0\)) ;; *) rc=1 ;; esac
 done
