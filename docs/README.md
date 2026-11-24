@@ -68,6 +68,9 @@ make verify                   # 全量验收矩阵 AC-1~22
 - 镜像与供应链：[运维/镜像与供应链.md](运维/镜像与供应链.md)
 - 排障：[运维/排障.md](运维/排障.md)
 - 公网访问：[运维/公网访问.md](运维/公网访问.md)
+- 备份与恢复：[运维/备份与恢复.md](运维/备份与恢复.md)
+- 升级与回滚：[运维/升级与回滚.md](运维/升级与回滚.md)
+- 安全基线：[运维/安全基线.md](运维/安全基线.md)
 - 架构决策记录：[records/ADR-*.md](records/)
 - 服务手册：[services/](services/)
 
@@ -104,3 +107,6 @@ make verify                   # 全量验收矩阵 AC-1~22
 | DOC-S-006 | homepage 服务手册 | docs/services/homepage.md | 参考 | review | zeek.zhao | 6 | T6 |
 | DOC-S-007 | router 服务手册 | docs/services/router.md | 参考 | review | zeek.zhao | 6 | T7 |
 | DOC-P-004 | 分支与合并策略 | docs/records/分支与合并策略.md | 规程 | review | zeek.zhao | 6 | T12 |
+| DOC-P-005 | 备份与恢复 | docs/运维/备份与恢复.md | 规程 | review | zeek.zhao | 6 | R8 |
+| DOC-P-006 | 升级与回滚 | docs/运维/升级与回滚.md | 规程 | review | zeek.zhao | 6 | R8 |
+| DOC-P-007 | 安全基线（公网暴露面） | docs/运维/安全基线.md | 规程 | review | zeek.zhao | 6 | R8 |
