@@ -22,6 +22,10 @@ cd "$ROOT"
 # 独立命名空间测试可覆盖：ENV_FILE 指向 v2 env，CONTAINER_PREFIX=ofv2 让 cid/健康探测匹配。
 # 默认值保持线上不变（config/defaults.env / of-*），对现有部署零影响。
 ENVFILE="${ENV_FILE:-config/defaults.env}"
+# T10：本地构建镜像模式（config/images.env）默认关闭；仅 USE_LOCAL_IMAGES=1 时并入 DC。
+# 默认路径仍只读 defaults.env，compose 回退已验证 GHCR digest → 零停机、不依赖本地是否构建过。
+IMAGES_ENV="${IMAGES_ENV:-config/images.env}"
+USE_LOCAL_IMAGES="${USE_LOCAL_IMAGES:-0}"
 PREFIX="${CONTAINER_PREFIX:-of}"
 
 # ---- 读 manifest（顺序 + 依赖 + 健康地址）----
@@ -37,7 +41,40 @@ done < <(python3.11 -c "import csv; [print('\t'.join([r['order'],r['service'],r[
 # 否则 --recreate 因 container_name 归属不同 project 而静默失败（T8 上线窗口实测发现）。
 svc_project() { echo "${COMPOSE_PROJECT:-orgflow-$1}"; }
 svc_compose() { echo "services/$1/compose.yml"; }
-DC() { docker compose --env-file "$ENVFILE" -p "$(svc_project "$1")" -f "$(svc_compose "$1")"; }
+# T10：USE_LOCAL_IMAGES=1 时把 images.env 放最后（后者覆盖前者）注入本地镜像名。
+DC() {
+  local extra=()
+  [[ "$USE_LOCAL_IMAGES" == "1" ]] && extra=(--env-file "$IMAGES_ENV")
+  docker compose --env-file "$ENVFILE" "${extra[@]}" -p "$(svc_project "$1")" -f "$(svc_compose "$1")"
+}
+
+# T10：解析默认（GHCR）镜像名，用于 dry-run 展示回退目标
+DC_GHCR() { docker compose --env-file "$ENVFILE" -p "$(svc_project "$1")" -f "$(svc_compose "$1")" config 2>/dev/null | awk '/^[[:space:]]+image:/{gsub(/^[[:space:]]+image:[[:space:]]*/,""); print; exit}'; }
+
+# T10：本地镜像模式前置校验——lock 有 PENDING-BUILD 或镜像缺失 ⇒ 告警并回退默认 GHCR。
+# 绝不静默指向不存在的 tag 导致容器起不来。返回 0=可安全用本地镜像，1=必须回退。
+local_images_ready() {
+  local target="${1:-}"
+  [[ "$USE_LOCAL_IMAGES" == "1" ]] || return 1
+  # lock 门禁：tag 一致性 + PENDING-BUILD 判定（T10/T11 共用 check-images.sh lock）
+  if ! bash scripts/check-images.sh --mode=lock >/dev/null 2>&1; then
+    echo "  [warn] check-images.sh lock 未通过（PENDING-BUILD/tag 不一致）→ 回退默认 GHCR 镜像" >&2
+    return 1
+  fi
+  # 目标服务的 lock imageId 必须非 PENDING、且本地镜像真实存在
+  local img iid
+  img="$(grep -E "^IMAGE_$(echo "$target"|tr 'a-z-' 'A-Z_')=" "$IMAGES_ENV" 2>/dev/null | head -1 | cut -d= -f2-)"
+  iid="$(awk -F'\t' -v s="$target" '$1==s{print $3}' tests/images.lock 2>/dev/null)"
+  [[ -n "$img" && "$iid" != "PENDING-BUILD" && -n "$iid" ]] || {
+    echo "  [warn] $target 的 lock imageId=PENDING-BUILD 或缺失 → 回退默认 GHCR 镜像" >&2
+    return 1
+  }
+  if ! docker image inspect "$img" >/dev/null 2>&1; then
+    echo "  [warn] 本地镜像 $img 不存在 → 回退默认 GHCR 镜像" >&2
+    return 1
+  fi
+  return 0
+}
 
 # ---- 资源真源（defaults.env 注入，带 orgflow-minimal_ 前缀 = §2.5 第0步真实名）----
 NET="$(grep -E '^ORG_NETWORK=' "$ENVFILE" | cut -d= -f2-)"
@@ -93,7 +130,9 @@ fingerprint() {
   img="$(img_of "$svc")"
   # 镜像 ID：优先本地已存在镜像；不存在则用镜像名占位（指纹仍随 env/compose 变化）
   iid="$(docker image inspect "${img:-none}" --format '{{.Id}}' 2>/dev/null || echo "${img:-none}")"
-  { cat "services/$svc/compose.yml" "$ENVFILE"; echo "IMAGE=$img"; echo "IID=$iid"; } 2>/dev/null | sha256sum | awk '{print $1}'
+  # T10：images.env 纳入指纹输入——切本地/GHCR 模式后指纹变化可见（USE_LOCAL_IMAGES 影响实际镜像）
+  { cat "services/$svc/compose.yml" "$ENVFILE" "$IMAGES_ENV" 2>/dev/null
+    echo "IMAGE=$img"; echo "IID=$iid"; echo "USE_LOCAL_IMAGES=$USE_LOCAL_IMAGES"; } 2>/dev/null | sha256sum | awk '{print $1}'
 }
 container_fp() {
   local cid; cid="$(svc_cid "$1")"
@@ -158,7 +197,16 @@ run_one() {
   local svc="$1" t0 t1 cid healthy="—" img note="" fp
   if ! dep_ready "$svc"; then note="(依赖未就绪，跳过依赖仅起本体)"; fi
   # dry-run 优先：无论是否已健康，都只演不跑（§8.3 要 dry-run 输出 manifest 顺序）
-  if (( DRY )); then emit "$svc" "dry" "$(img_of "$svc")" 0 "" "—" "只演不跑 $note"; return 0; fi
+  if (( DRY )); then
+    # T10：解析实际会选用的镜像（本地模式就绪→本地名，否则 GHCR 回退），便于验收
+    local dry_img
+    if [[ "$USE_LOCAL_IMAGES" == "1" ]] && local_images_ready "$svc"; then
+      dry_img="$(img_of "$svc")"
+    else
+      dry_img="$(DC_GHCR "$svc")"
+    fi
+    emit "$svc" "dry" "$dry_img" 0 "" "—" "只演不跑 $note"; return 0
+  fi
   if svc_healthy "$svc" && (( ! FORCE )); then
     # T3：指纹 stale 时默认只提示（零停机）；FP_STRICT=1 才自动重建
     local fps; fps="$(fp_status "$svc")"
@@ -173,9 +221,15 @@ run_one() {
       cid="$(svc_cid "$svc")"; emit "$svc" "skip" "$(img_of "$svc")" 0 "$cid" "healthy" "skip (already healthy) $note"; return 0
     fi
   fi
+  # T10：本地镜像模式前置校验——依赖未就绪则本次降级为默认 GHCR（避免起不来）。
+  # 用局部覆盖 USE_LOCAL_IMAGES，仅作用于本服务本次启动，不改全局/其它服务。
+  local saved_local="$USE_LOCAL_IMAGES"
+  if [[ "$USE_LOCAL_IMAGES" == "1" ]] && ! local_images_ready "$svc"; then
+    USE_LOCAL_IMAGES=0
+  fi
   fp="$(fingerprint "$svc")"
   t0=$(date +%s%3N)
-  if (( PULL )); then DC "$svc" pull >/dev/null 2>&1; fi
+  if (( PULL )) && [[ "$USE_LOCAL_IMAGES" != "1" ]]; then DC "$svc" pull >/dev/null 2>&1; fi
   # --recreate/FP_STRICT 重建才加 --force-recreate；普通 up 对不健康容器只 up -d（不改线上健康容器）
   if (( FORCE )); then
     FP_VALUE="$fp" DC "$svc" up -d --no-deps --force-recreate "$svc" >/dev/null 2>&1
@@ -187,6 +241,7 @@ run_one() {
   for _ in 1 2 3 4 5; do cid="$(svc_cid "$svc")"; [[ -n "$cid" ]] && break; sleep 1; done
   if wait_healthy "$svc"; then healthy="healthy"; else healthy="UNHEALTHY"; fi
   [[ -n "$cid" ]] || cid="$(svc_cid "$svc")"
+  USE_LOCAL_IMAGES="$saved_local"  # T10：恢复全局开关，降级只作用于本服务本次启动
   emit "$svc" "up" "$(img_of "$svc")" "$((t1-t0))" "$cid" "$healthy" "$note"
   [[ "$healthy" == "healthy" ]]
 }
