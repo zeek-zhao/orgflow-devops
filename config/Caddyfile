@@ -47,7 +47,7 @@ h1{font-size:1.4rem}table{border-collapse:collapse;width:100%}th,td{border:1px s
 th{background:#f2f5f9}code{background:#eef2f7;padding:.1rem .35rem;border-radius:4px}
 .note{margin-top:1.2rem;color:#556}</style></head><body>
 <h1>OrgFlow 底座 · 服务状态</h1>
-<p>本页是 7 个服务的状态说明。各服务入口与探测方式如下（DNS / LDAP / Caddy 无独立 Web UI，状态见<a href="/">首页卡片</a>）。</p>
+<p>本页是 9 个服务的状态说明。各服务入口与探测方式如下（DNS / LDAP / Caddy / Jenkins Agent 无独立 Web UI，状态见<a href="/">首页卡片</a>）。</p>
 <table><thead><tr><th>服务</th><th>探测方式</th><th>公网入口</th></tr></thead><tbody>
 <tr><td>统一面板 homepage</td><td>HTTP 根路径 /</td><td><a href="/">/</a></td></tr>
 <tr><td>LDAP 管理 ldapadmin</td><td>HTTP /ldapadmin/</td><td><a href="/ldapadmin/">/ldapadmin/</a></td></tr>
@@ -56,6 +56,8 @@ th{background:#f2f5f9}code{background:#eef2f7;padding:.1rem .35rem;border-radius
 <tr><td>身份目录 ldap</td><td>ldapsearch 探 389</td><td>无 UI，见首页卡片</td></tr>
 <tr><td>Caddy 网关 caddy</td><td>admin /config/ 探活</td><td>无 UI，见首页卡片</td></tr>
 <tr><td>证书初始化 certs-init</td><td>一次性任务 exit 0</td><td>不放假页面</td></tr>
+<tr><td>持续集成 Jenkins</td><td>HTTP /jenkins/login</td><td><a href="/jenkins/">/jenkins/</a>（需登录）</td></tr>
+<tr><td>构建节点 Jenkins Agent</td><td>SSH 22 / Job 在线探测</td><td>无 UI，见首页卡片</td></tr>
 </tbody></table>
 <p class="note">健康探针：<code>/healthz</code>（纯文本 ok）。配置渲染仅允许容器内本机调用，公网 <code>/router/render</code> 返回 403。</p>
 </body></html>` 200
@@ -83,6 +85,11 @@ th{background:#f2f5f9}code{background:#eef2f7;padding:.1rem .35rem;border-radius
     @caddyLegacy path /caddy /caddy/*
     handle @caddyLegacy {
         redir https://{host}/status 308
+    }
+    # M1：/jenkins 无斜杠 → 308 到 /jenkins/（与 router PUBLIC_FIXED 同步）
+    @jenkinsBare path /jenkins
+    handle @jenkinsBare {
+        redir https://{host}/jenkins/ 308
     }
 
     # T1 安全收口：公网禁止触发渲染（必须在 /router/* 之前，先命中先执行）。
@@ -116,6 +123,11 @@ th{background:#f2f5f9}code{background:#eef2f7;padding:.1rem .35rem;border-radius
 
     handle_path /router/* {
         reverse_proxy router:8080
+    }
+
+    # M1：Jenkins 自带 --prefix=/jenkins，用 handle 保留完整路径（不能 handle_path 剥前缀）
+    handle /jenkins/* {
+        reverse_proxy jenkins:8080
     }
 
     # HomePage 占根路径，直接反代不 strip：

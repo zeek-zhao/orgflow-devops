@@ -1,0 +1,59 @@
+# Jenkins controller（M1）：CI 构建推 GHCR，部署按 digest 拉取；不发布宿主端口。
+# 镜像默认值里的 @sha256:<64hex> 由 CI（build-images.yml fill-pending）回填，
+# 禁止手填；下方全 0 值只是占位，CI 回填前 it 会一直指向占位（部署前应完成回填）。
+# 切换镜像源只改 IMAGE_JENKINS 环境变量，不改本文件（ghcr.io ↔ ghcr.nju.edu.cn 同 digest）。
+services:
+  jenkins:
+    image: ${IMAGE_JENKINS:-ghcr.io/zeek-zhao/orgflow-devops/m1-jenkins@sha256:0000000000000000000000000000000000000000000000000000000000000000}
+    pull_policy: missing
+    container_name: ${CONTAINER_PREFIX:-of}-jenkins
+    labels:
+      org.of.fp: ${FP_VALUE:-}
+    environment:
+      # 前缀路由：Jenkins 自带 --prefix=/jenkins，Caddy handle（非 handle_path）保留路径
+      JENKINS_OPTS: --prefix=/jenkins
+      JAVA_OPTS: -Djenkins.install.runSetupWizard=false -Djava.util.logging.config.file=/var/jenkins_home/logging.properties -Xmx1g -Xms512m
+      CASC_JENKINS_CONFIG: /var/jenkins_home/casc/jenkins.yaml
+      # JENKINS_URL 由 defaults.env 注入（不写死域名，check-domain 门禁要求）
+      JENKINS_URL: ${JENKINS_URL}
+      # 插件源固定官方（避免镜像站点漂移导致装不上/升级失败）
+      JENKINS_UC: https://updates.jenkins.io
+      JENKINS_UC_DOWNLOAD: https://updates.jenkins.io/download
+      # LDAP 管理员口令（JCasC managerPasswordSecret）：沿用 ldap 服务的 LDAP_PASSWORD 默认值
+      LDAP_ADMIN_PASSWORD: ${LDAP_PASSWORD:-change-me}
+      # agent SSH 私钥 / host key 公钥：从宿主环境透传（gen-jenkins-secrets.sh 生成 secrets/ 后 export）
+      # 不进仓库、不进 .env；JCasC 用 directEntry + manuallyProvided 引用。
+      - JENKINS_AGENT_SSH_KEY
+      - JENKINS_AGENT_HOST_KEY
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      # JCasC 配置与 Job DSL 目录整目录只读挂载（jobs/*.groovy 需进容器）
+      - ../../config/jenkins:/var/jenkins_home/casc:ro
+      # 流水线逻辑挂载（Job DSL 内联 script(new File(...)) 方案需要）
+      - ../../ci:/opt/orgflow/ci:ro
+    expose:
+      - "8080"
+    # 启动顺序（ldap 就绪 → jenkins → agent）由 services/manifest.tsv 的 depends_on
+    # 列 + up.sh 保证（per-service compose 不能跨文件 depends_on）。
+    dns:
+      - ${IP_DNSMASQ}
+    networks:
+      orgflow:
+        ipv4_address: ${IP_JENKINS:-192.168.90.16}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/jenkins/login >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+
+volumes:
+  jenkins_home:
+    external: true
+    name: ${JENKINS_HOME_VOLUME:-orgflow-minimal_jenkins_home}
+
+networks:
+  orgflow:
+    external: true
+    name: ${ORG_NETWORK:-orgflow-minimal_orgflow}

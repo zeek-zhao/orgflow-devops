@@ -60,7 +60,7 @@ STATUS_HTML = (
     'th{background:#f2f5f9}code{background:#eef2f7;padding:.1rem .35rem;border-radius:4px}'
     '.note{margin-top:1.2rem;color:#556}</style></head><body>'
     '<h1>OrgFlow 底座 · 服务状态</h1>'
-    '<p>本页是 7 个服务的状态说明。各服务入口与探测方式如下（DNS / LDAP / Caddy 无独立 Web UI，状态见<a href="/">首页卡片</a>）。</p>'
+    '<p>本页是 9 个服务的状态说明。各服务入口与探测方式如下（DNS / LDAP / Caddy / Jenkins Agent 无独立 Web UI，状态见<a href="/">首页卡片</a>）。</p>'
     '<table><thead><tr><th>服务</th><th>探测方式</th><th>公网入口</th></tr></thead><tbody>'
     '<tr><td>统一面板 homepage</td><td>HTTP 根路径 /</td><td><a href="/">/</a></td></tr>'
     '<tr><td>LDAP 管理 ldapadmin</td><td>HTTP /ldapadmin/</td><td><a href="/ldapadmin/">/ldapadmin/</a></td></tr>'
@@ -69,6 +69,8 @@ STATUS_HTML = (
     '<tr><td>身份目录 ldap</td><td>ldapsearch 探 389</td><td>无 UI，见首页卡片</td></tr>'
     '<tr><td>Caddy 网关 caddy</td><td>admin /config/ 探活</td><td>无 UI，见首页卡片</td></tr>'
     '<tr><td>证书初始化 certs-init</td><td>一次性任务 exit 0</td><td>不放假页面</td></tr>'
+    '<tr><td>持续集成 Jenkins</td><td>HTTP /jenkins/login</td><td><a href="/jenkins/">/jenkins/</a>（需登录）</td></tr>'
+    '<tr><td>构建节点 Jenkins Agent</td><td>SSH 22 / Job 在线探测</td><td>无 UI，见首页卡片</td></tr>'
     '</tbody></table>'
     '<p class="note">健康探针：<code>/healthz</code>（纯文本 ok）。配置渲染仅允许容器内本机调用，公网 <code>/router/render</code> 返回 403。</p>'
     '</body></html>'
@@ -101,6 +103,12 @@ PUBLIC_FIXED = """    @status path /status
     @caddyLegacy path /caddy /caddy/*
     handle @caddyLegacy {
         redir https://{host}/status 308
+    }
+    # M1：/jenkins 无斜杠 → 308 到 /jenkins/（Jenkins 自带 --prefix=/jenkins，
+    # 由 strip:false 的 handle 保留前缀反代，不能用 handle_path 剥前缀）。
+    @jenkinsBare path /jenkins
+    handle @jenkinsBare {
+        redir https://{host}/jenkins/ 308
     }
 
     # R1(P1) 公网信息泄漏收口（与 config/Caddyfile 同步，render 输出 == 实跑）。
@@ -175,6 +183,9 @@ def load_routes():
             raise ValueError(f"非法 prefix: {prefix}（应以 / 开头、路径段合法）")
         if not UPSTREAM_RE.match(up):
             raise ValueError(f"非法 upstream: {up}（应形如 service:port）")
+        # M1：可选 strip 字段（缺省 true 保持既有 handle_path 行为）；只允许 true/false
+        if "strip" in r and str(r["strip"]).lower() not in ("true", "false"):
+            raise ValueError(f"非法 strip: {r['strip']}（只允许 true/false）")
     return routes
 
 
@@ -199,7 +210,14 @@ def render(routes):
         if prefix == "/":
             root_up = up
             continue
-        dyn.append(f"    handle_path {prefix}/* {{\n        reverse_proxy {up}\n    }}")
+        # M1：strip:false → handle 保留原始路径（Jenkins --prefix=/jenkins 需完整路径，
+        # 用 handle_path 会剥掉 /jenkins 致 404）；缺省 true 保持既有 handle_path。
+        strip = str(r.get("strip", "true")).lower()
+        if strip == "false":
+            dyn.append(f"    # {prefix} 保留前缀（strip:false），上游自带 prefix\n"
+                       f"    handle {prefix}/* {{\n        reverse_proxy {up}\n    }}")
+        else:
+            dyn.append(f"    handle_path {prefix}/* {{\n        reverse_proxy {up}\n    }}")
     dyn_block = "\n\n".join(dyn)
     if root_up is None:
         root_up = "homepage:3000"

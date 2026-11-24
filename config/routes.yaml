@@ -4,6 +4,8 @@
 #   /            → 根路径，直接反代（homepage 占根，静态资源随根命中）
 #   /ldapadmin   → handle_path /ldapadmin/*，strip 前缀后反代 ldapadmin:80
 #   /router      → handle_path /router/*，strip 前缀后反代 router:8080
+#   /jenkins     → strip:false → handle /jenkins/* 保留前缀（上游 Jenkins --prefix=/jenkins）
+# 可选字段 strip: false 表示不剥前缀（缺省 true）；仅对需要完整路径的上游使用。
 # router 渲染出的路径型配置片段与 Caddy 实跑的公网入口块保持一致（拍定 P1）。
 # 服务名用 compose 服务名（homepage 不是 home；ldapadmin 官方镜像监听 80）。
 routes:
@@ -13,3 +15,8 @@ routes:
     upstream: ldapadmin:80
   - prefix: /router
     upstream: router:8080
+  # M1：Jenkins 自带 --prefix=/jenkins，必须保留原始路径（不剥前缀），否则 404。
+  # strip:false → router 渲染成 handle /jenkins/*（而非 handle_path）。
+  - prefix: /jenkins
+    upstream: jenkins:8080
+    strip: false
