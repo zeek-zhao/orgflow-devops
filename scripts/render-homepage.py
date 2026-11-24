@@ -29,11 +29,14 @@ META = {
     "homepage":  ("统一面板",   "mdi-home",           "统一导航面板 · homepage:3000"),
     "ldapadmin": ("LDAP 管理页", "mdi-account-group",  "用户与部门管理 · ldapadmin:80 · 需登录"),
     "router":    ("路由状态",   "mdi-lan",            "路由注册与热更新 · router:8080"),
-    "caddy":     ("Caddy 网关", "mdi-web",            "反向代理入口 · admin 仅内网"),
-    "ldap":      ("LDAP 目录",  "mdi-shield-account", "身份目录 · 经 ldapadmin 代理探测（无 HTTP 端点）"),
-    "dnsmasq":   ("DNS 解析",   "mdi-dns",            "容器内 DNS · 无 HTTP 端点 · TCP/ICMP 探测"),
+    "caddy":     ("Caddy 网关", "mdi-web",            "反向代理入口 · admin 仅内网 · 无独立 Web UI，见状态页"),
+    "ldap":      ("LDAP 目录",  "mdi-shield-account", "身份目录 · ldap:389 · ICMP 探容器 + verify.sh 探 389 · 无独立 Web UI，见状态页"),
+    "dnsmasq":   ("DNS 解析",   "mdi-dns",            "容器内 DNS · 无 HTTP 端点 · TCP/ICMP 探测 · 无独立 Web UI，见状态页"),
     "certs-init":("证书初始化", "mdi-certificate",    "一次性任务 · 不放假页面"),
 }
+
+# 修复轮 T5：3 个无独立 Web UI 的服务，域名入口卡前缀 [NO-UI]、落点 /status（由 manifest public_path 指定）
+NO_UI = {"dnsmasq", "ldap", "caddy"}
 
 
 def load_manifest():
@@ -90,6 +93,7 @@ def render(rows):
         out += card_lines(name, icon, "https://" + href, "[LAN] " + note,
                           r.get("monitor_url", ""), r.get("ping_url", ""))
     # 分组二：域名入口（排除 certs-init）
+    # 修复轮 T5：真实入口 = [DOMAIN]；3 个无 UI 服务 = [NO-UI]，href 由 manifest public_path 指向 /status
     out += ["- 域名入口:"]
     for r in rows:
         svc = r["service"]
@@ -99,8 +103,9 @@ def render(rows):
         path = r["public_path"]
         if not path.startswith("/"):
             path = "/" + path.lstrip("/")
+        prefix = "[NO-UI] " if svc in NO_UI else "[DOMAIN] "
         out += card_lines(name, icon, "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}" + path,
-                          "[DOMAIN] " + note)
+                          prefix + note)
     return "\n".join(out) + "\n"
 
 

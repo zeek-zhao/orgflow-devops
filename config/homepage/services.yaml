@@ -4,17 +4,17 @@
 - 局域网服务状态:
     - DNS 解析:
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/status"
-        description: "[LAN] 容器内 DNS · 无 HTTP 端点 · TCP/ICMP 探测"
+        description: "[LAN] 容器内 DNS · 无 HTTP 端点 · TCP/ICMP 探测 · 无独立 Web UI，见状态页"
         icon: "mdi-dns"
         ping: "dnsmasq"
     - LDAP 目录:
-        href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/ldapadmin/"
-        description: "[LAN] 身份目录 · 经 ldapadmin 代理探测（无 HTTP 端点）"
+        href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/status"
+        description: "[LAN] 身份目录 · ldap:389 · ICMP 探容器 + verify.sh 探 389 · 无独立 Web UI，见状态页"
         icon: "mdi-shield-account"
-        ping: "ldapadmin"
+        ping: "ldap"
     - Caddy 网关:
-        href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/router/routes"
-        description: "[LAN] 反向代理入口 · admin 仅内网"
+        href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/status"
+        description: "[LAN] 反向代理入口 · admin 仅内网 · 无独立 Web UI，见状态页"
         icon: "mdi-web"
         siteMonitor: "http://caddy:2019/config/"
         ping: "caddy"
@@ -39,15 +39,15 @@
 - 域名入口:
     - DNS 解析:
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/status"
-        description: "[DOMAIN] 容器内 DNS · 无 HTTP 端点 · TCP/ICMP 探测"
+        description: "[NO-UI] 容器内 DNS · 无 HTTP 端点 · TCP/ICMP 探测 · 无独立 Web UI，见状态页"
         icon: "mdi-dns"
     - LDAP 目录:
-        href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/ldapadmin/"
-        description: "[DOMAIN] 身份目录 · 经 ldapadmin 代理探测（无 HTTP 端点）"
+        href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/status"
+        description: "[NO-UI] 身份目录 · ldap:389 · ICMP 探容器 + verify.sh 探 389 · 无独立 Web UI，见状态页"
         icon: "mdi-shield-account"
     - Caddy 网关:
-        href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/router/routes"
-        description: "[DOMAIN] 反向代理入口 · admin 仅内网"
+        href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/status"
+        description: "[NO-UI] 反向代理入口 · admin 仅内网 · 无独立 Web UI，见状态页"
         icon: "mdi-web"
     - 统一面板:
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/"

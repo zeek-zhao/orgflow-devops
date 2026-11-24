@@ -1,8 +1,8 @@
 order	service	depends_on	health_url	monitor_url	ping_url	public_path	tags	ui_kind
 1	dnsmasq		udp://127.0.0.1:5353		dnsmasq	/status	lan,domain	none
 2	certs-init		file://ca-data			/none	lan,domain	none
-3	ldap		ldap://127.0.0.1:3389		ldapadmin	/ldapadmin/	lan,domain	proxy
-4	caddy	certs-init	http://192.168.90.10:2019/config/	http://caddy:2019/config/	caddy	/router/routes	lan,domain	proxy
+3	ldap		ldap://127.0.0.1:3389		ldap	/status	lan,domain	proxy
+4	caddy	certs-init	http://192.168.90.10:2019/config/	http://caddy:2019/config/	caddy	/status	lan,domain	proxy
 5	homepage	caddy	http://127.0.0.1:3000/	http://localhost:3000/	localhost	/	lan,domain	http
 6	ldapadmin	ldap,caddy	http://127.0.0.1:8081/	http://ldapadmin:80/	ldapadmin	/ldapadmin/	lan,domain	http
 7	router	caddy,homepage,ldapadmin	http://127.0.0.1:8083/healthz	http://router:8080/healthz	router	/router/healthz	lan,domain	http
