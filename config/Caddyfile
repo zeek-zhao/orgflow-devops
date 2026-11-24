@@ -47,9 +47,48 @@ router.{$DOMAIN:org-devops.com} {
         respond "ok" 200
     }
 
+    # /healthz 保持纯文本 ok（探活用，不要改成 HTML）
     @status path /status
     handle @status {
-        respond "ok" 200
+        header Content-Type "text/html; charset=utf-8"
+        respond `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OrgFlow 服务状态</title>
+<style>body{font-family:system-ui,sans-serif;max-width:760px;margin:2rem auto;padding:0 1rem;color:#1b2430}
+h1{font-size:1.4rem}table{border-collapse:collapse;width:100%}th,td{border:1px solid #d8dee9;padding:.5rem .7rem;text-align:left}
+th{background:#f2f5f9}code{background:#eef2f7;padding:.1rem .35rem;border-radius:4px}
+.note{margin-top:1.2rem;color:#556}</style></head><body>
+<h1>OrgFlow 底座 · 服务状态</h1>
+<p>本页是 7 个服务的状态说明。各服务入口与探测方式如下（DNS / LDAP / Caddy 无独立 Web UI，状态见<a href="/">首页卡片</a>）。</p>
+<table><thead><tr><th>服务</th><th>探测方式</th><th>公网入口</th></tr></thead><tbody>
+<tr><td>统一面板 homepage</td><td>HTTP 根路径 /</td><td><a href="/">/</a></td></tr>
+<tr><td>LDAP 管理 ldapadmin</td><td>HTTP /ldapadmin/</td><td><a href="/ldapadmin/">/ldapadmin/</a></td></tr>
+<tr><td>路由注册 router</td><td>HTTP /router/healthz</td><td><a href="/router/healthz">/router/healthz</a></td></tr>
+<tr><td>DNS 解析 dnsmasq</td><td>ICMP 探容器 + dig</td><td>无 UI，见首页卡片</td></tr>
+<tr><td>身份目录 ldap</td><td>ldapsearch 探 389</td><td>无 UI，见首页卡片</td></tr>
+<tr><td>Caddy 网关 caddy</td><td>admin /config/ 探活</td><td>无 UI，见首页卡片</td></tr>
+<tr><td>证书初始化 certs-init</td><td>一次性任务 exit 0</td><td>不放假页面</td></tr>
+</tbody></table>
+<p class="note">健康探针：<code>/healthz</code>（纯文本 ok）。配置渲染仅允许容器内本机调用，公网 <code>/router/render</code> 返回 403。</p>
+</body></html>` 200
+    }
+
+    # T4 路径边界与跳转（308，精确匹配，必须在 handle_path / 兜底之前）
+    @rootHome path /home /home/*
+    handle @rootHome {
+        redir https://{host}/ 308
+    }
+    @noSlashLdap path /ldapadmin
+    handle @noSlashLdap {
+        redir https://{host}/ldapadmin/ 308
+    }
+    @routerBare path /router
+    handle @routerBare {
+        redir https://{host}/router/healthz 308
+    }
+    @caddyLegacy path /caddy /caddy/*
+    handle @caddyLegacy {
+        redir https://{host}/status 308
     }
 
     # T1 安全收口：公网禁止触发渲染（必须在 /router/* 之前，先命中先执行）。
