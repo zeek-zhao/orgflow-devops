@@ -5,6 +5,8 @@ services:
     image: ${IMAGE_LDAP:-ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-openldap@sha256:18742e9c449c9c1afe129d3f2f3ee15fb34cc43e5f940a20f3399728f41d7c28}
     pull_policy: never
     container_name: ${CONTAINER_PREFIX:-of}-ldap
+    labels:
+      org.of.fp: ${FP_VALUE:-}
     # --copy-service：避免对只读挂载的 50-users.ldif chown 失败
     entrypoint: ["/container/tool/run", "--copy-service"]
     environment:

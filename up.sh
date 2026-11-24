@@ -10,8 +10,12 @@
 #   up.sh --no-pull             不拉镜像（默认会 pull）
 #   up.sh --dry-run             只演不跑
 #   up.sh --json                机读：每步一行 JSON
+#   up.sh --recreate <svc>      配置指纹变更时安全重建单个服务（5s 确认+健康等待）
 #   up.sh <svc>                 兼容旧写法 = --only <svc>
-#   DRY_RUN=1 / FORCE_PULL=1 / JSON=1 环境变量同样生效
+#   DRY_RUN=1 / FORCE_PULL=1 / JSON=1 / FP_STRICT=1 环境变量同样生效
+# T3 配置指纹：compose+env+镜像 的 sha256 写入容器 label org.of.fp；
+#   指纹 stale 时默认只提示（零停机），FP_STRICT=1 才自动 force-recreate；
+#   --recreate <svc> 显式重建（文档验收链路，失败只打印回滚命令不自动回滚）。
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
@@ -41,8 +45,9 @@ SUBNET="$(grep -E '^NET_SUBNET=' "$ENVFILE" | cut -d= -f2-)"
 
 # ---- 参数 ----
 MODE="full"; FROM=""; TARGET=""
-DRY=0; FORCE=0; PULL=1
+DRY=0; FORCE=0; PULL=1; RECREATE=0
 JSON="${JSON:-0}"
+FP_STRICT="${FP_STRICT:-0}"
 [[ "${DRY_RUN:-0}" == "1" ]] && DRY=1
 [[ "${FORCE_PULL:-0}" == "1" ]] && FORCE=1
 while (( $# )); do
@@ -50,9 +55,10 @@ while (( $# )); do
     --json) JSON=1; shift ;;
     --from) FROM="${2:-}"; MODE="from"; shift 2 ;;
     --only) TARGET="${2:-}"; MODE="single"; shift 2 ;;
+    --recreate) TARGET="${2:-}"; MODE="single"; RECREATE=1; FORCE=1; shift 2 ;;
     --no-pull) PULL=0; shift ;;
     --dry-run) DRY=1; shift ;;
-    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
     -*) echo "未知参数: $1" >&2; exit 2 ;;
     *) TARGET="$1"; MODE="single"; shift ;;
   esac
@@ -77,6 +83,28 @@ log_line() {
   printf '\n- up.sh %s（%s）→ %s；模式=%s JSON=%s DRY=%s\n' "$(date '+%H:%M:%S')" "${TARGET:-${FROM:-full}}" "$1" "$MODE" "$JSON" "$DRY" >> "$f"
 }
 img_of() { grep -E "^IMAGE_$(echo "$1"|tr 'a-z-' 'A-Z_')=" config/images.env 2>/dev/null | head -1 | cut -d= -f2-; }
+
+# ---- T3 配置指纹：compose + env + 镜像ID 的 sha256 ----
+fingerprint() {
+  local svc="$1" img iid
+  img="$(img_of "$svc")"
+  # 镜像 ID：优先本地已存在镜像；不存在则用镜像名占位（指纹仍随 env/compose 变化）
+  iid="$(docker image inspect "${img:-none}" --format '{{.Id}}' 2>/dev/null || echo "${img:-none}")"
+  { cat "services/$svc/compose.yml" "$ENVFILE"; echo "IMAGE=$img"; echo "IID=$iid"; } 2>/dev/null | sha256sum | awk '{print $1}'
+}
+container_fp() {
+  local cid; cid="$(svc_cid "$1")"
+  [[ -n "$cid" ]] || { echo ""; return; }
+  docker inspect -f '{{index .Config.Labels "org.of.fp"}}' "$cid" 2>/dev/null | grep -v '^<no value>$' || true
+}
+fp_status() {
+  local svc="$1" want have cid
+  cid="$(svc_cid "$svc")"
+  [[ -n "$cid" ]] || { echo "absent"; return; }
+  want="$(fingerprint "$svc")"; have="$(container_fp "$svc")"
+  [[ -z "$have" ]] && { echo "baseline"; return; }   # 无 label：线上存量容器，不自动重建
+  [[ "$have" == "$want" ]] && echo "match" || echo "stale"
+}
 
 # ---- 幂等预建网络/卷（存在即跳过，禁 --force / 禁先 rm）----
 res_note() { (( JSON )) || echo "[res] $1"; }
@@ -124,16 +152,33 @@ wait_healthy() {
 }
 
 run_one() {
-  local svc="$1" t0 t1 cid healthy="—" img note=""
+  local svc="$1" t0 t1 cid healthy="—" img note="" fp
   if ! dep_ready "$svc"; then note="(依赖未就绪，跳过依赖仅起本体)"; fi
   # dry-run 优先：无论是否已健康，都只演不跑（§8.3 要 dry-run 输出 manifest 顺序）
   if (( DRY )); then emit "$svc" "dry" "$(img_of "$svc")" 0 "" "—" "只演不跑 $note"; return 0; fi
   if svc_healthy "$svc" && (( ! FORCE )); then
-    cid="$(svc_cid "$svc")"; emit "$svc" "skip" "$(img_of "$svc")" 0 "$cid" "healthy" "skip (already healthy) $note"; return 0
+    # T3：指纹 stale 时默认只提示（零停机）；FP_STRICT=1 才自动重建
+    local fps; fps="$(fp_status "$svc")"
+    if [[ "$fps" == "stale" ]]; then
+      note="$note (配置指纹 stale)"
+      if [[ "$FP_STRICT" == "1" ]]; then
+        note="$note → FP_STRICT 自动重建"
+        FORCE=1
+      fi
+    fi
+    if (( ! FORCE )); then
+      cid="$(svc_cid "$svc")"; emit "$svc" "skip" "$(img_of "$svc")" 0 "$cid" "healthy" "skip (already healthy) $note"; return 0
+    fi
   fi
+  fp="$(fingerprint "$svc")"
   t0=$(date +%s%3N)
   if (( PULL )); then DC "$svc" pull >/dev/null 2>&1; fi
-  DC "$svc" up -d --no-deps "$svc" >/dev/null 2>&1
+  # --recreate/FP_STRICT 重建才加 --force-recreate；普通 up 对不健康容器只 up -d（不改线上健康容器）
+  if (( FORCE )); then
+    FP_VALUE="$fp" DC "$svc" up -d --no-deps --force-recreate "$svc" >/dev/null 2>&1
+  else
+    FP_VALUE="$fp" DC "$svc" up -d --no-deps "$svc" >/dev/null 2>&1
+  fi
   t1=$(date +%s%3N)
   # 等容器名出现（compose 创建有微小延迟；一次性容器可能已 Exited，用 -aq 查）
   for _ in 1 2 3 4 5; do cid="$(svc_cid "$svc")"; [[ -n "$cid" ]] && break; sleep 1; done
@@ -158,6 +203,17 @@ else
   SEQ=("${ORDER[@]}")
 fi
 
+# --recreate：打印回滚命令 + 5 秒确认窗口（非交互用 sleep，Ctrl-C 可取消）
+if (( RECREATE )); then
+  old_cid="$(svc_cid "$TARGET")"
+  old_img="$(docker inspect -f '{{.Image}}' "$old_cid" 2>/dev/null || echo '(无)')"
+  old_id="${old_img#sha256:}"
+  echo "⚠ 即将重建 $TARGET（单服务，不影响其它容器）" >&2
+  echo "  回滚命令：docker run -d --name ${PREFIX}-${TARGET} ... （旧镜像 ${old_id:0:19}）；或 git revert 后 bash up.sh --recreate $TARGET" >&2
+  echo "  5 秒内可 Ctrl-C 取消…" >&2
+  sleep 5
+fi
+
 (( ! JSON )) && echo "== up.sh 逐服务顺序启动（顺序: ${SEQ[*]}）=="
 ensure_resources
 failed=0; failed_at=""
@@ -169,6 +225,7 @@ if (( failed )); then
   idx=-1; for i in "${!SEQ[@]}"; do [[ "${SEQ[$i]}" == "$failed_at" ]] && idx=$i; done
   remain=$(( ${#SEQ[@]} - idx - 1 ))
   if (( JSON )); then python3.11 -c "import json;print(json.dumps({'failed':True,'at':'$failed_at','remaining':$remain}))"; else echo "✗ 失败于 $failed_at；后续 $remain 步未执行" >&2; fi
+  (( RECREATE )) && echo "  回滚：用旧 imageId 重建 $failed_at；或 git revert 后重试（不自动回滚）" >&2
   log_line "失败于 $failed_at；后续 $remain 步未执行"; exit 1
 fi
 msg="全部 ${#SEQ[@]} 步 healthy"
