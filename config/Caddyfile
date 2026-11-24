@@ -103,7 +103,7 @@ th{background:#f2f5f9}code{background:#eef2f7;padding:.1rem .35rem;border-radius
     # 残留风险（已知）：curl 可伪造 Host 头绕过；浏览器访公网域名无法伪造，属文档认可兜底的固有边界。
     @homeApi path /api/services /api/widgets
     handle @homeApi {
-        @fromLan host {$DOMAIN} ^192\.168\.90\.[0-9]+$
+        @fromLan host {$DOMAIN} ^192[.]168[.]90[.][0-9]+$
         handle @fromLan {
             reverse_proxy homepage:3000
         }
