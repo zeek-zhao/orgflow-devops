@@ -34,5 +34,7 @@ mkdir -p services/homepage/build
 for y in settings services bookmarks widgets; do
   sync "config/homepage/$y.yaml" "services/homepage/build/$y.yaml"
 done
+# favicon 真实文件（M0-v2 §3.5）
+sync config/homepage/favicon.ico services/homepage/build/favicon.ico
 
 echo "✓ 构建上下文已同步（build/ 为生成物，勿手改）"

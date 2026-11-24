@@ -1,13 +1,13 @@
 # 官方 gethomepage/homepage v2.7.0 站点外观配置。
-# 域名不写在这里：卡片链接用 {{HOMEPAGE_VAR_GATEWAY_DOMAIN}}（compose 注入，真源 .env 的 DOMAIN）。
+# 域名不写在这里：域名入口卡用 {{HOMEPAGE_VAR_PUBLIC_HOST}}（compose 注入，真源 .env 的 PUBLIC_HOST）；卡片本体由 manifest 渲染。
 # 每项开启项都写明「为什么开」，便于 review（v1.0 §8）。
 
 # ---- 基础标识 ----
 title: OrgFlow DevOps
 description: 最小 DevOps 底座统一面板 · 7 容器 · DNS→证书→网关→目录→面板
 language: zh-CN                # 为什么开：界面中文化，降低团队成员使用门槛
-startUrl: home                  # 为什么开：新标签页从面板起步，而不是默认搜索引擎
-favicon: mdi-view-dashboard     # 为什么开：用内置 mdi 图标，断网也有图标，不依赖外网 CDN
+startUrl: /                     # 为什么开：首页直达根路径；home 会多一跳 308（M0-v2 §3.5）
+favicon: /favicon.ico           # 为什么开：真实 ico 文件随镜像 COPY 到 /app/public，根治 404（M0-v2 §3.5）
 
 # ---- 主题与外观 ----
 theme: dark                     # 为什么开：深色背景，长时间盯屏更省眼
@@ -28,10 +28,10 @@ pwa: true                       # 为什么开：可添加到主屏像 App 一�
 
 # ---- 分组布局 ----
 layout:
-  服务入口:                      # 为什么开：常用服务单列一行，卡片大、好点
+  局域网服务状态:                # 为什么开：分组一回答"服务在不在"，状态来自内网探测
     style: row
     columns: 3
-  基础组件:                      # 为什么开：基础设施单列一行，与服务入口区分开
+  域名入口:                      # 为什么开：分组二回答"怎么进去"，href 是公网域名+路径
     style: row
     columns: 3
   useEqualHeights: true          # 为什么开：同组卡片等高，排版整齐

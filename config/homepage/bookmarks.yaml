@@ -22,21 +22,21 @@
 - 本地文档:
     - dnsmasq · 容器内 DNS:
         - abbr: DS
-          href: https://github.com/zeek-zhao/orgflow-devops/blob/feat/m0-final-pr/docs/services/dnsmasq.md
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/services/dnsmasq.md
           icon: mdi-file-document
     - caddy · 网关与证书:
         - abbr: CD
-          href: https://github.com/zeek-zhao/orgflow-devops/blob/feat/m0-final-pr/docs/services/caddy.md
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/services/caddy.md
           icon: mdi-file-document
     - ldap · 目录服务排查:
         - abbr: LD
-          href: https://github.com/zeek-zhao/orgflow-devops/blob/feat/m0-final-pr/docs/services/ldap.md
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/services/ldap.md
           icon: mdi-file-document
     - homepage · 就是这一页:
         - abbr: HP
-          href: https://github.com/zeek-zhao/orgflow-devops/blob/feat/m0-final-pr/docs/services/homepage.md
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/services/homepage.md
           icon: mdi-file-document
     - router · 渲染与热加载:
         - abbr: RT
-          href: https://github.com/zeek-zhao/orgflow-devops/blob/feat/m0-final-pr/docs/services/router.md
+          href: https://github.com/zeek-zhao/orgflow-devops/blob/main/docs/services/router.md
           icon: mdi-file-document
