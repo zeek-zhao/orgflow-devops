@@ -1,5 +1,5 @@
 # 官方 gethomepage/homepage v2.7.0 站点外观配置。
-# 域名不写在这里：域名入口卡用 {{HOMEPAGE_VAR_PUBLIC_HOST}}（compose 注入，真源 .env 的 PUBLIC_HOST）；卡片本体由 manifest 渲染。
+# 域名不写在这里：公网入口卡用 {{HOMEPAGE_VAR_PUBLIC_HOST}}（compose 注入，真源 .env 的 PUBLIC_HOST）；卡片本体由 manifest 渲染。
 # 每项开启项都写明「为什么开」，便于 review（v1.0 §8）。
 
 # ---- 基础标识 ----
@@ -28,10 +28,10 @@ pwa: true                       # 为什么开：可添加到主屏像 App 一�
 
 # ---- 分组布局 ----
 layout:
-  局域网服务状态:                # 为什么开：分组一回答"服务在不在"，状态来自内网探测
+  服务状态:                      # 为什么开：分组一回答"服务在不在"，状态来自内网探测
     style: row
     columns: 3
-  域名入口:                      # 为什么开：分组二回答"怎么进去"，href 是公网域名+路径
+  公网入口:                      # 为什么开：分组二回答"怎么进去"，只放可点击的真实路径入口
     style: row
-    columns: 3
+    columns: 2                   # R6：该组 4 张卡，2 列更舒展，避免 3 列留白
   useEqualHeights: true          # 为什么开：同组卡片等高，排版整齐
