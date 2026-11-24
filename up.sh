@@ -32,7 +32,10 @@ while IFS=$'\t' read -r order svc deps health monitor ping path tags kind; do
   ORDER+=("$svc"); DEPS["$svc"]="$deps"; HEALTHURL["$svc"]="$health"
 done < <(python3.11 -c "import csv; [print('\t'.join([r['order'],r['service'],r['depends_on'],r['health_url'],r['monitor_url'],r['ping_url'],r['public_path'],r['tags'],r['ui_kind']])) for r in csv.DictReader(open('services/manifest.tsv',encoding='utf-8-sig'),delimiter='\t')]")
 
-svc_project() { echo "orgflow-$1"; }
+# project 名：默认 per-service（独立命名空间测试隔离）；
+# 接管存量整栈容器（如线上 orgflow-minimal project）时设 COMPOSE_PROJECT=orgflow-minimal，
+# 否则 --recreate 因 container_name 归属不同 project 而静默失败（T8 上线窗口实测发现）。
+svc_project() { echo "${COMPOSE_PROJECT:-orgflow-$1}"; }
 svc_compose() { echo "services/$1/compose.yml"; }
 DC() { docker compose --env-file "$ENVFILE" -p "$(svc_project "$1")" -f "$(svc_compose "$1")"; }
 

@@ -19,6 +19,9 @@ services:
       - "${P_HOMEPAGE:-8082}:3000"
     volumes:
       - ../../config/homepage:/app/config
+      # T7：favicon 真源单文件挂载到 public 根——官方镜像 /app/public 无 favicon.ico，
+      # 自建镜像亦 COPY 此文件；双保险保证 /favicon.ico 恒 200（配置改后免重建镜像）。
+      - ../../config/homepage/favicon.ico:/app/public/favicon.ico:ro
     networks:
       orgflow:
         ipv4_address: ${IP_HOMEPAGE:-192.168.90.11}
