@@ -4,7 +4,7 @@
 # 切换镜像源只改 IMAGE_JENKINS 环境变量，不改本文件（ghcr.io ↔ ghcr.nju.edu.cn 同 digest）。
 services:
   jenkins:
-    image: ${IMAGE_JENKINS:-ghcr.io/zeek-zhao/orgflow-devops/m1-jenkins@sha256:0000000000000000000000000000000000000000000000000000000000000000}
+    image: ${IMAGE_JENKINS:-ghcr.io/zeek-zhao/orgflow-devops/m1-jenkins@sha256:0804cd953119e05c3a0ad27eb37c8247b5d0dbb104fae696acbc6f2ad7665799}
     pull_policy: missing
     container_name: ${CONTAINER_PREFIX:-of}-jenkins
     labels:
