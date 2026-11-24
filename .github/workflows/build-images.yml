@@ -1,26 +1,30 @@
-name: Build M0 Images
+name: Build M0/M1 Images
 
-# v1.0 §4 / AC-20：7 个镜像全部在本分支 CI 构建推 GHCR，不引用 main 产物。
-# 构建产物以 m0-<svc> 命名，避免与 main 的同名镜像冲突；digest 由 build job 输出，
+# v1.0 §4 / AC-20：7 个 M0 镜像全部在本分支 CI 构建推 GHCR，不引用 main 产物。
+# M1 追加 m1-jenkins / m1-jenkins-agent 两项（controller + SSH agent）。
+# 构建产物以 m0-/m1- 命名，避免与 main 的同名镜像冲突；digest 由 build job 输出，
 # 由 make images-lock 回填到 tests/images.lock（人不手改）。
 
 on:
   push:
-    branches: [feat/m0-v2, feat/m0-final-pr, feat/m0-t2-images, main]
+    # M1：新分支 feat/m1-jenkins 也需触发（旧分支保留供历史回溯）
+    branches: [feat/m0-v2, feat/m0-final-pr, feat/m0-t2-images, feat/m1-jenkins, main]
     paths:
       - "services/**"
       - "config/Caddyfile"
       - "config/ldap/**"
       - "config/homepage/**"
+      - "config/jenkins/**"
+      - "ci/**"
       - "scripts/sync-build-context.sh"
       - ".github/workflows/build-images.yml"
   workflow_dispatch:
     # T11：参数化回填 PENDING-BUILD 服务（默认 homepage,ldapadmin，逗号分隔，须在 BUILDABLE 内）
     inputs:
       services:
-        description: "待回填 imageId 的服务（逗号分隔，如 homepage,ldapadmin）"
+        description: "待回填 imageId 的服务（逗号分隔，如 homepage,ldapadmin,jenkins,jenkins-agent）"
         required: false
-        default: "homepage,ldapadmin"
+        default: "homepage,ldapadmin,jenkins,jenkins-agent"
         type: string
 
 # T8：镜像以本机构建为准（scripts/build-images.sh）。本 workflow 的 GHCR 推送为可选增强：
@@ -44,16 +48,29 @@ jobs:
         include:
           - image: m0-dnsmasq
             context: services/dnsmasq
+            tag: m0-v2
           - image: m0-caddy
             context: services/caddy
+            tag: m0-v2
           - image: m0-ldap
             context: services/ldap
+            tag: m0-v2
           - image: m0-ldapadmin
             context: services/ldapadmin
+            tag: m0-v2
           - image: m0-homepage
             context: services/homepage
+            tag: m0-v2
           - image: m0-router
             context: services/router
+            tag: m0-v2
+          # M1：Jenkins controller 与 SSH agent，由 CI 构建推 GHCR、部署按 digest 拉取
+          - image: m1-jenkins
+            context: services/jenkins
+            tag: m1-v0.1
+          - image: m1-jenkins-agent
+            context: services/jenkins-agent
+            tag: m1-v0.1
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: 同步自包含构建上下文
@@ -72,7 +89,7 @@ jobs:
           images: ghcr.io/${{ github.repository }}/${{ matrix.image }}
           tags: |
             type=sha,format=short
-            type=raw,value=m0-v2
+            type=raw,value=${{ matrix.tag }}
       - name: 构建镜像（无推送权限时只 build 校验，不 push）
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         id: build
@@ -86,22 +103,25 @@ jobs:
         env:
           IMAGE: ${{ matrix.image }}
           DIGEST: ${{ steps.build.outputs.digest }}
+          TAG: ${{ matrix.tag }}
         run: |
           # load 模式下 build-push-action 把镜像载入本地 daemon，取真实 imageId
           # 去 sha256: 前缀，保持 tests/images.lock 第3列为统一 64hex（与 check-images.sh --mode=digest 一致）
-          IID_RAW="$(docker image inspect "ghcr.io/${GITHUB_REPOSITORY}/${IMAGE}:m0-v2" --format '{{.Id}}' 2>/dev/null || echo '')"
+          IID_RAW="$(docker image inspect "ghcr.io/${GITHUB_REPOSITORY}/${IMAGE}:${TAG}" --format '{{.Id}}' 2>/dev/null || echo '')"
           IID="${IID_RAW#sha256:}"
           printf '%s\timageId=%s\tdigest=%s\n' "$IMAGE" "$IID" "$DIGEST" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "$IMAGE=$IID" > "imageid-${IMAGE}.env"
-          echo "$IMAGE=$DIGEST" >> digests.env
+          echo "$IMAGE=$DIGEST" >> "digest-${IMAGE}.env"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: digest-${{ matrix.image }}
           path: |
-            digests.env
+            digest-*.env
             imageid-*.env
 
-  # T11：把 PENDING-BUILD 回填为真实 imageId，以 PR 形式提交（不直接 push 到 feat/m0-v2）。
+  # T11：把 PENDING-BUILD 回填为真实 imageId，以 PR 形式提交（不直接 push 到来源分支）。
+  # M1：ref/base 改用 github.ref_name，适配 feat/m1-jenkins；同时把 CI 输出的 digest
+  # 回填到两个 jenkins compose 的 ${IMAGE_*} 默认值（禁止手填）。
   # 仅在 workflow_dispatch 手动触发时运行；overlay2 + 充足磁盘的 ubuntu-24.04 满足大镜像导出。
   fill-pending:
     if: ${{ github.event_name == 'workflow_dispatch' }}
@@ -113,7 +133,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: feat/m0-v2
+          ref: ${{ github.ref_name }}
       - name: 下载全部 imageId artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -141,19 +161,51 @@ jobs:
             changed=$((changed+1))
           done
           echo "回填 $changed 个服务"
+      - name: 回填 Jenkins 两个 compose 的 digest 默认值（M1：CI 输出回填，禁止手填）
+        run: |
+          set -euo pipefail
+          # digest-*.env 每行形如 m1-jenkins=sha256:<64hex>
+          python3 - <<'PY'
+          import glob, re, sys
+          digests = {}
+          for f in glob.glob('digest-*.env'):
+              for line in open(f):
+                  if '=' in line:
+                      k, v = line.strip().split('=', 1)
+                      if k.startswith('m1-') and re.fullmatch(r'sha256:[0-9a-f]{64}', v):
+                          digests[k] = v
+          mapping = {
+              'services/jenkins/compose.yml': ('m1-jenkins', 'IMAGE_JENKINS'),
+              'services/jenkins-agent/compose.yml': ('m1-jenkins-agent', 'IMAGE_JENKINS_AGENT'),
+          }
+          for path, (img, key) in mapping.items():
+              d = digests.get(img)
+              if not d:
+                  print(f'  · {img} 无 CI digest，跳过（可能未触发 push）'); continue
+              s = open(path, encoding='utf-8').read()
+              # 替换 ${IMAGE_X:-ghcr.io/...:<tag>} 里的 @sha256:<旧值或占位> 为 CI digest
+              new, n = re.subn(
+                  r'(\$\{' + key + r':-ghcr\.io/[^\s}]+?)@sha256:[0-9a-f]{64}(\})',
+                  lambda m: m.group(1) + '@' + d + m.group(2), s)
+              if n == 0:
+                  print(f'::warning::{path} 未找到可回填的 digest 占位，跳过')
+              open(path, 'w', encoding='utf-8').write(new)
+              print(f'  ✓ {path} 回填 {img} digest={d}（{n} 处）')
+          PY
       - name: 校验回填后零 PENDING
         run: bash scripts/check-images.sh --mode=lock
       - name: 创建回填 PR（不直接 push）
         uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6
         with:
           branch: ci/fill-pending-imageids
-          base: feat/m0-v2
-          title: "build(m0-v3-t11): 回填 PENDING-BUILD 镜像 imageId"
+          base: ${{ github.ref_name }}
+          title: "build(m1): 回填镜像 imageId 与 Jenkins compose digest"
           body: |
-            由 workflow_dispatch 在 overlay2 runner 构建后自动生成，imageId 来自 `docker image inspect`。
-            回填后 `check-images.sh --mode=lock` 零 PENDING。禁止手工编辑哈希。
-          commit-message: "build(m0-v3-t11): 回填 PENDING-BUILD imageId (auto)"
-          add-paths: tests/images.lock,config/images.env
+            由 workflow_dispatch 在 overlay2 runner 构建后自动生成，imageId 来自 `docker image inspect`，
+            digest 来自 build-push-action 输出。回填后 `check-images.sh --mode=lock` 零 PENDING。
+            禁止手工编辑哈希。
+          commit-message: "build(m1): 回填 PENDING-BUILD imageId 与 compose digest (auto)"
+          add-paths: tests/images.lock,config/images.env,services/jenkins/compose.yml,services/jenkins-agent/compose.yml
 
   # certs-init 复用本分支重建后的 m0-router，不单独出镜像（v1.0 表格第 2 行）。
   verify-upstream:

@@ -40,6 +40,8 @@ META = {
     "ldap":       ("LDAP 目录", "mdi-shield-account", "统一身份目录 · ldap:389"),
     "dnsmasq":    ("DNS 解析",  "mdi-dns",             "内网 DNS 服务 · UDP 53/5353"),
     "certs-init": ("证书初始化", "mdi-certificate",     "一次性任务 · 不放假页面"),
+    "jenkins":    ("Jenkins",   "mdi-jenkins",         "持续集成与流水线 · jenkins:8080"),
+    "jenkins-agent": ("Jenkins Agent", "mdi-ssh",      "构建执行节点 · 普通用户 jenkins / SSH 22"),
 }
 
 # 公网入口组排除的 public_path：指向 /status 的假入口与一次性任务的 /none

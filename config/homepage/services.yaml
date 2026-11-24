@@ -36,6 +36,17 @@
         icon: "mdi-lan"
         siteMonitor: "http://router:8080/healthz"
         ping: "router"
+    - Jenkins:
+        href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/jenkins/"
+        description: "持续集成与流水线 · jenkins:8080"
+        icon: "mdi-jenkins"
+        siteMonitor: "http://jenkins:8080/jenkins/login"
+        ping: "jenkins"
+    - Jenkins Agent:
+        href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/none"
+        description: "构建执行节点 · 普通用户 jenkins / SSH 22"
+        icon: "mdi-ssh"
+        ping: "jenkins-agent"
 - 公网入口:
     - 统一入口:
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/"
@@ -49,6 +60,10 @@
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/router/healthz"
         description: "动态路由注册与热更新 · router:8080"
         icon: "mdi-lan"
+    - Jenkins:
+        href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/jenkins/"
+        description: "持续集成与流水线 · jenkins:8080"
+        icon: "mdi-jenkins"
     - 状态总览:
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/status"
         description: "全部服务入口与探测说明"

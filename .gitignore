@@ -3,6 +3,8 @@ out/
 !.env.example
 !config/images.env
 !config/defaults.env
+# M1：Jenkins agent 的 SSH 私钥与 host key（敏感产物，脚本生成，绝不入库）
+secrets/
 __pycache__/
 *.pyc
 *.log

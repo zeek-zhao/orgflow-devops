@@ -1,0 +1,91 @@
+# Jenkins Configuration as Code —— M1 唯一配置真源（UI 上点出来的一律不算数）。
+# 由 JCasC 插件读取（CASC_JENKINS_CONFIG=/var/jenkins_home/casc/jenkins.yaml，整目录只读挂载）。
+# 敏感值全部走 env 占位（${LDAP_ADMIN_PASSWORD}/${JENKINS_AGENT_SSH_KEY}/${JENKINS_AGENT_HOST_KEY}/${JENKINS_URL}），
+# 不写进仓库；私钥/host key 由 scripts/gen-jenkins-secrets.sh 生成、宿主 export 透传。
+jenkins:
+  systemMessage: "OrgFlow M1 —— Jenkins controller + SSH agent（全服务局域网检测）"
+  # controller 不跑构建；所有 Job 都写 node('orgflow-agent')，避免凭据与构建同进程叠加权限。
+  numExecutors: 0
+  # 安全域：唯一一道登录 = LDAP（M0 口径，无本地管理员账号）。
+  # ★ 必须写成 configurations 列表（JCasC 的 LDAP realm 没有扁平写法）。
+  # ★ groupSearchFilter 用 member={0}：{0} 是用户完整 DN，groupOfNames 的 member 存的是完整 DN；
+  #   cn={1} 只取用户名，匹配不到 groupOfNames（main 用 posixGroup+memberUid 才用 {1}）。
+  securityRealm:
+    ldap:
+      configurations:
+        - server: "ldap:389"
+          rootDN: "dc=orgflow,dc=local"
+          userSearchBase: "ou=people"
+          userSearch: "uid={0}"
+          groupSearchBase: "ou=groups"
+          groupSearchFilter: "(&(objectClass=groupOfNames)(member={0}))"
+          managerDN: "cn=admin,dc=orgflow,dc=local"
+          managerPasswordSecret: "${LDAP_ADMIN_PASSWORD}"
+          environmentProperties:
+            - name: java.naming.referral
+              value: ignore
+  # 授权：jenkins-admins 全权；jenkins-dev 只读+构建+取消；匿名无任何权限。
+  authorizationStrategy:
+    projectMatrix:
+      permissions:
+        - "hudson.model.Hudson.Administer:jenkins-admins"
+        - "hudson.model.Hudson.Read:jenkins-admins"
+        - "hudson.model.Item.Read:jenkins-admins"
+        - "hudson.model.Item.Build:jenkins-admins"
+        - "hudson.model.Item.Cancel:jenkins-admins"
+        - "hudson.model.Item.Workspace:jenkins-admins"
+        - "hudson.model.Run.Update:jenkins-admins"
+        - "hudson.model.Hudson.Read:jenkins-dev"
+        - "hudson.model.Item.Read:jenkins-dev"
+        - "hudson.model.Item.Build:jenkins-dev"
+        - "hudson.model.Item.Cancel:jenkins-dev"
+        - "hudson.model.Item.Workspace:jenkins-dev"
+  # SSH agent 永久节点（host key 固定 + manuallyProvided，跨容器重建不脱机）。
+  nodes:
+    - permanent:
+        name: "orgflow-agent"
+        numExecutors: 2
+        remoteFS: "/home/jenkins/agent"
+        labelString: "orgflow-agent"
+        mode: NORMAL
+        retentionStrategy: "always"
+        launcher:
+          ssh:
+            host: "jenkins-agent"
+            port: 22
+            credentialsId: "agent-ssh-key"
+            javaPath: "/opt/java/openjdk/bin/java"
+            sshHostKeyVerificationStrategy:
+              manuallyProvidedKeyVerificationStrategy:
+                key: "${JENKINS_AGENT_HOST_KEY}"
+
+unclassified:
+  # 不设会在日志刷 "Jenkins URL is not set"，反代下邮件/回调链接也会错。
+  location:
+    url: "${JENKINS_URL}"
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          # agent SSH 私钥：directEntry（fileOnMaster 已废弃、JCasC 实例化不了会让 Jenkins 卡 starting）
+          - basicSSHUserPrivateKey:
+              scope: GLOBAL
+              id: "agent-ssh-key"
+              username: "jenkins"
+              description: "orgflow-agent SSH 私钥"
+              privateKeySource:
+                directEntry:
+                  privateKey: "${JENKINS_AGENT_SSH_KEY}"
+          # LDAP 管理员口令（探活脚本 ldapsearch -y 临时文件用，不进命令行/console）
+          - string:
+              scope: GLOBAL
+              id: "ldap-admin-password"
+              secret: "${LDAP_ADMIN_PASSWORD}"
+
+# Job as Code：9 条 Job 由以下 3 个 Job DSL 幂等生成；- file: 必须是容器内绝对路径。
+# config/jenkins 是只读挂载，Job 不得往里写；不再有 globalLibraries（共享库走文件挂载）。
+jobs:
+  - file: /var/jenkins_home/casc/jobs/verify-service.groovy
+  - file: /var/jenkins_home/casc/jobs/verify-lan-all.groovy
+  - file: /var/jenkins_home/casc/jobs/verify-jenkins-agent.groovy

@@ -1,0 +1,13 @@
+workflow-aggregator:608.v67378e9d3db_1
+git:5.11.0
+credentials:1514.vb_01eb_014e7d4
+credentials-binding:728.v902a_273b_8947
+plain-credentials:199.v9f8e1f741799
+ssh-slaves:3.1097.v868116049892
+ssh-credentials:372.va_250881b_08cd
+ldap:825.v2fca_37dd5b_cb_
+configuration-as-code:2147.v8a_8d38668c72
+matrix-auth:3.3
+job-dsl:3752.vb_199526b_20c3
+timestamper:1.30
+ws-cleanup:0.49

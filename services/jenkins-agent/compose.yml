@@ -1,0 +1,44 @@
+# Jenkins SSH agent（M1）：探测 Job 执行节点，无 docker.sock、固定 IP .17、不发布宿主端口。
+# 镜像默认值里的 @sha256 由 CI 回填（全 0 为占位，禁止手填）；切源只改 IMAGE_JENKINS_AGENT。
+services:
+  jenkins-agent:
+    image: ${IMAGE_JENKINS_AGENT:-ghcr.io/zeek-zhao/orgflow-devops/m1-jenkins-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000}
+    pull_policy: missing
+    container_name: ${CONTAINER_PREFIX:-of}-jenkins-agent
+    labels:
+      org.of.fp: ${FP_VALUE:-}
+    environment:
+      TZ: Asia/Shanghai
+      PUID: "1000"
+      PGID: "1000"
+      # 探测脚本需要的网关域名（来自 defaults.env，不写死）
+      DOMAIN: ${DOMAIN}
+      IP_DNSMASQ: ${IP_DNSMASQ}
+    volumes:
+      # 固定 sshd host key（跨容器重建稳定，JCasC manuallyProvided 校验不脱机）
+      - ../../secrets/agent_host_key:/etc/ssh/ssh_host_ed25519_key:ro
+      # SSH 公钥（入口脚本读入并 export JENKINS_AGENT_SSH_PUBKEY）
+      - ../../secrets/agent_ssh_key.pub:/run/secrets/agent_ssh_pub:ro
+      # 共享库挂载：宿主改脚本下一次构建立即生效（不配 Git SCM、不挂 docker.sock）
+      - ../../ci/shared-library:/opt/orgflow/shared:ro
+    expose:
+      - "22"
+    # 启动顺序（jenkins fully up → agent）由 manifest.tsv depends_on + up.sh 保证。
+    dns:
+      - ${IP_DNSMASQ}
+    networks:
+      orgflow:
+        ipv4_address: ${IP_JENKINS_AGENT:-192.168.90.17}
+    restart: unless-stopped
+    healthcheck:
+      # 不依赖 curl/nc：bash /dev/tcp 探 22（镜像里一定有 bash）
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/127.0.0.1/22'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+networks:
+  orgflow:
+    external: true
+    name: ${ORG_NETWORK:-orgflow-minimal_orgflow}

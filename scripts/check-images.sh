@@ -21,8 +21,8 @@ for a in "$@"; do
 done
 
 UBUNTU_DIGEST='sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852'
-SERVICES=(homepage caddy ldap ldapadmin dnsmasq router certs-init)
-BUILDABLE=(homepage caddy ldap ldapadmin dnsmasq router)
+SERVICES=(homepage caddy ldap ldapadmin dnsmasq router certs-init jenkins jenkins-agent)
+BUILDABLE=(homepage caddy ldap ldapadmin dnsmasq router jenkins jenkins-agent)
 
 # 读 lock 到关联数组：LK_tag[svc], LK_iid[svc], LK_up[svc], LK_ctx[svc]
 declare -A LK_tag LK_iid LK_up LK_ctx
@@ -48,9 +48,10 @@ check_base() {
     f="services/$svc/compose.yml"
     [[ -f "$f" ]] || { echo "✗ 缺 $f" >&2; rc=1; continue; }
     grep -q 'image: ${IMAGE_' "$f" || { echo "✗ $f image 未用 \${IMAGE_*} 引用" >&2; rc=1; }
-    grep -q 'pull_policy: never' "$f" || { echo "✗ $f 缺 pull_policy: never" >&2; rc=1; }
+    # M1：jenkins/jenkins-agent 用 missing（需从 GHCR 拉取），M0 服务用 never；两者都合法
+    grep -qE 'pull_policy: (never|missing)' "$f" || { echo "✗ $f 缺 pull_policy: never|missing" >&2; rc=1; }
   done
-  [[ $rc -eq 0 ]] && echo "✓ 镜像基底：6 Dockerfile FROM@digest + 7 compose 用 \${IMAGE_*} 引用 + pull_policy:never"
+  [[ $rc -eq 0 ]] && echo "✓ 镜像基底：8 Dockerfile FROM@digest + 9 compose 用 \${IMAGE_*} 引用 + pull_policy:never|missing"
   return $rc
 }
 
@@ -113,7 +114,7 @@ check_upstream() {
   while IFS=$'\t' read -r name ref digest; do
     [[ "$name" =~ ^[a-z] ]] || continue
     BY_NAME["$ref"]="$digest"
-  done < <(sed -n '/^```$/,/^```$/p' "$REG" | grep -E '^(ubuntu|caddy|ldap|ldapadmin|homepage)[[:space:]]')
+  done < <(sed -n '/^```$/,/^```$/p' "$REG" | grep -E '^(ubuntu|caddy|ldap|ldapadmin|homepage|jenkins)[[:space:]]')
   for df in services/*/Dockerfile; do
     from="$(grep -m1 '^FROM ' "$df" 2>/dev/null || true)"
     [[ -n "$from" ]] || continue
