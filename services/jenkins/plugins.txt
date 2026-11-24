@@ -11,3 +11,6 @@ matrix-auth:3.3
 job-dsl:3752.vb_199526b_20c3
 timestamper:1.30
 ws-cleanup:0.49
+# M1：默认深色主题（版本由 update-center 解析确认，见 plugins.lock.md）
+theme-manager:368.v587224fde1f6
+dark-theme:652.vea_da_dfea_e769

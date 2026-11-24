@@ -27,6 +27,12 @@
 | job-dsl | 3752.vb_199526b_20c3 | 2026-11-17 | JCasC `jobs: - file:` 生成 9 条 Job |
 | timestamper | 1.30 | 2025-07-02 | 构建日志时间戳（验收看并发重叠） |
 | ws-cleanup | 0.49 | 2025-08-11 | 构建后清理 workspace |
+| theme-manager | 368.v587224fde1f6 | 2026-11-10 | 全局主题管理（core≥2.555.3，线上 2.580.2 满足） |
+| dark-theme | 652.vea_da_dfea_e769 | 2026-03-23 | 默认深色主题（core≥2.528.3） |
+
+> 主题插件版本于 2026-11-25 从 `https://updates.jenkins.io/update-center.json` 实测解析（非手写）：
+> `theme-manager 368.v587224fde1f6`、`dark-theme 652.vea_da_dfea_e769`。
+> 生效顺序：先重建镜像（插件进镜像）→ 再应用 JCasC `appearance`，否则缺插件会导致 JCasC `No such theme` 启动失败。
 
 ## 复现步骤
 

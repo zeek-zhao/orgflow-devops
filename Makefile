@@ -48,6 +48,9 @@ check-all: check ## 全量门禁（含镜像 digest 与基底）
 test: ## 静态自检（python 语法 + 配置解析）
 	@bash scripts/test-static.sh
 
+smoke: ## Jenkins Job 冒烟（触发 verify-* → 等结果 → 下载 consoleText；口令走 JENKINS_PASS）
+	@bash scripts/jenkins-smoke.sh $(ARGS)
+
 verify: ## 全量验收矩阵（AC-1~AC-15）
 	@bash scripts/verify.sh
 
