@@ -7,13 +7,14 @@
 
 设计：render() 生成一份**完整且自洽的 Caddyfile**（admin 内网绑定 / :80 跳转 /
   内网站点 / 公网入口块），routes.yaml 的动态前缀注入公网入口块。
-  /render 流程：load → render 完整配置 → /adapt 校验（失败 422 不 reload）
-  → /load 整站替换（加载 adapt 出的 JSON，保证与渲染输出一致）→ 幂等跳过。
+  /render 流程：load → render 完整配置 → POST /load（Content-Type: text/caddyfile，
+  对齐 main render.py；Caddy 内置 adapter 即 validate，语法错返回 422 不 reload）
+  → 幂等跳过。下发的是 render 原文，故输出 == 实跑配置。
 
 端点：
   GET  /healthz  → 200
   GET  /routes   → 渲染出的完整路径型 Caddyfile（便于断言，== 实跑配置）
-  POST /render   → 见上；坏 prefix/upstream 或 adapt 失败 → 422；Caddy 不可达 → 503
+  POST /render   → 见上；坏 prefix/upstream 或 caddy validate 失败 → 422；Caddy 不可达 → 503
 
 依赖：对齐 main render.py「零第三方依赖」，本服务跑 main 的 router:24.04-v1
 镜像（内含 python3，无 PyYAML），routes.yaml 用极简 schema 手写解析。
@@ -27,7 +28,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROUTES = os.environ.get("ROUTES", "/etc/router/routes.yaml")
-CADDY_ADMIN = os.environ.get("CADDY_ADMIN", "http://caddy:2019")
+CADDY_ADMIN = os.environ.get("CADDY_ADMIN", "http://192.168.90.10:2019")
 DOMAIN = os.environ.get("DOMAIN", os.environ.get("GATEWAY_DOMAIN", "org-devops.com")).strip().strip(".")
 PUBLIC_PORT = os.environ.get("PUBLIC_PORT", "18081").strip()
 CADDY_IP = os.environ.get("IP_CADDY", "192.168.90.10").strip()
@@ -167,37 +168,22 @@ router.{DOMAIN} {{
 """
 
 
-def _post(path, payload, timeout=5):
-    body = json.dumps(payload).encode()
+def reload_caddy(caddyfile_text):
+    """Caddy /load：以 text/caddyfile 下发原始 Caddyfile（对齐 main render.py）。
+    Caddy 内置 caddyfile adapter 解析；语法错误返回 400。
+    返回 (status, msg)；status 422 表示配置校验失败（调用方据此不更新状态）。"""
+    import urllib.error
     req = urllib.request.Request(
-        f"{CADDY_ADMIN}{path}", data=body,
-        headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.status, resp.read().decode("utf-8", "replace")
-
-
-def adapt(config_text):
-    """Caddy /adapt：把 Caddyfile 转 JSON。返回 (ok, body_json_or_error)。"""
+        f"{CADDY_ADMIN}/load", data=caddyfile_text.encode("utf-8"),
+        headers={"Content-Type": "text/caddyfile"}, method="POST")
     try:
-        status, body = _post("/adapt", {"config": config_text, "adapter": "caddyfile"})
-        if status >= 400:
-            return False, body[:400]
-        parsed = json.loads(body)
-        if isinstance(parsed, dict) and parsed.get("error"):
-            return False, str(parsed["error"])[:400]
-        return True, body
-    except Exception as e:
-        return None, f"adapt 不可达: {e}"
-
-
-def reload_caddy(json_config):
-    """Caddy /load：整站加载 adapt 出的 JSON 配置。返回 (status, msg)。"""
-    try:
-        req = urllib.request.Request(
-            f"{CADDY_ADMIN}/load", data=json.dumps(json_config).encode(),
-            headers={"Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=8) as resp:
             return resp.status, "ok"
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", "replace").strip()[:400]
+        if 400 <= e.code < 500:
+            return 422, f"caddy validate 失败: {detail}"
+        return e.code, detail
     except Exception as e:
         return 503, f"caddy 不可达: {e}"
 
@@ -232,18 +218,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send(422, f"拒绝 reload（坏 prefix/upstream）: {html.escape(str(e))}")
             return
         config_text = render(routes)
-        # /render 前先 caddy validate（经 /adapt），失败 422 且不 reload
-        ok, body = adapt(config_text)
-        if ok is False:
-            self._send(422, f"拒绝 reload（caddy validate 失败）: {html.escape(str(body))}")
-            return
-        if ok is None:
-            self._send(503, str(body)); return
         h = hashlib.sha256(config_text.encode()).hexdigest()
         if h == _last_hash:
             self._send(200, "幂等：配置未变，跳过 reload")
             return
-        status, rmsg = reload_caddy(json.loads(body))
+        # 以 text/caddyfile 下发；Caddy 内置 adapter 即 validate，语法错返回 422 且不改状态。
+        # 下发的是 render 的原始 Caddyfile → 输出即实跑配置（拍定 P1）。
+        status, rmsg = reload_caddy(config_text)
+        if status == 422:
+            self._send(422, f"拒绝 reload（caddy validate 失败）: {html.escape(rmsg)}")
+            return
         if status >= 500:
             self._send(503, rmsg); return
         _last_hash = h

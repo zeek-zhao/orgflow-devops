@@ -154,7 +154,8 @@ services:
     entrypoint: ["python3", "/app/server.py"]
     environment:
       ROUTES: /etc/router/routes.yaml
-      CADDY_ADMIN: http://caddy:2019
+      # admin 绑内网固定 IP，Host 头须匹配该 IP（用容器名 caddy 会被 403 host not allowed）
+      CADDY_ADMIN: http://192.168.90.10:2019
       # routes.yaml 的子域由 router 渲染时拼上此后缀（来自 .env 的 DOMAIN）
       GATEWAY_DOMAIN: ${DOMAIN:-org-devops.local}
     volumes:
