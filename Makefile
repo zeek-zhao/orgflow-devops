@@ -8,7 +8,7 @@ SERVICES := dnsmasq certs-init caddy ldap ldapadmin homepage router
 
 .PHONY: help render up down status up-% down-% check check-all test verify doctor \
         routes hosts ca ca-rotate record images-lock images-guard \
-        test-svc-% sync-context images-upstream
+        test-svc-% sync-context images-upstream e2e e2e-up e2e-down e2e-test
 
 # ---------- 帮助 ----------
 help: ## 列出全部目标
@@ -50,6 +50,16 @@ test: ## 静态自检（python 语法 + 配置解析）
 
 verify: ## 全量验收矩阵（AC-1~AC-15）
 	@bash scripts/verify.sh
+
+# ---------- §8 独立命名空间测试（ofv2，与线上隔离）----------
+e2e: ## 独立命名空间测试：起栈 + 跑 bats（线上零影响）
+	@bash tests/run-v2.sh up && bash tests/run-v2.sh test
+e2e-up: ## 只在独立命名空间起 ofv2 栈（不动线上 of-*）
+	@bash tests/run-v2.sh up
+e2e-down: ## 只移除 ofv2 容器（保留卷，线上零影响）
+	@bash tests/run-v2.sh down
+e2e-test: ## 跑全栈+单服务 bats（需先 e2e-up 且已装 bats）
+	@bash tests/run-v2.sh test
 
 doctor: ## 只读环境自检（不改状态）
 	@bash scripts/doctor.sh

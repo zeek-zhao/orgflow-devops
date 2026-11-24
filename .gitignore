@@ -9,3 +9,10 @@ __pycache__/
 .DS_Store
 # 镜像构建上下文是 config/ 真源的生成物（sync-build-context.sh 生成），不入库
 services/*/build/
+# 官方 homepage 镜像挂载 config/homepage 时自动生成的运行时文件，不入库（R4b/R5 曾误提交后清理）
+config/homepage/custom.css
+config/homepage/custom.js
+config/homepage/docker.yaml
+config/homepage/kubernetes.yaml
+config/homepage/proxmox.yaml
+config/homepage/logs/

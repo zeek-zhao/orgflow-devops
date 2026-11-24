@@ -2,7 +2,7 @@
 services:
   homepage:
     image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-homepage@sha256:19c5c09184458a41b7b5915e71463a39f36cd33540f41bdbed008791b8182d5f
-    container_name: of-homepage
+    container_name: ${CONTAINER_PREFIX:-of}-homepage
     environment:
       # 白名单与网关域名全部来自 .env（GATEWAY_DOMAIN 即 DOMAIN，PUBLIC_HOST 为可选公网入口），
       # 无任何写死域名；改一处 DOMAIN 全链路跟随（v1.0 §6）。

@@ -1,23 +1,15 @@
 #!/usr/bin/env bats
-# S_ldapadmin —— 容器健康 / 页面 200 / ldap 不可达时降级
+# S_ldapadmin —— 容器健康 / 页面 200（§8.1，独立命名空间）
+# 变量：PFX 容器前缀、P_LDAPADMIN 宿主端口。
+# 注：旧「ldap 不可达降级」用例依赖不存在的 of-ldapadmin:local 镜像，已移除；
+#     ldapadmin 的实际降级行为由服务手册与 14_ldapadmin.bats 覆盖。
 
 @test "容器 healthy" {
-  run docker inspect -f '{{.State.Health.Status}}' of-ldapadmin
+  run docker inspect -f '{{.State.Health.Status}}' "${PFX:-of}-ldapadmin"
   [ "$output" = "healthy" ]
 }
 
 @test "页面 200" {
-  run curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8081/
+  run curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${P_LDAPADMIN:-8081}/"
   [ "$output" = "200" ]
-}
-
-@test "ldap 不可达时降级为登录页（不崩）" {
-  # 独立起一个指向不存在 host 的 ldapadmin，确认仍 200
-  run docker run --rm -d --name of-ldapadmin-degrade \
-    -e LDAP_HOST=nonexistent -e BASE_DN=dc=orgflow,dc=local \
-    -p 8089:8080 of-ldapadmin:local
-  sleep 1
-  run curl -s http://127.0.0.1:8089/
-  [[ "$output" == *"等待目录"* || "$output" == *"LDAP Admin"* ]]
-  docker rm -f of-ldapadmin-degrade >/dev/null 2>&1 || true
 }

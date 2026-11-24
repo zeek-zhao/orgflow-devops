@@ -15,7 +15,10 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
-ENVFILE="config/defaults.env"
+# 独立命名空间测试可覆盖：ENV_FILE 指向 v2 env，CONTAINER_PREFIX=ofv2 让 cid/健康探测匹配。
+# 默认值保持线上不变（config/defaults.env / of-*），对现有部署零影响。
+ENVFILE="${ENV_FILE:-config/defaults.env}"
+PREFIX="${CONTAINER_PREFIX:-of}"
 
 # ---- 读 manifest（顺序 + 依赖 + 健康地址）----
 declare -a ORDER=()
@@ -96,7 +99,7 @@ ensure_resources() {
   done
 }
 
-svc_cid() { docker ps -aq -f "name=^of-$1\$" 2>/dev/null | head -1; }
+svc_cid() { docker ps -aq -f "name=^${PREFIX}-$1\$" 2>/dev/null | head -1; }
 svc_healthy() {
   local cid; cid="$(svc_cid "$1")"; [[ -z "$cid" ]] && return 1
   local st; st="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}running{{end}}' "$cid" 2>/dev/null)"
@@ -132,8 +135,10 @@ run_one() {
   if (( PULL )); then DC "$svc" pull >/dev/null 2>&1; fi
   DC "$svc" up -d --no-deps "$svc" >/dev/null 2>&1
   t1=$(date +%s%3N)
+  # 等容器名出现（compose 创建有微小延迟；一次性容器可能已 Exited，用 -aq 查）
+  for _ in 1 2 3 4 5; do cid="$(svc_cid "$svc")"; [[ -n "$cid" ]] && break; sleep 1; done
   if wait_healthy "$svc"; then healthy="healthy"; else healthy="UNHEALTHY"; fi
-  cid="$(svc_cid "$svc")"
+  [[ -n "$cid" ]] || cid="$(svc_cid "$svc")"
   emit "$svc" "up" "$(img_of "$svc")" "$((t1-t0))" "$cid" "$healthy" "$note"
   [[ "$healthy" == "healthy" ]]
 }

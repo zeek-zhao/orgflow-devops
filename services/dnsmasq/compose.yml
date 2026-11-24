@@ -3,7 +3,7 @@
 services:
   dnsmasq:
     image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/dnsmasq@sha256:9f1a5959399d1ff65e258a6f2f477c2430f9d9851764dce16b7779579c3d32f6
-    container_name: of-dnsmasq
+    container_name: ${CONTAINER_PREFIX:-of}-dnsmasq
     environment:
       GATEWAY_DOMAIN: ${DOMAIN:-org-devops.local}
       GATEWAY_IP: ${IP_CADDY:-192.168.90.10}

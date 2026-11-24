@@ -3,7 +3,7 @@
 services:
   caddy:
     image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-caddy@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
-    container_name: of-caddy
+    container_name: ${CONTAINER_PREFIX:-of}-caddy
     environment:
       DOMAIN: ${DOMAIN:-org-devops.local}
       PUBLIC_PORT: ${PUBLIC_PORT:-18081}
@@ -19,7 +19,7 @@ services:
       orgflow:
         ipv4_address: ${IP_CADDY:-192.168.90.10}
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://192.168.90.10:2019/config/"]
+      test: ["CMD", "wget", "--spider", "-q", "http://${IP_CADDY:-192.168.90.10}:2019/config/"]
       interval: 5s
       timeout: 3s
       retries: 10

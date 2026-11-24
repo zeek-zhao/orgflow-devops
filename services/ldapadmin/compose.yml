@@ -2,7 +2,7 @@
 services:
   ldapadmin:
     image: ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-phpldapadmin@sha256:d112b82be1336f91e028b0348755133fda333992355b533419355a65c32ff9ad
-    container_name: of-ldapadmin
+    container_name: ${CONTAINER_PREFIX:-of}-ldapadmin
     environment:
       PHPLDAPADMIN_LDAP_HOSTS: ldap
       PHPLDAPADMIN_HTTPS: "false"
