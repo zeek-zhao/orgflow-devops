@@ -102,6 +102,19 @@ PUBLIC_FIXED = """    @status path /status
     handle @caddyLegacy {
         redir https://{host}/status 308
     }
+
+    # R1(P1) 公网信息泄漏收口（与 config/Caddyfile 同步，render 输出 == 实跑）。
+    # 实测 remote_ip 方案失效（公网经 Funnel、容器内经网桥，.remote.host 同为 192.168.90.1），
+    # 改用「仅允许内网 Host 头」：放行 {$DOMAIN} 与 192.168.90.x，其余（含公网域名）403。
+    # 域名走 {$DOMAIN} 占位符不写死；服务间直连 homepage:3000 不受影响；首页 12 卡为 SSR。
+    @homeApi path /api/services /api/widgets
+    handle @homeApi {
+        @fromLan host {$DOMAIN} ^192\.168\.90\.[0-9]+$
+        handle @fromLan {
+            reverse_proxy homepage:3000
+        }
+        respond 403
+    }
 """
 
 

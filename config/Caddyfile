@@ -92,6 +92,24 @@ th{background:#f2f5f9}code{background:#eef2f7;padding:.1rem .35rem;border-radius
         respond 403
     }
 
+    # R1(P1) 公网信息泄漏收口：/api/services 泄漏内网 IP/端口，/api/widgets 泄漏宿主资源。
+    # 实测（外部公网 + 容器内双路，2026-11-24）：
+    #   - remote_ip 方案失效：公网经 Funnel、容器内经 docker 网桥，.remote.host 同为 192.168.90.1，
+    #     无论白名单写 127.0.0.1 还是内网网段都无法区分公网/内网（文档原方案 + 网段方案均已证伪）。
+    #   - host 头方案可行：Funnel 保留原始 Host，公网 host=PUBLIC_HOST，内网可用 {$DOMAIN} 或容器 IP。
+    # 故改用「仅允许内网 Host 头」兜底（文档 R1 做法1 认可的第二兜底）：
+    #   放行 {$DOMAIN} 与 192.168.90.x，其余（含公网域名）403。域名走 {$DOMAIN} 占位符不写死。
+    # 服务间调用走容器名直连（homepage:3000），不经本公网入口，不受影响；首页 12 卡为 SSR。
+    # 残留风险（已知）：curl 可伪造 Host 头绕过；浏览器访公网域名无法伪造，属文档认可兜底的固有边界。
+    @homeApi path /api/services /api/widgets
+    handle @homeApi {
+        @fromLan host {$DOMAIN} ^192\.168\.90\.[0-9]+$
+        handle @fromLan {
+            reverse_proxy homepage:3000
+        }
+        respond 403
+    }
+
     handle_path /ldapadmin/* {
         reverse_proxy ldapadmin:80
     }
