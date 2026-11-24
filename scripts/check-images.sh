@@ -84,17 +84,23 @@ check_digest() {
 
 # ---------- lock ----------
 check_lock() {
-  local rc=0 svc key want tag
+  local rc=0 svc key want tag iid
   [[ -f config/images.env ]] || { echo "✗ 缺 config/images.env" >&2; return 1; }
   read_lock || { echo "✗ 缺 tests/images.lock" >&2; return 1; }
   for svc in "${SERVICES[@]}"; do
     key="IMAGE_$(echo "$svc" | tr 'a-z-' 'A-Z_')"
     want="$(grep "^${key}=" config/images.env | head -1 | cut -d= -f2-)"
     tag="${LK_tag[$svc]:-}"
+    iid="${LK_iid[$svc]:-}"
     [[ -n "$want" ]] || { echo "✗ images.env 缺 $key" >&2; rc=1; continue; }
     [[ "$tag" == "$want" ]] || { echo "✗ $svc tag 不一致: images.env=$want lock=$tag" >&2; rc=1; }
+    # T11：PENDING-BUILD 必须失败并打印 pending: <svc>（CI 与 up.sh 共用此判定）
+    if [[ "$iid" == "PENDING-BUILD" ]]; then
+      echo "pending: $svc" >&2
+      rc=1
+    fi
   done
-  [[ $rc -eq 0 ]] && echo "✓ 摘要一致：images.env 7 个 IMAGE_* 与 lock tag 全部匹配"
+  [[ $rc -eq 0 ]] && echo "✓ 摘要一致：images.env 7 个 IMAGE_* 与 lock tag 匹配，零 PENDING"
   return $rc
 }
 
