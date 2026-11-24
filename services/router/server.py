@@ -214,8 +214,15 @@ def render(routes):
         # 用 handle_path 会剥掉 /jenkins 致 404）；缺省 true 保持既有 handle_path。
         strip = str(r.get("strip", "true")).lower()
         if strip == "false":
+            # T6：与 config/Caddyfile 的 /jenkins/* 块一致，回写 https scheme/Host，
+            # 避免 Funnel→Caddy 的 http 让 Jenkins 生成 http:// 外链。
             dyn.append(f"    # {prefix} 保留前缀（strip:false），上游自带 prefix\n"
-                       f"    handle {prefix}/* {{\n        reverse_proxy {up}\n    }}")
+                       f"    handle {prefix}/* {{\n"
+                       f"        reverse_proxy {up} {{\n"
+                       f"            header_up X-Forwarded-Proto https\n"
+                       f"            header_up X-Forwarded-Host {{host}}\n"
+                       f"        }}\n"
+                       f"    }}")
         else:
             dyn.append(f"    handle_path {prefix}/* {{\n        reverse_proxy {up}\n    }}")
     dyn_block = "\n\n".join(dyn)

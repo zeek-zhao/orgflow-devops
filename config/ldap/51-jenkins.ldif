@@ -1,0 +1,34 @@
+# M1：Jenkins 专用账号与授权组（JCasC projectMatrix 依赖这两个组名，不可改）。
+# osixia 在空卷首启时按文件名顺序导入（51 在 50 之后）；{{ LDAP_BASE_DN }} 由启动脚本替换。
+# 组用完整 DN 作 member，匹配 jenkins.yaml 的 groupSearchFilter: member={0}。
+# 口令 Jenkins@2026 由 slappasswd -s 实算为 {SSHA}（真实值，非占位符）；轮换见 docs/services/jenkins.md。
+# 注意：已有卷不会因 LDIF 改动自动导入，补齐命令见 docs/services/jenkins.md。
+
+dn: cn=jenkins-admins,ou=groups,{{ LDAP_BASE_DN }}
+objectClass: top
+objectClass: groupOfNames
+cn: jenkins-admins
+member: uid=jenkins-ci,ou=people,{{ LDAP_BASE_DN }}
+member: uid=zeek.zhao,ou=people,{{ LDAP_BASE_DN }}
+
+dn: cn=jenkins-dev,ou=groups,{{ LDAP_BASE_DN }}
+objectClass: top
+objectClass: groupOfNames
+cn: jenkins-dev
+member: uid=zeek.zhao,ou=people,{{ LDAP_BASE_DN }}
+
+dn: uid=jenkins-ci,ou=people,{{ LDAP_BASE_DN }}
+objectClass: top
+objectClass: inetOrgPerson
+objectClass: posixAccount
+cn: jenkins-ci
+sn: jenkins-ci
+displayName: jenkins-ci
+givenName: jenkins-ci
+uid: jenkins-ci
+uidNumber: 1009
+gidNumber: 501
+homeDirectory: /home/users/jenkins-ci
+loginShell: /bin/bash
+mail: jenkins-ci@orgflow.local
+userPassword: {SSHA}f8awD4TSJr3Eg79qpYni8gsICtqc2dLP

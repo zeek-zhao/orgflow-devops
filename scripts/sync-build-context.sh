@@ -28,8 +28,9 @@ sync config/Caddyfile services/caddy/build/Caddyfile
 sync services/caddy/health.sh services/caddy/build/health.sh
 sync licenses/Apache-2.0.txt services/caddy/build/LICENSE
 
-# ldap：初始用户 LDIF + 健康检查 + license
+# ldap：初始用户 LDIF（50 基础账号 + 51 Jenkins 账号组）+ 健康检查 + license
 sync config/ldap/50-users.ldif services/ldap/build/50-users.ldif
+sync config/ldap/51-jenkins.ldif services/ldap/build/51-jenkins.ldif
 sync services/ldap/ldap-health.sh services/ldap/build/ldap-health.sh
 sync licenses/GPL-2.0-only.txt services/ldap/build/LICENSE
 

@@ -126,8 +126,12 @@ th{background:#f2f5f9}code{background:#eef2f7;padding:.1rem .35rem;border-radius
     }
 
     # M1：Jenkins 自带 --prefix=/jenkins，用 handle 保留完整路径（不能 handle_path 剥前缀）
+    # T6：Funnel→Caddy 是 http，显式回写 https，避免 Jenkins 生成 http:// 外链（CSP report-uri）。
     handle /jenkins/* {
-        reverse_proxy jenkins:8080
+        reverse_proxy jenkins:8080 {
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+        }
     }
 
     # HomePage 占根路径，直接反代不 strip：

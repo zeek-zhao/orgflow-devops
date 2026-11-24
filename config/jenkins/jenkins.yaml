@@ -40,6 +40,8 @@ jenkins:
         - "hudson.model.Item.Build:jenkins-dev"
         - "hudson.model.Item.Cancel:jenkins-dev"
         - "hudson.model.Item.Workspace:jenkins-dev"
+        # 匿名只给 Overall/Read：/jenkins/ 由 403 白屏变 302→login，但仍看不到 Job（无 Item.Read）
+        - "hudson.model.Hudson.Read:anonymous"
   # SSH agent 永久节点（host key 固定 + manuallyProvided，跨容器重建不脱机）。
   nodes:
     - permanent:
@@ -89,3 +91,13 @@ jobs:
   - file: /var/jenkins_home/casc/jobs/verify-service.groovy
   - file: /var/jenkins_home/casc/jobs/verify-lan-all.groovy
   - file: /var/jenkins_home/casc/jobs/verify-jenkins-agent.groovy
+
+# M1 T7：全局默认深色主题；禁止用户改（JCasC 是唯一真源，UI 点的不算）。
+# ★ 顶层根节点，不能嵌进 unclassified（否则静默不生效）。
+# ★ theme id 先试 dark；若 JCasC 报 No such theme 换 darkSystem（"Dark (System)"）。
+# ★ 生效前提是镜像已含 theme-manager + dark-theme 插件（见 services/jenkins/plugins.txt）：
+#   必须"先重建镜像 → 再 reload JCasC"，缺插件时 reload 会让 Jenkins 启动失败。
+appearance:
+  themeManager:
+    disableUserThemes: true
+    theme: "dark"

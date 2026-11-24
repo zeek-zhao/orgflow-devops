@@ -7,6 +7,7 @@ LABEL org.opencontainers.image.licenses.note="OpenLDAP is OpenLDAP-2.8; upstream
 # 放到 osixia 的 custom bootstrap 目录，配合 entrypoint --copy-service 在首启导入。
 # 初始账号仅 M0 现有服务所需（svc-platform-admin / zeek.zhao）。
 COPY build/50-users.ldif /container/service/slapd/assets/config/bootstrap/ldif/custom/50-users.ldif
+COPY build/51-jenkins.ldif /container/service/slapd/assets/config/bootstrap/ldif/custom/51-jenkins.ldif
 # 修复轮 T2：ldap 健康检查脚本 + license（真叠加内容）
 COPY build/ldap-health.sh /usr/local/bin/ldap-health.sh
 COPY build/LICENSE        /usr/share/doc/orgflow/LICENSE
