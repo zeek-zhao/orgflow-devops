@@ -103,3 +103,4 @@ make verify                   # 全量验收矩阵 AC-1~22
 | DOC-S-005 | ldapadmin 服务手册 | docs/services/ldapadmin.md | 参考 | review | zeek.zhao | 6 | T5 |
 | DOC-S-006 | homepage 服务手册 | docs/services/homepage.md | 参考 | review | zeek.zhao | 6 | T6 |
 | DOC-S-007 | router 服务手册 | docs/services/router.md | 参考 | review | zeek.zhao | 6 | T7 |
+| DOC-P-004 | 分支与合并策略 | docs/records/分支与合并策略.md | 规程 | review | zeek.zhao | 6 | T12 |
