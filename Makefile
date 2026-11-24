@@ -6,7 +6,7 @@ ENV_FILE ?= config/defaults.env
 
 SERVICES := dnsmasq certs-init caddy ldap ldapadmin homepage router
 
-.PHONY: help render up down up-% down-% check check-all test verify doctor \
+.PHONY: help render up down status up-% down-% check check-all test verify doctor \
         routes hosts ca ca-rotate record images-lock images-guard \
         test-svc-% sync-context images-upstream
 
@@ -19,11 +19,14 @@ render: ## 渲染配置产物到 out/（非敏感值来自 defaults.env）
 	@mkdir -p out && bash scripts/render.sh
 
 # ---------- 部署 ----------
-up: images-guard ## 按 boot.sh 顺序起全栈（就绪断言，失败中止）
-	@bash scripts/boot.sh up
+up: images-guard ## 按顺序起全栈（up.sh 五段输出/就绪断言/失败中止）
+	@bash up.sh
 
 down: ## 停止并移除全部容器（不动数据卷）
-	@$(COMPOSE) --env-file $(ENV_FILE) down
+	@bash down.sh
+
+status: ## 只读查看各容器健康状态（STATUS=1 机读）
+	@bash status.sh
 
 up-%: ## 只起单个服务（隔离端口，零依赖可起）：make up-dnsmasq
 	@bash scripts/boot.sh up-$*
