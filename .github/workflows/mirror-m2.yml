@@ -4,10 +4,20 @@ name: Mirror M2 Images to GHCR
 # 借 GitHub runner 的海外网络拉取官方镜像并原样中转推 GHCR；cgit 自建镜像同流水线构建推送。
 # 本地经 ghcr.nju.edu.cn 代理下载（README §镜像与供应链的同款链路）。
 #
-# 触发方式：workflow_dispatch（手动），避免常规 push 误触发、浪费 CI 额度。
+# 触发方式：push（仅镜像相关路径变更）或 workflow_dispatch 手动。
+# API dispatch 按默认分支找 workflow，本文件只在 feat/m2 分支故用 push 触发。
 # 推完需确认两个包为 Public（仓库公开 ≠ 包公开，否则代理匿名 pull 401/403）。
 
 on:
+  push:
+    branches: [feat/m2-gerrit-cgit-harbor]
+    paths:
+      - ".github/workflows/mirror-m2.yml"
+      - "services/gerrit/**"
+      - "services/cgit/**"
+      - "scripts/image-hash.sh"
+      - "tests/images.lock"
+      - "config/images.env"
   workflow_dispatch:
 
 permissions:
