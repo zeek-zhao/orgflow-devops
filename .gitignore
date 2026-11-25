@@ -3,6 +3,8 @@ out/
 !.env.example
 !config/images.env
 !config/defaults.env
+# §8 独立命名空间测试环境：必须入库，否则干净克隆（CI/他人）check-v2.sh 因缺 orgflow-v2-net 变红（r5 P1）
+!tests/v2.env
 # M1：Jenkins agent 的 SSH 私钥与 host key（敏感产物，脚本生成，绝不入库）
 secrets/
 __pycache__/
@@ -20,3 +22,5 @@ config/homepage/proxmox.yaml
 config/homepage/logs/
 # M1 T8：Jenkins 冒烟测试产物（构建日志，可能含敏感 console；不入库）
 artifacts/
+# r5 §4-7：执行日志下的构建产物（如页面快照 HTML）不入库
+docs/records/**/artifacts/
