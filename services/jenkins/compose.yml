@@ -4,7 +4,7 @@
 # （ghcr.io ↔ ghcr.nju.edu.cn 同 digest），不改本文件。
 services:
   jenkins:
-    image: ${IMAGE_JENKINS:-ghcr.io/zeek-zhao/orgflow-devops/m1-jenkins@sha256:0804cd953119e05c3a0ad27eb37c8247b5d0dbb104fae696acbc6f2ad7665799}
+    image: ${IMAGE_JENKINS:-ghcr.io/zeek-zhao/orgflow-devops/m1-jenkins@sha256:459b0d97db97151bb836de88e9b68268ac059c9f188e1d5a4ad8951653643dfa}
     pull_policy: missing
     container_name: ${CONTAINER_PREFIX:-of}-jenkins
     labels:
