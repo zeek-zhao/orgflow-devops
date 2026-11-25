@@ -1,8 +1,9 @@
 # Jenkins SSH agent（M1）：探测 Job 执行节点，无 docker.sock、固定 IP .17、不发布宿主端口。
-# 镜像默认值里的 @sha256 由 CI 回填（全 0 为占位，禁止手填）；切源只改 IMAGE_JENKINS_AGENT。
+# 镜像默认值里的 ctx-<12> 由 scripts/image-hash.sh 计算（Dockerfile + agent-entrypoint.sh 内容哈希前 12 位），
+# 与 tests/images.lock 的 contextSha256 前 12 位一致；切源只改 IMAGE_JENKINS_AGENT。
 services:
   jenkins-agent:
-    image: ${IMAGE_JENKINS_AGENT:-ghcr.io/zeek-zhao/orgflow-devops/m1-jenkins-agent@sha256:56869e0c05179bf8689c8f908b4399dcf10ae6cf1e7895647b141e4d376beedd}
+    image: ${IMAGE_JENKINS_AGENT:-ghcr.io/zeek-zhao/orgflow-devops/m1-jenkins-agent:ctx-baefa430f50d}
     pull_policy: missing
     container_name: ${CONTAINER_PREFIX:-of}-jenkins-agent
     labels:

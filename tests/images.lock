@@ -1,18 +1,20 @@
-# 镜像锁定表（修复轮 T2：本分支自建 orgflow/m0-*；由 scripts/build-images.sh 回填）
+# 镜像标识表（r5 §2：M1 改「内容哈希」口径，替代不可靠的 CI digest 回填链路）
 # 字段: service / tag / imageId / upstreamDigest / contextSha256
 # certs-init 复用 router，不单独构建。
-# 说明：M0 的 6 项为真实构建/迁移后 imageId。M1 的 jenkins / jenkins-agent 两行
-#       imageId 取自 GHCR 实际拉取的 CI 构建产物（docker image inspect 的 config digest，
-#       与 CI runner 上 build-push-action load 后 inspect 同源，非手填/猜测）；
-#       compose 里的 @sha256 manifest digest 由 CI fill-pending 回填（见 .github/workflows/build-images.yml）。
-#       contextSha256 为 "-" 表示该服务未单独记录构建上下文快照（同 M0 homepage/ldapadmin）。
+# M0 六项（homepage/caddy/ldap/ldapadmin/dnsmasq/router/certs-init）：
+#   tag=orgflow/m0-<svc>:v2 不变；imageId 保留历史构建 64hex；upstreamDigest=Dockerfile FROM 的基底 digest。
+# M1 两项（jenkins/jenkins-agent）：
+#   tag=orgflow/m1-<svc>:ctx-<12>（12 = contextSha256 前 12 位，compose 直接引用此 tag）；
+#   imageId="-"（构建产物 ID 每次随机，无标识价值，不再使用）；
+#   contextSha256=scripts/image-hash.sh <svc> 的输出（Dockerfile + 其 COPY 真源文件的内容哈希，64hex，为本方案主标识）。
+#   改 Dockerfile/plugins.txt 后必须跑 make images-hash 更新本列与 tag，并同步 compose；--mode=lock 会强校验。
 service	tag	imageId	upstreamDigest	contextSha256
-homepage	orgflow/m0-homepage:v2	3cf00e62c013091391e17c381e1efa811cbc0c26fed7721f5d15a67858d92bde	sha256:19c5c09184458a41b7b5915e71463a39f36cd33540f41bdbed008791b8182d5f	-
-ldapadmin	orgflow/m0-ldapadmin:v2	d408220c67e9c7ac4daecb2da1f6f3850ecafd4cd2313258d218719647696f57	sha256:d112b82be1336f91e028b0348755133fda333992355b533419355a65c32ff9ad	-
+homepage	orgflow/m0-homepage:v2	3cf00e62c013091391e17c381e1efa811cbc0c26fed7721f5d15a67858d92bde	sha256:19c5c09184458a41b7b5915e71463a39f36cd33540f41bdbed008791b8182d5f	f47babebb5fa79938b814c9ce3001d625bf9747d933d73872ae71b4acbff0a8a
+ldapadmin	orgflow/m0-ldapadmin:v2	d408220c67e9c7ac4daecb2da1f6f3850ecafd4cd2313258d218719647696f57	sha256:d112b82be1336f91e028b0348755133fda333992355b533419355a65c32ff9ad	02efa98954176f78a77c4d4ca742bc99a46280cbb0ae0d30c7098ea7d5f27e3c
 caddy	orgflow/m0-caddy:v2	ae4c63a8b595118e58a929dc477a2ed31dfa46a0eb1d151c4c75f128a2889f15	sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e	d2fd6edeffde965cb16e9ce8676de63769dc6ef55c1121f2c9a4d8c7909439fe
 ldap	orgflow/m0-ldap:v2	e6f2df6cdc576349760691f227ca632d7b26405c8c82537bb623573c1868d341	sha256:18742e9c449c9c1afe129d3f2f3ee15fb34cc43e5f940a20f3399728f41d7c28	d97bfd6dcaee1576b5d5f4c26c1a712c0cdb7f26f1d9cc09bb0a40f7606329b2
-dnsmasq	orgflow/m0-dnsmasq:v2	bdbb9471d1037c83fa194acad869713ce9e0da5261d96bc97a52ffe10e9f7146	sha256:9f1a5959399d1ff65e258a6f2f477c2430f9d9851764dce16b7779579c3d32f6	1476a849385b5df3c16c8eb33059ff7dae00cc077d54ce28ca3d7b2baec7e644
-router	orgflow/m0-router:v2	6c4edabeebc95eb816396647d79ef1cb7985875440103040f8f97a1acc737e27	sha256:e5fd71d1cd7cec5068a24ce1165e35587856e2cafe7ca2e772a3b50944f9fe87	30553536fd75c15bd3a9f9d1a20b84388ff00c32fbe71b58db617032ddf3b505
-certs-init	orgflow/m0-router:v2	6c4edabeebc95eb816396647d79ef1cb7985875440103040f8f97a1acc737e27	sha256:e5fd71d1cd7cec5068a24ce1165e35587856e2cafe7ca2e772a3b50944f9fe87	30553536fd75c15bd3a9f9d1a20b84388ff00c32fbe71b58db617032ddf3b505
-jenkins	orgflow/m1-jenkins:v1	8ca8cb67eb66bfe6101e29cf4a5331abeba63e4f9b26c31d0110f45d7f37ba6a	sha256:74401de6a6f92e1afe1b02d1c8e3d0c33f263bfb5275dd8813f9150355f2367b	-
-jenkins-agent	orgflow/m1-jenkins-agent:v1	cc24e34c0c440a57cd2aac11b0ce1fc042f28670ad22d1e3b3bebe16cd34c677	sha256:8fbbc589fa4257287cb9903ed1e021b90db2be2827a80e86a433d9395ca7d019	-
+dnsmasq	orgflow/m0-dnsmasq:v2	bdbb9471d1037c83fa194acad869713ce9e0da5261d96bc97a52ffe10e9f7146	sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852	1476a849385b5df3c16c8eb33059ff7dae00cc077d54ce28ca3d7b2baec7e644
+router	orgflow/m0-router:v2	6c4edabeebc95eb816396647d79ef1cb7985875440103040f8f97a1acc737e27	sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852	30553536fd75c15bd3a9f9d1a20b84388ff00c32fbe71b58db617032ddf3b505
+certs-init	orgflow/m0-router:v2	6c4edabeebc95eb816396647d79ef1cb7985875440103040f8f97a1acc737e27	sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852	30553536fd75c15bd3a9f9d1a20b84388ff00c32fbe71b58db617032ddf3b505
+jenkins	orgflow/m1-jenkins:ctx-b4db8ffda32f	-	sha256:74401de6a6f92e1afe1b02d1c8e3d0c33f263bfb5275dd8813f9150355f2367b	b4db8ffda32fa0c6d1e8f5cf75c4a67ab1e0828eee6b774094973c02709d3c5e
+jenkins-agent	orgflow/m1-jenkins-agent:ctx-baefa430f50d	-	sha256:8fbbc589fa4257287cb9903ed1e021b90db2be2827a80e86a433d9395ca7d019	baefa430f50d6be2049dd3c005b2bfac917b698b6993e6ca736c2e7b4671d1ce

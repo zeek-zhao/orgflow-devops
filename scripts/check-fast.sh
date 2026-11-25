@@ -21,12 +21,13 @@ run 记录留存 scripts/check_record_exists.sh
 run 镜像摘要 scripts/check-images.sh --mode=digest
 run 基底统一 scripts/check-images.sh --mode=base
 run 上游摘要 scripts/check-images.sh --mode=upstream
-# T11：--mode=lock 严格模式（零 PENDING）由 CI 与 up.sh 本地镜像前置校验使用；
-# 日常快检查用 digest（格式合法，PENDING 仅提示），避免沙箱环境限制使日常门禁长期红。
-run 摘要一致 scripts/check-images.sh --mode=digest
+# r5 §2：摘要一致改用 --mode=lock（含 M1 内容哈希强校验），使改 Dockerfile/plugins.txt
+# 不更新 lock 时 make check 立即变红（反向门禁判据）。M0 走 imageId、M1 走 ctx tag 均无需 docker。
+run 摘要一致 scripts/check-images.sh --mode=lock
 run 配置解析 scripts/test-static.sh
 run 文档登记 scripts/check-docs.sh
 run 域名配置 scripts/check-domain.sh
 run 测试覆盖 tests/check-v2.sh
+run 服务清单 scripts/check-service-list.sh
 if [[ $rc -eq 0 ]]; then echo "✓ 快检查通过"; else echo "✗ 快检查未通过" >&2; fi
 exit $rc

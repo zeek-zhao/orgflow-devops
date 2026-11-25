@@ -7,7 +7,7 @@ ENV_FILE ?= config/defaults.env
 SERVICES := dnsmasq certs-init caddy ldap ldapadmin homepage router
 
 .PHONY: help render up down status up-% down-% check check-all test verify doctor \
-        routes hosts ca ca-rotate record images-lock images-guard \
+        routes hosts ca ca-rotate record images-hash images-guard \
         test-svc-% sync-context images-upstream e2e e2e-up e2e-down e2e-test
 
 # ---------- 帮助 ----------
@@ -84,11 +84,14 @@ record: ## 记录一条操作（见 scripts/record.sh --help）
 	@bash scripts/record.sh $(ARGS)
 
 # ---------- 镜像 ----------
-images-guard: ## 镜像来源闸门：源码改了没重建则拒绝部署
-	@bash scripts/check-images.sh --mode=source
+images-guard: ## 镜像标识闸门：内容哈希与 lock/compose tag 漂移则拒绝部署（r5）
+	@bash scripts/check-images.sh --mode=lock
 
-images-lock: ## 回填镜像 digest 到 tests/images.lock
-	@bash scripts/update-images-lock.sh
+images-hash: ## 计算 M1 内容哈希并校验 lock/compose tag 是否同步（r5 替代 images-lock）
+	@bash scripts/image-hash.sh jenkins
+	@bash scripts/image-hash.sh jenkins-agent
+	@echo "—— 将上面 64hex 前 12 位写入 tests/images.lock contextSha256/tag 与两个 compose 的 ctx- tag"
+	@bash scripts/check-images.sh --mode=lock
 
 sync-context: ## 把 config/ 真源同步到各服务的自包含构建上下文 build/
 	@bash scripts/sync-build-context.sh
