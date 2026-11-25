@@ -5,6 +5,8 @@
 ## [m1-v1.0] — 2026-11-25（M1 封版：终验 16/16 通过）
 
 > 分支 `feat/m1-jenkins`，基线 `m1-v0.3` @ `df94483`。详见 `docs/records/执行日志/2026-11-25-r6.md`。
+>
+> 收口（r7）：`jenkins-devtest` 落入 `51-jenkins.ldif` 真源（卷清空可重建）+ `m1-v1.0` 移到收口终态提交 + 重建 router 使 render 模板与运行态一致（详见 `docs/records/执行日志/2026-11-25-r7.md`）。
 
 ### Fixed
 - **状态页判据 7/8 假绿（终验发现）**：`services/router/server.py` 的 `GET /status` 补齐 `Status-Source: router` 头、HEAD 支持（`curl -sI` 200）与访问日志；表格增「容器」列列全 9 个 `of-*`（含 Jenkins/Agent），`grep -c 'of-'` = 9。此前 `/status` 实测 501/无头/无容器名，与 A 部分「已切 router」声称不符。server.py 为 bind mount，重建 router 容器即生效，镜像未变。

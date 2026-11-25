@@ -39,7 +39,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROUTES = os.environ.get("ROUTES", "/etc/router/routes.yaml")
-CADDY_ADMIN = os.environ.get("CADDY_ADMIN", "http://192.168.90.10:2019")
+CADDY_ADMIN = os.environ.get("CADDY_ADMIN", "http://192.168.90.10:2019")  # 0.0.0.0:2019 含 .10，故这里用 .10 访问 admin 仍成立
 DOMAIN = os.environ.get("DOMAIN", os.environ.get("GATEWAY_DOMAIN", "org-devops.com")).strip().strip(".")
 PUBLIC_PORT = os.environ.get("PUBLIC_PORT", "18081").strip()
 CADDY_IP = os.environ.get("IP_CADDY", "192.168.90.10").strip()

@@ -16,6 +16,7 @@ objectClass: top
 objectClass: groupOfNames
 cn: jenkins-dev
 member: uid=zeek.zhao,ou=people,{{ LDAP_BASE_DN }}
+member: uid=jenkins-devtest,ou=people,{{ LDAP_BASE_DN }}
 
 dn: uid=jenkins-ci,ou=people,{{ LDAP_BASE_DN }}
 objectClass: top
@@ -32,3 +33,19 @@ homeDirectory: /home/users/jenkins-ci
 loginShell: /bin/bash
 mail: jenkins-ci@orgflow.local
 userPassword: {SSHA}f8awD4TSJr3Eg79qpYni8gsICtqc2dLP
+
+dn: uid=jenkins-devtest,ou=people,{{ LDAP_BASE_DN }}
+objectClass: top
+objectClass: inetOrgPerson
+objectClass: posixAccount
+cn: jenkins-devtest
+sn: jenkins-devtest
+displayName: jenkins-devtest
+givenName: jenkins-devtest
+uid: jenkins-devtest
+uidNumber: 1010
+gidNumber: 501
+homeDirectory: /home/users/jenkins-devtest
+loginShell: /bin/bash
+mail: jenkins-devtest@orgflow.local
+userPassword: {SSHA}JGLejcYhc9BXGyes56ym2CSjucijEtSy

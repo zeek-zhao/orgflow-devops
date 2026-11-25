@@ -24,7 +24,15 @@
 
 ## 5. 运维
 - 启动：`./up.sh --only jenkins`（ldap 就绪后）；`docker logs of-jenkins` 须见 `Jenkins is fully up and running` 再起 agent。
-- 登录账号：`jenkins-ci`（口令固定 **`Jenkins@2026`**）属 `jenkins-admins`（全权）；`zeek.zhao` 同时属 `jenkins-admins` 与 `jenkins-dev`（只读+构建+取消）；匿名仅 `Overall/Read`（能看登录页、看不到 Job）。账号/组真源在 `config/ldap/51-jenkins.ldif`。
+- 登录账号（`config/ldap/51-jenkins.ldif` 为真源，匿名仅 `Overall/Read` 能看登录页、看不到 Job）：
+
+  | 账号 | 口令 | LDAP 组 | Jenkins 权限 |
+  |---|---|---|---|
+  | `jenkins-ci` | `Jenkins@2026` | `jenkins-admins` | 全权（Manage + 构建） |
+  | `zeek.zhao` | （个人口令） | `jenkins-admins` + `jenkins-dev` | 全权（同时属两组） |
+  | `jenkins-devtest` | `Jenkins@2026` | `jenkins-dev` | 只读 Job + 触发/取消构建，**无 Manage** |
+
+  `jenkins-devtest` 用于验证只读+构建角色边界：whoAmI 仅 `ROLE_JENKINS-DEV`、无 `ROLE_JENKINS-ADMINS`；能读 Job、能触发构建，但 `/manage/` 403。
 - **口令轮换**：`slappasswd -s '<新口令>'` 生成 `{SSHA}` → 改 `config/ldap/51-jenkins.ldif` 的 `uid=jenkins-ci` 的 `userPassword` → 重建 ldap 容器让 LDIF 在**空卷**上重新导入；已导入的卷用 `ldappasswd` 或 `ldapmodify` 直接改（LDIF 改动不会自动进已有卷）。同步更新本文档口令说明与 CI 凭据。
 - **新增/重建 LDAP 卷后补账号**：空卷首启会按文件名顺序自动导入 `50-users.ldif` + `51-jenkins.ldif`（两者都已挂进 osixia 的 custom bootstrap 目录）；**已有卷必须手跑一次**下面的 ldapadd/ldapmodify 补齐（幂等，先 ldapsearch 查重）：
   ```bash
@@ -63,6 +71,11 @@
 
 ## 8. 验收
 - `curl -fsS http://127.0.0.1:18081/jenkins/login` → 200；`curl .../jenkins` → 308 `/jenkins/`。
-- LDAP 登录：`curl -u jenkins-ci:Jenkins@2026 https://<PUBLIC_HOST>/jenkins/api/json` → 200；`jenkins-dev` 读 Job 成功但无 Manage Jenkins 入口。
+- LDAP 登录：`curl -u jenkins-ci:Jenkins@2026 https://<PUBLIC_HOST>/jenkins/api/json` → 200。
+- `jenkins-devtest`（`Jenkins@2026`，仅 `jenkins-dev` 组）只读+构建角色实测口径：
+  - whoAmI authorities 仅含 `ROLE_JENKINS-DEV`（含 `jenkins-dev`、`authenticated`），**无** `ROLE_JENKINS-ADMINS`；
+  - 单 Job 读取 `GET /job/verify-caddy/api/json` → 200；
+  - Manage Jenkins `GET /manage/` → **403**；
+  - 触发构建 `POST /job/verify-caddy/buildWithParameters`（带 crumb） → **201**，构建入队（流水线 Job 用 `buildWithParameters`，`/build` 会 400）。
 - `/systemInfo` 无 “Obsolete / Failed to load” 告警；`docker logs of-jenkins` 无 JCasC 失败。
 - 用例：`tests/bats/08_jenkins.bats`（容器健康、登录页 200、LDAP 登录、Job 全绿、8080 未发布宿主）。
