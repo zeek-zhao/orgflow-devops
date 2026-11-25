@@ -16,7 +16,11 @@ RUN apt-get update \
 # nginx 前台运行配置：所有请求转给 cgit fcgiwrap，监听容器内 80。
 COPY nginx-cgit.conf /etc/nginx/sites-available/cgit.conf
 RUN ln -sf /etc/nginx/sites-available/cgit.conf /etc/nginx/sites-enabled/cgit.conf \
- && rm -f /etc/nginx/sites-enabled/default
+ && rm -f /etc/nginx/sites-enabled/default \
+ # 非 root 运行：主配置的 pid/error_log 默认指向 root 目录，改到 uid1000 可写处。
+ && sed -i -e 's|^pid /run/nginx.pid;|pid /tmp/nginx.pid;|' \
+           -e 's|^error_log /var/log/nginx/error.log;|error_log /var/log/nginx/error.log warn;|' \
+           /etc/nginx/nginx.conf
 
 # cgit 配置真源（COPY 进镜像；projects.list 由 entrypoint 启动时生成）。
 COPY cgitrc /etc/cgitrc

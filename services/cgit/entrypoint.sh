@@ -29,5 +29,5 @@ refresh_list
 rm -f /tmp/fcgiwrap.socket
 spawn-fcgi -s /tmp/fcgiwrap.socket -M 0666 -- /usr/sbin/fcgiwrap &
 
-# 非 root 运行：pid 文件放 /tmp（默认 /run/nginx.pid 为 root 所有，写不了）。
-exec nginx -g 'daemon off; pid /tmp/nginx.pid;'
+# 镜像内主 nginx.conf 已把 pid 改到 /tmp/nginx.pid（非 root 可写）；此处不再重复声明。
+exec nginx -g 'daemon off;'
