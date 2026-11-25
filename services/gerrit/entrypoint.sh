@@ -12,6 +12,10 @@ URLS_ENV=/etc/orgflow/urls.env
 GERRIT_PUBLIC_URL="${GERRIT_PUBLIC_URL:-}"
 P_GERRIT_HTTP="${P_GERRIT_HTTP:-8080}"
 P_GERRIT_SSH="${P_GERRIT_SSH:-29418}"
+# LDAP 服务账号口令（M0 ACL 匿名拒读，Gerrit 用 ldap.username/password 做查询 bind）。
+# 与 Jenkins managerPasswordSecret 同源（LDAP_PASSWORD），仅运行时 env 注入，
+# 渲染到卷内 gerrit.config（600/gerrit），不进 git 源码/文档。
+LDAP_ADMIN_PASSWORD="${LDAP_ADMIN_PASSWORD:-}"
 
 if [[ -f "$URLS_ENV" ]]; then
   # shellcheck disable=SC1090
@@ -33,16 +37,25 @@ export GERRIT_PUBLIC_URL P_GERRIT_HTTP P_GERRIT_SSH
 # 不碰 ${username}/${groupname}；envsubst 白名单路径仅作兜底。
 if sed -e "s|\${GERRIT_PUBLIC_URL}|$GERRIT_PUBLIC_URL|g" \
        -e "s|\${P_GERRIT_HTTP}|$P_GERRIT_HTTP|g" \
-       -e "s|\${P_GERRIT_SSH}|$P_GERRIT_SSH|g" "$TMPL" > "$OUT_CFG"; then
+       -e "s|\${P_GERRIT_SSH}|$P_GERRIT_SSH|g" \
+       -e "s|\${LDAP_BIND_CREDENTIAL}|$LDAP_ADMIN_PASSWORD|g" "$TMPL" > "$OUT_CFG"; then
   :
 elif command -v envsubst >/dev/null 2>&1; then
-  envsubst '${GERRIT_PUBLIC_URL} ${P_GERRIT_HTTP} ${P_GERRIT_SSH}' < "$TMPL" > "$OUT_CFG"
+  LDAP_BIND_CREDENTIAL="$LDAP_ADMIN_PASSWORD" \
+    envsubst '${GERRIT_PUBLIC_URL} ${P_GERRIT_HTTP} ${P_GERRIT_SSH} ${LDAP_BIND_CREDENTIAL}' < "$TMPL" > "$OUT_CFG"
 else
   echo "FATAL: 无法渲染 gerrit.config（sed 失败且无 envsubst）" >&2
   exit 1
 fi
+# 明文口令只落在卷内 gerrit.config（600/gerrit），不进源码/文档；收紧权限并归主。
+chown gerrit:gerrit "$OUT_CFG" 2>/dev/null || true
+chmod 600 "$OUT_CFG" 2>/dev/null || true
 
 echo "Gerrit 配置已渲染：canonicalWebUrl=$GERRIT_PUBLIC_URL listenUrl=proxy-http://*:$P_GERRIT_HTTP"
+
+if [[ -z "$LDAP_ADMIN_PASSWORD" ]]; then
+  echo "WARN: LDAP_ADMIN_PASSWORD 未注入，LDAP 查询 bind 将失败（M0 ACL 匿名拒读）" >&2
+fi
 
 # 官方 /entrypoint.sh 启动前会用 git config 覆盖 canonicalWebUrl（取 CANONICAL_WEB_URL，
 # 缺省为 http://$HOSTNAME/）与 httpd.listenUrl（取 HTTPD_LISTEN_URL）。这里显式导出，

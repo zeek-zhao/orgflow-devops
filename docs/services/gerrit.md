@@ -1,6 +1,7 @@
 # Gerrit 服务手册（M2.1）
 
-> 状态：待部署验证 | 分支 `feat/m2-gerrit-cgit-harbor` | 依据 OrgFlow M2 施工方案 §M2.1
+> 状态：已部署 + LDAP Web 登录验收通过（2026-11-26）| 分支 `feat/m2-gerrit-cgit-harbor` | 依据 OrgFlow M2 施工方案 §M2.1
+> 评审流/建仓、端口互换仍为待初始化项（需管理员 HTTP password / 切公网入口），见 §6。
 
 ## 1. 职责
 
@@ -8,7 +9,7 @@
 
 ## 2. 镜像与网络
 
-- 镜像：`gerritcodereview/gerrit:3.9.0`（官方镜像，不走自建）。Docker Hub 在本环境被墙，从 `docker.1ms.run` 加速站落地后镜像推 GHCR 并 `@sha256` 钉死。
+- 镜像：`gerritcodereview/gerrit:3.9.0`（官方镜像，不走自建）。Docker Hub 在本环境被墙，改由 GitHub Actions（`.github/workflows/mirror-m2.yml`）在海外 runner 拉取官方镜像原样推 GHCR，本地经 `ghcr.nju.edu.cn` 代理下载；上游 manifest digest `sha256:25f02a98…` 钉在 `config/images.env` 的 `UPSTREAM_GERRIT`，同步 `tests/images.lock`。
 - 固定 IP `.18`（`IP_GERRIT`），接 `orgflow-minimal_orgflow` 网络。
 - 卷：`gerrit_git`（裸库，cgit 只读共享）、`gerrit_etc`（配置与 secure.config）。
 - 配置：`services/gerrit/etc/gerrit.config.tmpl` → entrypoint 用 `out/urls.env` 渲染（canonicalWebUrl 等无字面域名），先备份 `.bak`。
@@ -26,22 +27,40 @@ bash up.sh --only gerrit          # 单起
 
 ## 4. 初始化（一次性，人工）
 
-1. 首个人类管理员 `zeek.zhao` 首次 LDAP 登录后，手工加入管理员组（在 `All-Projects` 的 `refs/*` 给 LDAP 组 `jenkins-admins` 完整权限）。
-2. `Global Capabilities` 给 `jenkins-ci` 授予 `Stream Events`。
-3. 建仓 `orgflow-devops`，`HEAD` 指向 `main`；初始内容从 GitHub 镜像导入（`git clone --mirror` + `git push --mirror`），不做空仓起步。
+1. ~~首个人类管理员手工加入管理员组~~：Gerrit 3.9 首个 LDAP 登录用户自动成为 `Administrators`（2026-11-26 实测 `zeek.zhao` 已在 Administrators），无需手工授权；如需 LDAP 组映射再补 `All-Projects` 权限。
+2. `Global Capabilities` 给 `jenkins-ci` 授予 `Stream Events`（待确认）。
+3. 建仓 `orgflow-devops`，`HEAD` 指向 `main`；初始内容从 GitHub 镜像导入（`git clone --mirror` + `git push --mirror`），不做空仓起步。**当前未建仓**：Gerrit REST 写操作（`/a/projects`）需管理员 HTTP password + Basic auth，纯 cookie 会话无效（实测 403）；待生成 HTTP password 后执行。
 
 ## 5. 验收（文档 §M2.1 判据）
 
-| # | 判据 | 命令 |
-|---|---|---|
-| 1 | Web 200 | `curl -sSI https://${PUBLIC_HOST}:8443/` |
-| 2 | SSH ls-projects | `ssh -p 29418 <user>@<host> gerrit ls-projects` 含 `orgflow-devops` |
-| 3 | jenkins-ci clone | `git clone ssh://<host>:29418/orgflow-devops` |
-| 4 | 评审流 | `git push HEAD:refs/for/main` 生成 Change |
-| 5 | cgit 联动 | 见 cgit.md |
-| 6 | 端口互换 | `FUNNEL_PORT_GERRIT=10000` 后 render + funnel 重下发，URL 跟随、旧端口失效 |
+| # | 判据 | 命令 | 状态（2026-11-26） |
+|---|---|---|---|
+| 0 | LDAP Web 登录 | 浏览器 `zeek.zhao` 登录，账号自动建号 | ✅ 通过（本轮修复） |
+| 1 | Web 200 | `curl -sSI https://${PUBLIC_HOST}:8443/` | ✅ 200 |
+| 2 | SSH ls-projects | `ssh -p 29418 <user>@<host> gerrit ls-projects` | ⏳ 端口可达，缺 SSH key |
+| 3 | clone | `git clone https://${PUBLIC_HOST}:8443/All-Projects` | ✅ HTTP clone 成功；SSH clone 待 key |
+| 4 | 评审流 | `git push HEAD:refs/for/main` 生成 Change | ⏳ 待建仓 + HTTP password |
+| 5 | cgit 联动 | `https://${PUBLIC_HOST}/cgit/` 含项目列表 | ✅ 200，含 All-Projects.git/All-Users.git |
+| 6 | 端口互换 | `FUNNEL_PORT_GERRIT=10000` 后 render + funnel 重下发 | ⏳ 现网变更，待窗口 |
 
-## 6. 已知约束（真实状态）
+## 6. LDAP 认证关键配置（2026-11-26 根因修复）
 
-- 镜像拉取受网络限制：仅 `docker.1ms.run` 可用且慢（多次 150~360s 超时），需耐心续拉；拉取完成后必须把真实 manifest digest 回填 `config/images.env` 的 `UPSTREAM_GERRIT` 与 `tests/images.lock` 的 gerrit 行，替换当前占位值。
+M0 LDAP 安全基线是**匿名拒读**（`docs/services/ldap.md` / `tests/bats/S_ldap.bats`），不可放宽。Gerrit 3.9 LDAP realm 登录时先用服务账号 bind 搜索用户 DN，正确配置键是：
+
+```ini
+[ldap]
+  supportAnonymous = false                          # 强制关闭默认匿名探测（关键）
+  username = cn=admin,dc=orgflow,dc=local           # 服务账号（非 bindDN）
+  password = <LDAP_PASSWORD>                        # 走占位符，entrypoint 运行时渲染
+```
+
+- **教训**：`bindDN`/`bindCredential` 是无效键，Gerrit 会忽略并继续用匿名 bind，登录页报 `Authentication unavailable at this time.`、LDAP 端见 `BIND dn=""` + `SRCH err=32`。Secure.config 里的小写 `bindcredential` 同样无效且可能缓存旧口令。
+- 口令同源 `LDAP_PASSWORD`（与 Jenkins `managerPasswordSecret` 一致），由 `services/gerrit/compose.yml` 注入 `LDAP_ADMIN_PASSWORD`，entrypoint 用 sed 渲染到卷内 `gerrit.config`（600/gerrit），**不进 git 源码/文档**。
+- 2026-11-26 实测：`zeek.zhao` / `change-me` Web 登录成功，账号 `Zeek Zhao <zeek.zhao@orgflow.local>` 自动创建且落入 `Administrators`。
+
+## 7. 待办（未虚报）
+
+- **判据 4 评审流 / 建仓**：需先为管理员生成 HTTP password（Gerrit REST `/a/` 写操作要求 Basic auth），建 `orgflow-devops` 仓并导入源码，再 `git push HEAD:refs/for/main` 验证 Change 生成。当前项目列表仅 `All-Projects`/`All-Users`。
+- **判据 2/3 SSH 路径**：SSH 29418 端口可达，但需为账号配置 SSH public key 后才能 `ls-projects` / SSH clone；HTTP clone（`https://…:8443/All-Projects`）已实测成功。
+- **判据 6 端口互换**：改 `FUNNEL_PORT_GERRIT` 会切换公网入口，属现网变更，待窗口执行并验证 URL 跟随/旧端口失效。
 - 物理内存约 5.x GiB，Gerrit JVM 常驻较大，依赖 8 GiB swap；内存紧张时可能明显换页。

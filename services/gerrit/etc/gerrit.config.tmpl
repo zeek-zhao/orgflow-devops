@@ -11,9 +11,16 @@
 
 [ldap]
     server = ldap://ldap:389
-    accountBase = ou=people,dc=org-devops,dc=local
+    # LDAP ACL 匿名拒读（M0 安全基线），Gerrit 搜索用户 DN 须用服务账号 bind。
+    # 正确键是 username/password（非 bindDN/bindCredential）；supportAnonymous=false
+    # 强制关闭 Gerrit 的默认匿名探测。口令走占位符，entrypoint 用 LDAP_ADMIN_PASSWORD
+    # 运行时渲染到卷内 gerrit.config（600/gerrit），不进 git 源码/文档。
+    supportAnonymous = false
+    username = cn=admin,dc=orgflow,dc=local
+    password = ${LDAP_BIND_CREDENTIAL}
+    accountBase = ou=people,dc=orgflow,dc=local
     accountPattern = (&(objectClass=person)(uid=${username}))
-    groupBase = ou=groups,dc=org-devops,dc=local
+    groupBase = ou=groups,dc=orgflow,dc=local
     groupPattern = (&(objectClass=groupOfNames)(cn=${groupname}))
 
 [httpd]

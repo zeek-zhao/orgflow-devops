@@ -15,6 +15,8 @@ services:
       P_GERRIT_HTTP: ${P_GERRIT_HTTP:-8080}
       P_GERRIT_SSH: ${P_GERRIT_SSH:-29418}
       GERRIT_PUBLIC_URL: ${URL_GERRIT:-}
+      # LDAP 服务账号 bind 口令（M0 ACL 匿名拒读）：入口脚本写入 secure.config，不入库。
+      LDAP_ADMIN_PASSWORD: ${LDAP_PASSWORD:-change-me}
     ports:
       # SSH 只发布宿主端口供 tailnet 直连（Funnel 不转 TCP，公网不可达，符合文档）
       - "${P_GERRIT_SSH:-29418}:${P_GERRIT_SSH:-29418}"
