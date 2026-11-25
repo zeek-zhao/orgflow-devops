@@ -7,6 +7,10 @@ pipelineJob('verify-lan-all') {
         daysToKeep(7)
         numToKeep(30)
     }
+    // E1：每日 02:xx 随机分钟定时巡检；H 让负载分散，手动触发仍保留（pipelineJob 默认可手动构建）。
+    triggers {
+        cron('H 2 * * *')
+    }
     definition {
         cps {
             script(pipelineText)
