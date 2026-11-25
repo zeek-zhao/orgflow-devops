@@ -15,7 +15,7 @@
 
 采用双层 digest：
 - **上游层**：每个 Dockerfile 的 FROM 用官方/基底镜像 @sha256（照抄 main 登记表），真源 `docs/运维/镜像与供应链.md`，由 `check-images.sh --mode=upstream` 校验。
-- **产物层**：本分支 CI（build-images.yml）构建推 GHCR 的 `m0-*` 镜像 digest，记录 `tests/images.lock`，由 `make images-lock` 回填，人不手改。
+- **产物层**：本分支 CI（build-images.yml）构建推 GHCR 的 `m0-*` 镜像；r5 §2 后 M1 的 jenkins/agent 改用内容 tag（`ctx-<12>` = `scripts/image-hash.sh` 前 12 位），记录于 `tests/images.lock` 第 5 列，由 `make images-hash` 更新，人不手改。旧的 digest 回填（`make images-lock` / fill-pending）链路已删除。
 - 薄封装层叠加配置（Caddyfile/LDIF/homepage yaml），自建层（dnsmasq/router）FROM ubuntu:24.04@fe815609。
 
 ## 放弃的方案

@@ -2,6 +2,21 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m1-v0.3] — 2026-11-25（r5：门禁真转绿 + 镜像内容哈希 + 冗余清理）
+
+> 分支 `feat/m1-jenkins`，基线 `m1-v0.2` @ `baa0e87`。不合并 main。详见 `docs/records/执行日志/2026-11-25-r5.md`。
+
+### Fixed
+- **门禁真转绿（P1）**：`tests/v2.env` 入库（`.gitignore` 白名单），修掉「沙箱假绿、干净克隆红」；r3 日志与 CHANGELOG 的假绿记录改真。`make check` 现 10 项全 ok。
+- **upstreamDigest 口径统一（P5）**：dnsmasq/router/certs-init 由自建产物 manifest digest 改为 Dockerfile `FROM` 基底 digest，与其余行同义。
+
+### Changed
+- **镜像改内容哈希标识（P2）**：新增 `scripts/image-hash.sh`；M1 jenkins/agent 的 tag 改 `ctx-<12>`、imageId 改 `-`、contextSha256 为主标识；两个 compose 与 `images.env` 同步；`check-images.sh` 重写（扫描派生 + HASHED 强校验 + 删 source/PENDING）；CI 删 fill-pending 回填链路；删除 `build-images.sh`/`update-images-lock.sh`；Makefile `images-lock`→`images-hash`。反向门禁生效（改 Dockerfile 不更 lock → `make check` 红）。
+- **摘除失败通知死代码（P3）**：无邮件/webhook 通道，删 `notify-feishu.sh` 与 Jenkinsfile `failure` 块，E2 暂缓。
+- **状态页去重（P4）**：Caddy/router 内联 HTML 改为 `reverse_proxy router:8080`，router `GET /status` 为唯一真源（静态生效，运行时下次部署 reload）。
+- **服务清单一致性门禁（P4）**：新增 `scripts/check-service-list.sh` 挂进 `make check`；`verify-service.groovy` 7→8 修漂移。
+- **文档口径统一（P5）**：「7 服务/6 常驻」→「9 服务（8 常驻 + certs-init）」；jenkins.md scriptPath/镜像口径改正；镜像与供应链.md §3/§4 重写。
+
 ## [m1-v0.2] — 2026-11-25（M1 收口：主题生效 + 定时巡检 + 失败通知）
 
 > 分支 `feat/m1-jenkins`，tag `m1-v0.2` @ `9e20dd4` 之后的本轮 commit。`m1-v0.1` 保留作历史（指向旧链，孤儿 tag），基线以本版为准。
@@ -16,7 +31,7 @@
 
 ### Notes
 - Jenkins 重建必须走 `up.sh`（注入 agent 密钥），裸 `docker compose up` 会触发 JCasC `failed-boot-attempts` 崩溃循环——详见 `docs/records/执行日志/2026-11-25-r3.md`。
-- 验收：`make check` 通过、9/9 Job 全绿、公网端点无回归。E2 webhook 实测待用户提供飞书 webhook 凭据；E1 自动构建次日观察。
+- 验收：9/9 Job 全绿、公网端点无回归。`make check` **当时未真绿**（§8 `tests/v2.env` 未入库，干净克隆红；沙箱因遗留文件假绿），已于 r5 §1 修复。E2 webhook 实测待用户提供飞书 webhook 凭据；E1 自动构建次日观察。
 
 ## [m1-v0.1] — 待发布（M1：Jenkins + Agent + 局域网检测）
 
