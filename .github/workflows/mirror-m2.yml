@@ -1,0 +1,74 @@
+name: Mirror M2 Images to GHCR
+
+# M2.1：Gerrit 官方镜像（gerritcodereview/gerrit）在国内被墙、加速站大层反复 TLS 超时。
+# 借 GitHub runner 的海外网络拉取官方镜像并原样中转推 GHCR；cgit 自建镜像同流水线构建推送。
+# 本地经 ghcr.nju.edu.cn 代理下载（README §镜像与供应链的同款链路）。
+#
+# 触发方式：workflow_dispatch（手动），避免常规 push 误触发、浪费 CI 额度。
+# 推完需确认两个包为 Public（仓库公开 ≠ 包公开，否则代理匿名 pull 401/403）。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: mirror-m2-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: 登录 GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 拉取 Gerrit 官方镜像 → 中转推 GHCR
+        id: gerrit
+        run: |
+          set -euo pipefail
+          REF="gerritcodereview/gerrit:3.9.0"
+          GHCR="ghcr.io/zeek-zhao/orgflow-devops/m2-gerrit:3.9.0"
+          echo "::group::docker pull $REF"
+          docker pull "$REF"
+          echo "::endgroup::"
+          # 上游 manifest digest（RepoDigests 的 @sha256 部分）：回填 UPSTREAM_GERRIT / images.lock
+          RD="$(docker image inspect "$REF" --format '{{index .RepoDigests 0}}')"
+          UP="${RD#*@}"
+          echo "upstream_digest=$UP" >> "$GITHUB_OUTPUT"
+          docker tag "$REF" "$GHCR"
+          docker push "$GHCR"
+          GHRD="$(docker image inspect "$GHCR" --format '{{index .RepoDigests 0}}')"
+          echo "ghcr_digest=${GHRD#*@}" >> "$GITHUB_OUTPUT"
+          printf 'gerrit upstream=%s ghcr=%s\n' "$UP" "${GHRD#*@}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: 构建并推 cgit 自建镜像（内容 tag）
+        id: cgit
+        run: |
+          set -euo pipefail
+          HASH="$(bash scripts/image-hash.sh cgit)"
+          TAG="ctx-${HASH:0:12}"
+          GHCR="ghcr.io/zeek-zhao/orgflow-devops/m1-cgit:$TAG"
+          echo "cgit 期望 tag=$TAG（contextSha256=$HASH）" | tee -a "$GITHUB_STEP_SUMMARY"
+          docker build -t "$GHCR" services/cgit
+          docker push "$GHCR"
+          GHRD="$(docker image inspect "$GHCR" --format '{{index .RepoDigests 0}}')"
+          printf 'cgit tag=%s ghcr=%s\n' "$TAG" "${GHRD#*@}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: 汇总
+        run: |
+          {
+            echo "## M2 镜像镜像结果"
+            echo "- gerrit upstream digest: \`${{ steps.gerrit.outputs.upstream_digest }}\`"
+            echo "- gerrit GHCR digest: \`${{ steps.gerrit.outputs.ghcr_digest }}\`"
+            echo "- 包地址：ghcr.io/zeek-zhao/orgflow-devops/m2-gerrit:3.9.0"
+            echo "- 包地址：ghcr.io/zeek-zhao/orgflow-devops/m1-cgit:<ctx tag，见上>"
+          } >> "$GITHUB_STEP_SUMMARY"
