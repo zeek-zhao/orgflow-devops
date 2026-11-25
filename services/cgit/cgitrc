@@ -2,7 +2,10 @@
 virtual-root=/cgit/
 # projects.list 写在 /tmp（裸库目录只读挂载），由 entrypoint / Jenkins Job 刷新。
 project-list=/tmp/projects.list
-scan-path=/var/gerrit/git
+# 用 project-root + project-list 白名单，不用 scan-path：
+# scan-path 会扫全目录，把 All-Users.git（存用户 SSH key/配置/邮箱）也公开，属安全泄露。
+# 白名单模式下 cgit 只暴露 project-list 里明写的业务仓，路径相对 project-root 解析。
+project-root=/var/gerrit/git
 enable-http-clone=1
 enable-index-links=1
 enable-log-filecount=1

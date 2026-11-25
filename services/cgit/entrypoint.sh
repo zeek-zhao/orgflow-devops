@@ -11,11 +11,23 @@ PROJECTS_LIST="${PROJECTS_LIST:-/var/gerrit/git/projects.list}"
 # 若为只读则退到 /tmp（并在 cgitrc 注释说明）。默认写 /tmp，避免写只读卷失败。
 LIST_OUT="${CGIT_PROJECTS_LIST:-/tmp/projects.list}"
 
+# 白名单排除：All-Users 存用户 SSH key/配置/邮箱，All-Projects 存全局 ACL，
+# 二者均不得公开。用空格分隔的精确库名（含 .git），可用 CGIT_EXCLUDE 覆盖。
+CGIT_EXCLUDE="${CGIT_EXCLUDE:-All-Projects.git All-Users.git}"
+
 refresh_list() {
   local tmp="${LIST_OUT}.tmp.$$"
   : > "$tmp"
   if [[ -d "$GIT_ROOT" ]]; then
-    find "$GIT_ROOT" -maxdepth 1 -name '*.git' -printf '%f\n' 2>/dev/null | sort >> "$tmp" || true
+    # 逐行精确匹配排除，避免误伤名字含 All-Projects 子串的业务仓。
+    while IFS= read -r repo; do
+      [[ -z "$repo" ]] && continue
+      local skip=0 ex
+      for ex in $CGIT_EXCLUDE; do
+        [[ "$repo" == "$ex" ]] && { skip=1; break; }
+      done
+      [[ $skip -eq 0 ]] && printf '%s\n' "$repo"
+    done < <(find "$GIT_ROOT" -maxdepth 1 -name '*.git' -printf '%f\n' 2>/dev/null | sort) >> "$tmp" || true
   fi
   mv "$tmp" "$LIST_OUT"
 }
