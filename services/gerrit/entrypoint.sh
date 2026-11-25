@@ -28,9 +28,19 @@ fi
 [[ -f "$OUT_CFG" ]] && cp -f "$OUT_CFG" "${OUT_CFG}.bak"
 
 export GERRIT_PUBLIC_URL P_GERRIT_HTTP P_GERRIT_SSH
-# envsubst：只替换模板中的 ${GERRIT_PUBLIC_URL}/${P_GERRIT_HTTP}/${P_GERRIT_SSH}；
-# 模板里 ${username}/${groupname} 是 Gerrit 运行时变量，需保留 → 用 envsubst 白名单。
-envsubst '${GERRIT_PUBLIC_URL} ${P_GERRIT_HTTP} ${P_GERRIT_SSH}' < "$TMPL" > "$OUT_CFG"
+# 模板里的 ${username}/${groupname} 是 Gerrit 运行时 LDAP 变量，必须原样保留。
+# 官方 gerrit 镜像不保证带 gettext-base（envsubst），故优先 sed 定点替换这三个占位符，
+# 不碰 ${username}/${groupname}；envsubst 白名单路径仅作兜底。
+if sed -e "s|\${GERRIT_PUBLIC_URL}|$GERRIT_PUBLIC_URL|g" \
+       -e "s|\${P_GERRIT_HTTP}|$P_GERRIT_HTTP|g" \
+       -e "s|\${P_GERRIT_SSH}|$P_GERRIT_SSH|g" "$TMPL" > "$OUT_CFG"; then
+  :
+elif command -v envsubst >/dev/null 2>&1; then
+  envsubst '${GERRIT_PUBLIC_URL} ${P_GERRIT_HTTP} ${P_GERRIT_SSH}' < "$TMPL" > "$OUT_CFG"
+else
+  echo "FATAL: 无法渲染 gerrit.config（sed 失败且无 envsubst）" >&2
+  exit 1
+fi
 
 echo "Gerrit 配置已渲染：canonicalWebUrl=$GERRIT_PUBLIC_URL listenUrl=proxy-http://*:$P_GERRIT_HTTP"
 

@@ -1,9 +1,10 @@
 # cgit（M2.1 自建镜像）：Gerrit 裸库的只读 Web 视图，固定 IP .19，不发布宿主端口。
 # 公网经 Caddy :443 的 /cgit/* 路径前缀反代（见 config/routes.yaml + Caddyfile）。
 # 镜像由 CI 出 ctx-<12> 内容 tag（image-hash.sh），tag 与 tests/images.lock 一致。
+# 镜像由 GitHub CI（mirror-m2.yml）构建推 GHCR；国内经 ghcr.nju.edu.cn 代理拉同 tag。
 services:
   cgit:
-    image: ${IMAGE_CGIT:-orgflow/m1-cgit:ctx-e63757ae774e}
+    image: ${IMAGE_CGIT:-ghcr.io/zeek-zhao/orgflow-devops/m1-cgit:ctx-e63757ae774e}
     pull_policy: missing
     container_name: ${CONTAINER_PREFIX:-of}-cgit
     labels:

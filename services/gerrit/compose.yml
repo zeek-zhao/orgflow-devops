@@ -1,11 +1,11 @@
 # Gerrit（M2.1 官方镜像）：代码评审 + Git 服务，固定 IP .18。
 # Web 走 Caddy 的 PUB_HTTP_GERRIT 回环口（由 caddy compose 发布）；SSH 发布宿主 ${P_GERRIT_SSH} 供 tailnet 设备连。
-# 官方镜像 @sha256 钉死（UPSTREAM_GERRIT），摘要登记 config/images.env；不走自建、不写死字面端口。
-# TODO(镜像落地)：IMAGE_GERRIT 的 digest 待加速站拉取成功后从 docker images --digests 回填，
-#   并同步 config/images.env 的 UPSTREAM_GERRIT / tests/images.lock 官方镜像行。
+# 官方镜像由 GitHub CI（mirror-m2.yml）从 Docker Hub 拉取原样中转推 GHCR，绕过国内被墙；
+# 上游 manifest digest 钉在 UPSTREAM_GERRIT（config/images.env），摘要同步 tests/images.lock。
+# 默认走 GHCR tag；国内把 GHCR_PROXY 指向 ghcr.nju.edu.cn 经代理拉同 tag，不改 compose。
 services:
   gerrit:
-    image: ${IMAGE_GERRIT:-gerritcodereview/gerrit:3.9.0}
+    image: ${IMAGE_GERRIT:-ghcr.io/zeek-zhao/orgflow-devops/m2-gerrit:3.9.0}
     pull_policy: missing
     container_name: ${CONTAINER_PREFIX:-of}-gerrit
     labels:
