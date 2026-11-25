@@ -13,7 +13,7 @@ services:
     ports:
       - "${P_CADDY_HTTP:-8080}:80"
       - "${P_CADDY_HTTPS:-8443}:443"
-      - "2019:2019"
+      - "127.0.0.1:2019:2019"
       - "${PUBLIC_PORT:-18081}:18081"
     volumes:
       - ../../config/Caddyfile:/etc/caddy/Caddyfile:ro

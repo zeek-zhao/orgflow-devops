@@ -250,7 +250,8 @@ def render(routes):
 
     return f"""# 由 router /render 生成的完整路径型 Caddyfile（== 实跑配置）
 {{
-    admin {CADDY_IP}:2019
+    # M1 收口 T3：管理口绑 0.0.0.0:2019（宿主端口映射限 127.0.0.1，外部不可达）
+    admin 0.0.0.0:2019
 }}
 
 :80 {{
