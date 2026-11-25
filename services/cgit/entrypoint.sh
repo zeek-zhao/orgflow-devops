@@ -25,7 +25,9 @@ refresh_list
 # 定时刷新（每 5 分钟），与 Jenkins cgit-refresh Job 互为兜底。
 ( while true; do sleep 300; refresh_list; done ) &
 
-# fcgiwrap：nginx 通过 unix socket 调 cgit.cgi
-spawn-fcgi -s /run/fcgiwrap.socket -M 0666 -u 1000 -g 1000 -- /usr/sbin/fcgiwrap &
+# fcgiwrap：nginx 通过 unix socket 调 cgit.cgi；socket 放 /tmp（uid 1000 可写）。
+rm -f /tmp/fcgiwrap.socket
+spawn-fcgi -s /tmp/fcgiwrap.socket -M 0666 -- /usr/sbin/fcgiwrap &
 
-exec nginx -g 'daemon off;'
+# 非 root 运行：pid 文件放 /tmp（默认 /run/nginx.pid 为 root 所有，写不了）。
+exec nginx -g 'daemon off; pid /tmp/nginx.pid;'

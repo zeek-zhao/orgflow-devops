@@ -24,7 +24,9 @@ COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # uid 1000 对齐 Gerrit（文档硬约束：别用 root 跑 cgit）。
-RUN useradd -u 1000 -m -s /usr/sbin/nologin cgit || true
+RUN useradd -u 1000 -m -s /usr/sbin/nologin cgit || true \
+ && mkdir -p /var/lib/nginx/body /var/cache/nginx /tmp \
+ && chown -R 1000:1000 /var/lib/nginx /var/cache/nginx /var/log/nginx /tmp
 
 EXPOSE 80
 USER 1000:1000
