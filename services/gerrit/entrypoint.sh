@@ -44,6 +44,12 @@ fi
 
 echo "Gerrit 配置已渲染：canonicalWebUrl=$GERRIT_PUBLIC_URL listenUrl=proxy-http://*:$P_GERRIT_HTTP"
 
+# 官方 /entrypoint.sh 启动前会用 git config 覆盖 canonicalWebUrl（取 CANONICAL_WEB_URL，
+# 缺省为 http://$HOSTNAME/）与 httpd.listenUrl（取 HTTPD_LISTEN_URL）。这里显式导出，
+# 确保渲染出的公网 URL / 监听地址不被官方脚本改回容器内 hostname。
+export CANONICAL_WEB_URL="$GERRIT_PUBLIC_URL"
+export HTTPD_LISTEN_URL="proxy-http://*:$P_GERRIT_HTTP"
+
 # 官方镜像原始 entrypoint（不同版本路径可能是 /docker-entrypoint.sh 或 /entrypoint.sh）
 if [[ -f /docker-entrypoint.sh ]]; then
   exec /docker-entrypoint.sh "$@"
