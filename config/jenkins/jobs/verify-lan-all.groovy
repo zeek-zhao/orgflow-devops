@@ -2,7 +2,7 @@
 def pipelineText = new File('/opt/orgflow/ci/jenkins/pipelines/verify-lan-all.Jenkinsfile').text
 
 pipelineJob('verify-lan-all') {
-    description('全服务局域网检测：并行探测 DNS/LDAP/Caddy/HomePage/LDAPAdmin/Router/Jenkins/JenkinsAgent 共 8 项，输出 lan-report.md')
+    description('全服务局域网检测：并行探测 DNS/LDAP/Caddy/HomePage/LDAPAdmin/Router/Jenkins/JenkinsAgent/Gerrit/Cgit 共 10 项，输出 lan-report.md')
     logRotator {
         daysToKeep(7)
         numToKeep(30)

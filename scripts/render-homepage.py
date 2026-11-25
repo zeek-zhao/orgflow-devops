@@ -52,6 +52,12 @@ NON_ENTRY_PATHS = {"/status", "/none"}
 # 固定追加的入口卡：代表状态页入口本身（与 R6 删除的三张假入口不同，它是唯一并名的 /status 卡）
 STATUS_CARD = ("状态总览", "mdi-chart-line", "全部服务入口与探测说明", "/status")
 
+# 服务状态组统一落点：该组是「探测卡」（靠 siteMonitor/ping 展示健康），不是第二套入口。
+# 历史 bug：服务状态组直接用 public_href，导致 (a) public_path=/none 的服务渲染成
+# https://HOST/none 死链（jenkins-agent/gerrit）；(b) cgit 等真实 URL 在两组各出现一次
+# 「链接重复 2 次」。真实可点入口只在「公网入口」组，状态卡一律点进状态总览。
+STATUS_HREF_PATH = "/status"
+
 
 def load_manifest():
     rows = []
@@ -115,7 +121,9 @@ def render(rows):
         name, icon, note = META.get(svc, (svc, "mdi-circle", svc))
         # manifest 表头为 monitor_url_doc / ping_url_doc（r5 §4-5 定义的文档元数据列）。
         # 原脚本误读 monitor_url/ping_url（不存在的列）→ 渲染丢监控字段；此处修正列名。
-        out += card_lines(name, icon, public_href(r), note,
+        # href 统一落 /status：探测卡不是入口，避免 /none 死链与真实 URL 重复。
+        status_href = "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}" + STATUS_HREF_PATH
+        out += card_lines(name, icon, status_href, note,
                           r.get("monitor_url_doc", ""), r.get("ping_url_doc", ""))
     # 分组二：公网入口（排除 certs-init），按 public_path 规则筛选真实入口
     out.append("- 公网入口:")

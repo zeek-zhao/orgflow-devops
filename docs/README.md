@@ -73,6 +73,7 @@ make verify                   # 全量验收矩阵 AC-1~22
 - 备份与恢复：[运维/备份与恢复.md](运维/备份与恢复.md)
 - 升级与回滚：[运维/升级与回滚.md](运维/升级与回滚.md)
 - 安全基线：[运维/安全基线.md](运维/安全基线.md)
+- 新增服务标准作业：[运维/新增服务标准作业.md](运维/新增服务标准作业.md)
 - 架构决策记录：[records/ADR-*.md](records/)
 - 服务手册：[services/](services/)
 
@@ -116,3 +117,4 @@ make verify                   # 全量验收矩阵 AC-1~22
 | DOC-P-005 | 备份与恢复 | docs/运维/备份与恢复.md | 规程 | review | zeek.zhao | 6 | R8 |
 | DOC-P-006 | 升级与回滚 | docs/运维/升级与回滚.md | 规程 | review | zeek.zhao | 6 | R8 |
 | DOC-P-007 | 安全基线（公网暴露面） | docs/运维/安全基线.md | 规程 | review | zeek.zhao | 6 | R8 |
+| DOC-E-010 | 新增服务标准作业（SOP） | docs/运维/新增服务标准作业.md | 规程 | review | zeek.zhao | 6 | M2.0-P4 |
