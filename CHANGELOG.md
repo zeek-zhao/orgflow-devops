@@ -2,6 +2,22 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m1-v0.2] — 2026-11-25（M1 收口：主题生效 + 定时巡检 + 失败通知）
+
+> 分支 `feat/m1-jenkins`，tag `m1-v0.2` @ `9e20dd4` 之后的本轮 commit。`m1-v0.1` 保留作历史（指向旧链，孤儿 tag），基线以本版为准。
+
+### Fixed
+- **深色主题真正生效（判据1，原 T7 高危）**：GHCR 新镜像 `sha-9e20dd4`（`sha256:459b0d97…43dfa`）含 `theme-manager`/`dark-theme` 插件；回填 `services/jenkins/compose.yml` digest 与 `tests/images.lock` imageId（`8ca8cb67…`），用新镜像重建 jenkins。公网 `/jenkins/appearance/` 显示 Dark、`disableUserThemes`，pluginManager 含两插件，UI 深色生效且用户不可改。
+- **配置/镜像一致（判据2）**：compose digest == 线上 RepoDigest == lock imageId；`check-images --mode=lock` 零 PENDING。
+
+### Added
+- **E1 定时巡检**：`verify-lan-all.groovy` 加 `triggers { cron('H 2 * * *') }`（每日 02xx 随机分钟，保留手动触发）。
+- **E2 失败通知**：新增 `ci/shared-library/bin/notify-feishu.sh` + Jenkinsfile `post.failure` 用 `withCredentials` 绑定 `feishu-webhook`（webhook 走 plain-credentials，不入库）；缺凭据优雅跳过，配置后失败即发。
+
+### Notes
+- Jenkins 重建必须走 `up.sh`（注入 agent 密钥），裸 `docker compose up` 会触发 JCasC `failed-boot-attempts` 崩溃循环——详见 `docs/records/执行日志/2026-11-25-r3.md`。
+- 验收：`make check` 通过、9/9 Job 全绿、公网端点无回归。E2 webhook 实测待用户提供飞书 webhook 凭据；E1 自动构建次日观察。
+
 ## [m1-v0.1] — 待发布（M1：Jenkins + Agent + 局域网检测）
 
 > 分支 `feat/m1-jenkins`，从 `feat/m0-release` @ `0e5562c`（tag `m0-v1.1`）拉出；`main` 不动。
