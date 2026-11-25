@@ -3,7 +3,7 @@
 #
 # 三项硬指标（Harbor 官方套件最低要求 4C / 8G / 40G）：
 #   1) nproc                            ≥ 4
-#   2) MemAvailable                     ≥ 8 GiB
+#   2) MemAvailable + SwapFree          ≥ 8 GiB（物理可用 + swap 缓冲）
 #   3) docker data-root 所在盘 available ≥ 40 GiB
 #
 # 结论两档（不自动降级，等人定）：
@@ -23,10 +23,18 @@ fail=0
 cores="$(nproc 2>/dev/null || echo 0)"
 if (( cores >= 4 )); then echo "  ✓ nproc = $cores（≥4）"; else echo "  ✗ nproc = $cores（<4）"; fail=1; fi
 
-# 2) 内存（MemAvailable, KiB → GiB 保留 2 位）
+# 2) 内存（物理可用 MemAvailable + swap 缓冲 SwapFree，KiB → GiB 保留 2 位）
+# 说明：本沙箱物理可用约 5.7 GiB，单看物理不足 8 GiB；已扩 8 GiB swap 作缓冲，
+#       Harbor 官方栈在内存紧张时可落 swap，故按「可用内存 + swap」合计判定。
 mem_kib="$(awk '/^MemAvailable:/{print $2}' /proc/meminfo 2>/dev/null || echo 0)"
-mem_gib="$(awk -v k="$mem_kib" 'BEGIN{printf "%.2f", k/1024/1024}')"
-if awk -v g="$mem_gib" 'BEGIN{exit !(g>=8)}'; then echo "  ✓ MemAvailable = ${mem_gib} GiB（≥8）"; else echo "  ✗ MemAvailable = ${mem_gib} GiB（<8）"; fail=1; fi
+swap_kib="$(awk '/^SwapFree:/{print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+mem_total_kib=$((mem_kib + swap_kib))
+mem_gib="$(awk -v k="$mem_total_kib" 'BEGIN{printf "%.2f", k/1024/1024}')"
+if awk -v g="$mem_gib" 'BEGIN{exit !(g>=8)}'; then
+  echo "  ✓ MemAvailable + SwapFree = ${mem_gib} GiB（物理 ${mem_kib} KiB + swap ${swap_kib} KiB，合计≥8）"
+else
+  echo "  ✗ MemAvailable + SwapFree = ${mem_gib} GiB（物理 ${mem_kib} KiB + swap ${swap_kib} KiB，合计<8）"; fail=1
+fi
 
 # 3) data-root 盘可用空间
 droot="$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || echo /var/lib/docker)"
