@@ -64,6 +64,11 @@ jobs:
         id: cgit
         run: |
           set -euo pipefail
+          # image-hash.sh 的 sort 排序受 locale 影响：runner 默认 C locale 会把
+          # Dockerfile 排在 cgitrc 前，算出与本地 en_US.UTF-8 不同的 tag。
+          # 必须与部署端（lock/compose）口径一致，否则拉不到镜像。
+          export LC_ALL=en_US.UTF-8
+          locale -a | grep -qi '^en_US\.utf8$' || sudo locale-gen en_US.UTF-8
           HASH="$(bash scripts/image-hash.sh cgit)"
           TAG="ctx-${HASH:0:12}"
           GHCR="ghcr.io/zeek-zhao/orgflow-devops/m1-cgit:$TAG"
