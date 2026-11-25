@@ -5,7 +5,7 @@ def pipelineText = new File('/opt/orgflow/ci/jenkins/pipelines/verify-service.Je
 
 // r5 §4-2：服务清单以 services/manifest.tsv 为真源（scripts/check-service-list.sh 校验此处不得漂移）。
 // 8 项 = manifest 排除一次性 certs-init；含 jenkins-agent 自身断言（此前误写 7 项导致漂移）。
-def services = ['dnsmasq', 'ldap', 'caddy', 'homepage', 'ldapadmin', 'router', 'jenkins', 'jenkins-agent']
+def services = ['dnsmasq', 'ldap', 'caddy', 'homepage', 'ldapadmin', 'router', 'jenkins', 'jenkins-agent', 'gerrit', 'cgit']
 
 services.each { svc ->
     pipelineJob("verify-${svc}") {

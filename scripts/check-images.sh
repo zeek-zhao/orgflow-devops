@@ -27,7 +27,7 @@ done
 
 UBUNTU_DIGEST='sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852'
 # 扫描派生：有 compose.yml 的服务即 SERVICES；有 Dockerfile 的即 BUILDABLE；M1 走内容哈希的服务。
-SERVICES=(); BUILDABLE=(); HASHED=(jenkins jenkins-agent)
+SERVICES=(); BUILDABLE=(); HASHED=(jenkins jenkins-agent cgit)
 for d in services/*/; do
   svc="${d#services/}"; svc="${svc%/}"
   [[ "$svc" == _* ]] && continue  # M2 P4：下划线开头为脚手架模板（_template），非真实服务
@@ -108,7 +108,7 @@ check_lock() {
       [[ "$iid" == "-" ]] || { echo "✗ $svc（HASHED）imageId 应为 '-'，实为 '$iid'" >&2; rc=1; }
     fi
   done
-  [[ $rc -eq 0 ]] && echo "✓ 摘要一致：images.env ${#SERVICES[@]} 个 IMAGE_* 与 lock tag 匹配；M1 2 项内容哈希与 tag 后缀一致"
+  [[ $rc -eq 0 ]] && echo "✓ 摘要一致：images.env ${#SERVICES[@]} 个 IMAGE_* 与 lock tag 匹配；${#HASHED[@]} 项内容哈希与 tag 后缀一致"
   return $rc
 }
 

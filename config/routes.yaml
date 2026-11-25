@@ -20,3 +20,6 @@ routes:
   - prefix: /jenkins
     upstream: jenkins:8080
     strip: false
+  # M2.1：cgit 只读代码视图，路径型走 443 入口（strip 前缀，cgit 靠 virtual-root=/cgit/ 重建链接）
+  - prefix: /cgit
+    upstream: cgit:80

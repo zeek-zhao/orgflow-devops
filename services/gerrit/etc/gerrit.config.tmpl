@@ -1,0 +1,40 @@
+# Gerrit 配置模板（文档 §M2.1）：所有公网 URL / 端口用占位符，
+# 由 services/gerrit/entrypoint.sh 启动时从 out/urls.env + defaults.env 渲染到
+# /var/gerrit/etc/gerrit.config（先备份 .bak），杜绝字面域名/端口入库。
+[gerrit]
+    canonicalWebUrl = ${GERRIT_PUBLIC_URL}
+    basePath = git
+
+[auth]
+    type = LDAP
+    httpPasswordUrl = ${GERRIT_PUBLIC_URL}settings/#HTTPCredentials
+
+[ldap]
+    server = ldap://ldap:389
+    accountBase = ou=people,dc=org-devops,dc=local
+    accountPattern = (&(objectClass=person)(uid=${username}))
+    groupBase = ou=groups,dc=org-devops,dc=local
+    groupPattern = (&(objectClass=groupOfNames)(cn=${groupname}))
+
+[httpd]
+    listenUrl = proxy-http://*:${P_GERRIT_HTTP}
+
+[sshd]
+    listenAddress = *:${P_GERRIT_SSH}
+
+[database]
+    type = h2
+    database = /var/gerrit/db/ReviewDB
+
+[index]
+    type = LUCENE
+
+[receive]
+    enableSignedPush = false
+
+[sendemail]
+    smtpServer = localhost
+
+[container]
+    user = gerrit2
+    javaHome = /usr/lib/jvm/java-17-openjdk-amd64

@@ -1,0 +1,17 @@
+# cgit 配置真源（文档 §M2.1）：virtual-root 对齐公网 /cgit/ 路径前缀。
+virtual-root=/cgit/
+# projects.list 写在 /tmp（裸库目录只读挂载），由 entrypoint / Jenkins Job 刷新。
+project-list=/tmp/projects.list
+scan-path=/var/gerrit/git
+enable-http-clone=1
+enable-index-links=1
+enable-log-filecount=1
+enable-log-linecount=1
+# 每页 50 条，仓库名按字母排序
+max-stats=quarter
+summary-log=5
+summary-branches=5
+summary-tags=5
+logo=
+root-title=OrgFlow Git
+root-desc=Gerrit 代码库的只读视图

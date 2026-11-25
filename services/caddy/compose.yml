@@ -10,11 +10,18 @@ services:
     environment:
       DOMAIN: ${DOMAIN:-org-devops.local}
       PUBLIC_PORT: ${PUBLIC_PORT:-18081}
+      # M2.1：Caddyfile 的 :{$PUB_HTTP_GERRIT} / :{$P_GERRIT_HTTP} 占位符由此注入
+      PUB_HTTP_GERRIT: ${PUB_HTTP_GERRIT:-18085}
+      P_GERRIT_HTTP: ${P_GERRIT_HTTP:-8080}
     ports:
       - "${P_CADDY_HTTP:-8080}:80"
       - "${P_CADDY_HTTPS:-8443}:443"
       - "127.0.0.1:2019:2019"
       - "${PUBLIC_PORT:-18081}:18081"
+      # M2.1：Gerrit 专用回环口（Funnel :8443 回源目标），只绑 127.0.0.1
+      - "127.0.0.1:${PUB_HTTP_GERRIT:-18085}:${PUB_HTTP_GERRIT:-18085}"
+      # TODO(M2.2)：Harbor 回环口，待 harbor-portal 起来后取消注释
+      # - "127.0.0.1:${PUB_HTTP_HARBOR:-18086}:${PUB_HTTP_HARBOR:-18086}"
     volumes:
       - ../../config/Caddyfile:/etc/caddy/Caddyfile:ro
       - ca-data:/ca:ro

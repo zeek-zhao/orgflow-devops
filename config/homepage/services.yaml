@@ -47,6 +47,18 @@
         description: "构建执行节点 · 普通用户 jenkins / SSH 22"
         icon: "mdi-ssh"
         ping: "jenkins-agent"
+    - Gerrit:
+        href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/none"
+        description: "代码评审与 Git 服务 · gerrit:8080"
+        icon: "mdi-source-review"
+        siteMonitor: "http://gerrit:8080/"
+        ping: "gerrit"
+    - cgit:
+        href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/cgit/"
+        description: "Gerrit 裸库只读视图 · /cgit/"
+        icon: "mdi-git"
+        siteMonitor: "http://cgit:80/"
+        ping: "cgit"
 - 公网入口:
     - 统一入口:
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/"
@@ -64,6 +76,10 @@
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/jenkins/"
         description: "持续集成与流水线 · jenkins:8080"
         icon: "mdi-jenkins"
+    - cgit:
+        href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/cgit/"
+        description: "Gerrit 裸库只读视图 · /cgit/"
+        icon: "mdi-git"
     - 状态总览:
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/status"
         description: "全部服务入口与探测说明"

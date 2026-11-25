@@ -9,3 +9,5 @@ order	service	depends_on	health_url_doc	monitor_url_doc	ping_url_doc	public_path
 7	router	caddy,homepage,ldapadmin	http://127.0.0.1:8083/healthz	http://router:8080/healthz	router	/router/healthz	lan,domain	http
 8	jenkins	ldap,dnsmasq	http://jenkins:8080/jenkins/login	http://jenkins:8080/jenkins/login	jenkins	/jenkins/	lan,domain	http
 9	jenkins-agent	jenkins	ssh://jenkins-agent:22		jenkins-agent	/none	lan	ssh
+10	gerrit	ldap	http://127.0.0.1:8080/	http://gerrit:8080/	gerrit	/none	lan,domain	http
+11	cgit	gerrit	http://127.0.0.1:80/	http://cgit:80/	cgit	/cgit/	lan,domain	http

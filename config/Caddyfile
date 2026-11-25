@@ -115,6 +115,11 @@
         }
     }
 
+    # M2.1：cgit 只读代码视图（路径型，走 443 入口）。strip 前缀，cgit virtual-root=/cgit/ 重建链接。
+    handle_path /cgit/* {
+        reverse_proxy cgit:80
+    }
+
     # HomePage 占根路径，直接反代不 strip：
     # /_next/static/*、/api/config/*、/site.webmanifest、/favicon.ico 全部命中，杜绝裂图。
     # 必须是最后一个 handle（兜底），且用 handle 而非 handle_path 保留原始 URI。
@@ -122,3 +127,23 @@
         reverse_proxy homepage:3000
     }
 }
+
+# ===== M2.1 Gerrit 专用入口（Funnel :8443 → 回环 :{$PUB_HTTP_GERRIT}）=====
+# 端口用占位符，禁止字面值；Funnel 边缘终止 TLS，这里纯 HTTP 反代。
+:{$PUB_HTTP_GERRIT:18085} {
+    encode zstd gzip
+    reverse_proxy gerrit:${P_GERRIT_HTTP:-8080} {
+        header_up X-Forwarded-Proto https
+        header_up Host {host}
+    }
+}
+
+# ===== M2.2 Harbor 专用入口（Funnel :10000 → 回环 :{$PUB_HTTP_HARBOR}）=====
+# TODO(M2.2)：Harbor 部署前先注释，避免 reverse_proxy 指向尚不存在的 harbor-portal 上游
+# 拖垮入口。M2.1 验收通过、harbor-portal 容器起来后再取消注释并 make routes 生效。
+# :{$PUB_HTTP_HARBOR:18086} {
+#     reverse_proxy harbor-portal:${P_HARBOR_PORTAL:-8080} {
+#         header_up X-Forwarded-Proto https
+#         header_up Host {host}
+#     }
+# }

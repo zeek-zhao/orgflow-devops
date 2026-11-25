@@ -19,6 +19,8 @@
 | 5 | ldapadmin | phpLDAPadmin 管理页 | 是 |
 | 6 | homepage | 占根 `/` 的统一面板（双分组卡片） | 是 |
 | 7 | router | routes.yaml 渲染 + Caddy reload | 是 |
+| 8 | gerrit | Gerrit 代码评审 + Git（M2.1） | 是 |
+| 9 | cgit | Gerrit 裸库只读 Web（M2.1） | 是 |
 
 ## 前置
 
@@ -108,6 +110,8 @@ make verify                   # 全量验收矩阵 AC-1~22
 | DOC-S-007 | router 服务手册 | docs/services/router.md | 参考 | review | zeek.zhao | 6 | T7 |
 | DOC-S-008 | Jenkins controller 服务手册 | docs/services/jenkins.md | 参考 | review | zeek.zhao | 6 | M1-T7 |
 | DOC-S-009 | Jenkins agent 服务手册 | docs/services/jenkins-agent.md | 参考 | review | zeek.zhao | 6 | M1-T7 |
+| DOC-S-010 | Gerrit 服务手册 | docs/services/gerrit.md | 参考 | review | zeek.zhao | 6 | M2.1 |
+| DOC-S-011 | cgit 服务手册 | docs/services/cgit.md | 参考 | review | zeek.zhao | 6 | M2.1 |
 | DOC-P-004 | 分支与合并策略 | docs/records/分支与合并策略.md | 规程 | review | zeek.zhao | 6 | T12 |
 | DOC-P-005 | 备份与恢复 | docs/运维/备份与恢复.md | 规程 | review | zeek.zhao | 6 | R8 |
 | DOC-P-006 | 升级与回滚 | docs/运维/升级与回滚.md | 规程 | review | zeek.zhao | 6 | R8 |

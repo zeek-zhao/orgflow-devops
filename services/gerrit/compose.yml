@@ -1,0 +1,49 @@
+# Gerrit（M2.1 官方镜像）：代码评审 + Git 服务，固定 IP .18。
+# Web 走 Caddy 的 PUB_HTTP_GERRIT 回环口（由 caddy compose 发布）；SSH 发布宿主 ${P_GERRIT_SSH} 供 tailnet 设备连。
+# 官方镜像 @sha256 钉死（UPSTREAM_GERRIT），摘要登记 config/images.env；不走自建、不写死字面端口。
+# TODO(镜像落地)：IMAGE_GERRIT 的 digest 待加速站拉取成功后从 docker images --digests 回填，
+#   并同步 config/images.env 的 UPSTREAM_GERRIT / tests/images.lock 官方镜像行。
+services:
+  gerrit:
+    image: ${IMAGE_GERRIT:-gerritcodereview/gerrit:3.9.0}
+    pull_policy: missing
+    container_name: ${CONTAINER_PREFIX:-of}-gerrit
+    labels:
+      org.of.fp: ${FP_VALUE:-}
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      P_GERRIT_HTTP: ${P_GERRIT_HTTP:-8080}
+      P_GERRIT_SSH: ${P_GERRIT_SSH:-29418}
+      GERRIT_PUBLIC_URL: ${URL_GERRIT:-}
+    ports:
+      # SSH 只发布宿主端口供 tailnet 直连（Funnel 不转 TCP，公网不可达，符合文档）
+      - "${P_GERRIT_SSH:-29418}:${P_GERRIT_SSH:-29418}"
+    volumes:
+      - gerrit_git:/var/gerrit/git
+      - gerrit_etc:/var/gerrit/etc
+      - ../../out/urls.env:/etc/orgflow/urls.env:ro
+      - ./entrypoint.sh:/usr/local/bin/orgflow-entrypoint.sh:ro
+      - ./etc/gerrit.config.tmpl:/var/gerrit/etc/gerrit.config.tmpl:ro
+    entrypoint: ["/usr/local/bin/orgflow-entrypoint.sh"]
+    networks:
+      orgflow:
+        ipv4_address: ${IP_GERRIT:-192.168.90.18}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${P_GERRIT_HTTP:-8080}/ >/dev/null 2>&1 || wget -qO- http://127.0.0.1:${P_GERRIT_HTTP:-8080}/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 90s
+
+volumes:
+  gerrit_git:
+    external: true
+    name: ${GERRIT_GIT_VOLUME:-orgflow-minimal_gerrit_git}
+  gerrit_etc:
+    external: true
+    name: ${GERRIT_ETC_VOLUME:-orgflow-minimal_gerrit_etc}
+
+networks:
+  orgflow:
+    external: true
+    name: ${ORG_NETWORK:-orgflow-minimal_orgflow}

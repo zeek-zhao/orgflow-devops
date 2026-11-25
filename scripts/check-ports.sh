@@ -73,7 +73,9 @@ fi
 #    检查 compose / Caddyfile / 应用配置模板里不出现 18085/18086（Gerrit/Harbor 回环口）
 #    及 funnel-up.sh 不写死 8443 之外的对外口（443 在 TLS 上下文允许）
 bad6=""
-if grep -rnE '18085|18086' config/Caddyfile config/routes.yaml services/*/compose.yml 2>/dev/null | grep -v '\${PUB_HTTP' | grep -q .; then
+# 放行两类占位符默认值：compose 的 ${PUB_HTTP_*} 与 Caddyfile 的 {$PUB_HTTP_*}（文档 §2 写法）。
+if grep -rnE '18085|18086' config/Caddyfile config/routes.yaml services/*/compose.yml 2>/dev/null \
+    | grep -vE '\$\{PUB_HTTP|\{\$PUB_HTTP' | grep -q .; then
   bad6="发现字面 18085/18086"
 fi
 if [[ -n "$bad6" ]]; then bad "6) 对外端口字面硬编码: $bad6"; else ok "6) 对外端口无字面硬编码"; fi

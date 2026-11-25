@@ -42,6 +42,8 @@ META = {
     "certs-init": ("证书初始化", "mdi-certificate",     "一次性任务 · 不放假页面"),
     "jenkins":    ("Jenkins",   "mdi-jenkins",         "持续集成与流水线 · jenkins:8080"),
     "jenkins-agent": ("Jenkins Agent", "mdi-ssh",      "构建执行节点 · 普通用户 jenkins / SSH 22"),
+    "gerrit":     ("Gerrit",     "mdi-source-review",  "代码评审与 Git 服务 · gerrit:8080"),
+    "cgit":       ("cgit",       "mdi-git",            "Gerrit 裸库只读视图 · /cgit/"),
 }
 
 # 公网入口组排除的 public_path：指向 /status 的假入口与一次性任务的 /none
@@ -111,8 +113,10 @@ def render(rows):
         if svc == "certs-init":
             continue
         name, icon, note = META.get(svc, (svc, "mdi-circle", svc))
+        # manifest 表头为 monitor_url_doc / ping_url_doc（r5 §4-5 定义的文档元数据列）。
+        # 原脚本误读 monitor_url/ping_url（不存在的列）→ 渲染丢监控字段；此处修正列名。
         out += card_lines(name, icon, public_href(r), note,
-                          r.get("monitor_url", ""), r.get("ping_url", ""))
+                          r.get("monitor_url_doc", ""), r.get("ping_url_doc", ""))
     # 分组二：公网入口（排除 certs-init），按 public_path 规则筛选真实入口
     out.append("- 公网入口:")
     for r in rows:

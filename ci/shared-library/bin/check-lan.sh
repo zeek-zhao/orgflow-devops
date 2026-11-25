@@ -86,8 +86,18 @@ case "$SVC" in
     [[ -n "$ip" ]] || { fail "DNS 解析 home.$DOMAIN 失败"; exit 1; }
     pass "jenkins-agent uid=1000 java/dig/dns ok ($ip)"
     ;;
+  gerrit)
+    echo "[gerrit] curl http://gerrit:8080/（Web 首页应 200）"
+    code="$(curl -s -o /dev/null -w '%{http_code}' http://gerrit:8080/)"; rc=$?
+    [[ $rc -eq 0 && "$code" == "200" ]] && pass "gerrit HTTP $code" || { fail "gerrit rc=$rc code=$code"; exit 1; }
+    ;;
+  cgit)
+    echo "[cgit] curl http://cgit:80/（仓库列表非空）"
+    body="$(curl -fsS http://cgit:80/ 2>&1)"; rc=$?
+    [[ $rc -eq 0 && -n "$body" ]] && pass "cgit 列表非空" || { fail "cgit rc=$rc"; exit 1; }
+    ;;
   *)
-    echo "用法：$0 <dns|dnsmasq|ldap|caddy|homepage|ldapadmin|router|jenkins|jenkins-agent>" >&2
+    echo "用法：$0 <dns|dnsmasq|ldap|caddy|homepage|ldapadmin|router|jenkins|jenkins-agent|gerrit|cgit>" >&2
     exit 2
     ;;
 esac
