@@ -52,6 +52,9 @@ _last_hash = None
 
 # r5 §4-8：/status HTML 说明页的唯一真源。Caddy 的 @status 改为 reverse_proxy router:8080，
 # 本文件 GET /status 直接返回下面的 HTML；config/Caddyfile 不再内联第二份，消除双写漂移。
+# r6 终验判据 7/8：本机真源由 router GET /status 提供，列全 9 个 of-* 容器
+# （含 Jenkins / Agent），并带 Status-Source: router 头供公网侧判定来源。
+# 每行一个 <code>of-*</code>，判据 `grep -c 'of-'` ≥ 9。
 STATUS_HTML = (
     '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
     '<meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -61,17 +64,17 @@ STATUS_HTML = (
     'th{background:#f2f5f9}code{background:#eef2f7;padding:.1rem .35rem;border-radius:4px}'
     '.note{margin-top:1.2rem;color:#556}</style></head><body>'
     '<h1>OrgFlow 底座 · 服务状态</h1>'
-    '<p>本页是 9 个服务的状态说明。各服务入口与探测方式如下（DNS / LDAP / Caddy / Jenkins Agent 无独立 Web UI，状态见<a href="/">首页卡片</a>）。</p>'
-    '<table><thead><tr><th>服务</th><th>探测方式</th><th>公网入口</th></tr></thead><tbody>'
-    '<tr><td>统一面板 homepage</td><td>HTTP 根路径 /</td><td><a href="/">/</a></td></tr>'
-    '<tr><td>LDAP 管理 ldapadmin</td><td>HTTP /ldapadmin/</td><td><a href="/ldapadmin/">/ldapadmin/</a></td></tr>'
-    '<tr><td>路由注册 router</td><td>HTTP /router/healthz</td><td><a href="/router/healthz">/router/healthz</a></td></tr>'
-    '<tr><td>DNS 解析 dnsmasq</td><td>ICMP 探容器 + dig</td><td>无 UI，见首页卡片</td></tr>'
-    '<tr><td>身份目录 ldap</td><td>ldapsearch 探 389</td><td>无 UI，见首页卡片</td></tr>'
-    '<tr><td>Caddy 网关 caddy</td><td>admin /config/ 探活</td><td>无 UI，见首页卡片</td></tr>'
-    '<tr><td>证书初始化 certs-init</td><td>一次性任务 exit 0</td><td>不放假页面</td></tr>'
-    '<tr><td>持续集成 Jenkins</td><td>HTTP /jenkins/login</td><td><a href="/jenkins/">/jenkins/</a>（需登录）</td></tr>'
-    '<tr><td>构建节点 Jenkins Agent</td><td>SSH 22 / Job 在线探测</td><td>无 UI，见首页卡片</td></tr>'
+    '<p>本页是 9 个服务的状态说明（来源 <code>router</code>）。各服务入口与探测方式如下（DNS / LDAP / Caddy / Jenkins Agent 无独立 Web UI，状态见<a href="/">首页卡片</a>）。</p>'
+    '<table><thead><tr><th>服务</th><th>容器</th><th>探测方式</th><th>公网入口</th></tr></thead><tbody>\n'
+    '<tr><td>统一面板 homepage</td><td><code>of-homepage</code></td><td>HTTP 根路径 /</td><td><a href="/">/</a></td></tr>\n'
+    '<tr><td>LDAP 管理 ldapadmin</td><td><code>of-ldapadmin</code></td><td>HTTP /ldapadmin/</td><td><a href="/ldapadmin/">/ldapadmin/</a></td></tr>\n'
+    '<tr><td>路由注册 router</td><td><code>of-router</code></td><td>HTTP /router/healthz</td><td><a href="/router/healthz">/router/healthz</a></td></tr>\n'
+    '<tr><td>DNS 解析 dnsmasq</td><td><code>of-dnsmasq</code></td><td>ICMP 探容器 + dig</td><td>无 UI，见首页卡片</td></tr>\n'
+    '<tr><td>身份目录 ldap</td><td><code>of-ldap</code></td><td>ldapsearch 探 389</td><td>无 UI，见首页卡片</td></tr>\n'
+    '<tr><td>Caddy 网关 caddy</td><td><code>of-caddy</code></td><td>admin /config/ 探活</td><td>无 UI，见首页卡片</td></tr>\n'
+    '<tr><td>证书初始化 certs-init</td><td><code>of-certs-init</code></td><td>一次性任务 exit 0</td><td>不放假页面</td></tr>\n'
+    '<tr><td>持续集成 Jenkins</td><td><code>of-jenkins</code></td><td>HTTP /jenkins/login</td><td><a href="/jenkins/">/jenkins/</a>（需登录）</td></tr>\n'
+    '<tr><td>构建节点 Jenkins Agent</td><td><code>of-jenkins-agent</code></td><td>SSH 22 / Job 在线探测</td><td>无 UI，见首页卡片</td></tr>\n'
     '</tbody></table>'
     '<p class="note">健康探针：<code>/healthz</code>（纯文本 ok）。配置渲染仅允许容器内本机调用，公网 <code>/router/render</code> 返回 403。</p>'
     '</body></html>'
@@ -328,20 +331,35 @@ def do_render():
 
 
 class Handler(BaseHTTPRequestHandler):
-    def _send(self, code, text, content_type="text/plain; charset=utf-8"):
+    def _send(self, code, text, content_type="text/plain; charset=utf-8", extra_headers=None):
         body = text.encode()
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        for k, v in (extra_headers or {}).items():
+            self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
+
+    def do_HEAD(self):
+        # 判据 7：curl -sI 走 HEAD；与 GET /status 同状态/同头，无 body。
+        if self.path == "/status":
+            print(f"[status] HEAD /status from {self.client_address[0]}", flush=True)
+            self._send(200, "", content_type="text/html; charset=utf-8",
+                       extra_headers={"Status-Source": "router"}); return
+        if self.path == "/healthz":
+            self._send(200, ""); return
+        self._send(404, "")
 
     def do_GET(self):
         if self.path == "/healthz":
             self._send(200, "ok"); return
         if self.path == "/status":
-            # r5 §4-8：状态页唯一真源（文本 HTML；Caddy @status reverse_proxy 到此）
-            self._send(200, STATUS_HTML, content_type="text/html; charset=utf-8"); return
+            # r5 §4-8：状态页唯一真源（文本 HTML；Caddy @status reverse_proxy 到此）。
+            # r6 终验判据 7/8：打访问日志 + Status-Source 头，正文列 9 个 of-* 容器。
+            print(f"[status] GET /status from {self.client_address[0]}", flush=True)
+            self._send(200, STATUS_HTML, content_type="text/html; charset=utf-8",
+                       extra_headers={"Status-Source": "router"}); return
         if self.path == "/routes":
             try:
                 # T1：展示层脱敏，去内网 IP 与证书路径（下发实跑配置不受影响）

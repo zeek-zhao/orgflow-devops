@@ -2,6 +2,16 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m1-v0.3-verify] — 2026-11-25（r6：全量拆除重建终验 16/16 通过）
+
+> 分支 `feat/m1-jenkins`，基线 `m1-v0.3` @ `df94483`。详见 `docs/records/执行日志/2026-11-25-r6.md`。
+
+### Fixed
+- **状态页判据 7/8 假绿（终验发现）**：`services/router/server.py` 的 `GET /status` 补齐 `Status-Source: router` 头、HEAD 支持（`curl -sI` 200）与访问日志；表格增「容器」列列全 9 个 `of-*`（含 Jenkins/Agent），`grep -c 'of-'` = 9。此前 `/status` 实测 501/无头/无容器名，与 A 部分「已切 router」声称不符。server.py 为 bind mount，重建 router 容器即生效，镜像未变。
+
+### Verified
+- 全量拆除（保留 4 卷 + 1 网络，CA sha256 未变）后按 manifest 重建，16 条终验判据全部通过：容器/IP/DNS/入口/Jenkins 冷启/主题/agent/匿名/9 Job 全绿/定时/幂等/门禁。
+
 ## [m1-v0.3] — 2026-11-25（r5：门禁真转绿 + 镜像内容哈希 + 冗余清理）
 
 > 分支 `feat/m1-jenkins`，基线 `m1-v0.2` @ `baa0e87`。不合并 main。详见 `docs/records/执行日志/2026-11-25-r5.md`。
