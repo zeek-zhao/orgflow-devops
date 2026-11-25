@@ -28,6 +28,7 @@ bash up.sh --only cgit             # 依赖 gerrit_git 卷存在（up.sh 幂等�
 ## 5. 验收（文档 §M2.1 判据 5）
 
 - `curl -sSI https://${PUBLIC_HOST}/cgit/` → 200 且列表非空（导入仓库后）。
+- **空态边界（2026-11-26 复核）**：白名单模式下，当前无业务仓时 `project-list` 为空，cgit 对空列表返回 **404**（旧 `scan-path` 方案之所以显示 200，是因为它错误地把 `All-Projects.git`/`All-Users.git` 系统库当业务仓列出）。这是"无业务仓"既有待办的直接后果，非白名单缺陷；导入首个业务仓后 `/cgit/` 自动恢复 200。未加 error_page 兜底——那会把真实 404 伪装成 200，掩盖问题。
 - 白名单：`cat /tmp/projects.list`（容器内）应只含业务仓，不含 `All-Users.git`。
 - `git clone https://${PUBLIC_HOST}/cgit/orgflow-devops.git` → 成功。
 - **clone 协议（待修复）**：当前 Caddy `handle_path /cgit/*` 剥前缀可能破坏 smart-http 路径；`curl /cgit/<repo>.git/info/refs?service=git-upload-pack` 返回 text/html（cgit 页面）而非 `application/x-git-upload-pack-advertisement`。属差距清单待办，未虚报通过。
