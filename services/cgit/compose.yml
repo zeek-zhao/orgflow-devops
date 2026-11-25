@@ -21,7 +21,8 @@ services:
       orgflow:
         ipv4_address: ${IP_CGIT:-192.168.90.19}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1 || exit 1"]
+      # 镜像按最小原则未装 wget/curl；用 bash /dev/tcp 探 nginx 80，避免依赖额外工具。
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/80' >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
