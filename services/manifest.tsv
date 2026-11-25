@@ -1,4 +1,5 @@
-order	service	depends_on	health_url	monitor_url	ping_url	public_path	tags	ui_kind
+order	service	depends_on	health_url_doc	monitor_url_doc	ping_url_doc	public_path	tags	ui_kind
+# 注（r5 §4-5）：health_url_doc / monitor_url_doc / ping_url_doc 为文档元数据，脚本不消费（up.sh 只读 order/service/depends_on 做编排）
 1	dnsmasq		udp://127.0.0.1:5353		192.168.90.15	/status	lan,domain	none
 2	certs-init		file://ca-data			/none	lan,domain	none
 3	ldap		ldap://127.0.0.1:3389		ldap	/status	lan,domain	proxy

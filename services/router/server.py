@@ -50,7 +50,8 @@ UPSTREAM_RE = re.compile(r"^[a-zA-Z0-9_.-]+:\d+$")
 
 _last_hash = None
 
-# T4/T6：/status HTML 说明页（与 config/Caddyfile 内联 HTML 同源；render 输出 == 实跑）
+# r5 §4-8：/status HTML 说明页的唯一真源。Caddy 的 @status 改为 reverse_proxy router:8080，
+# 本文件 GET /status 直接返回下面的 HTML；config/Caddyfile 不再内联第二份，消除双写漂移。
 STATUS_HTML = (
     '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
     '<meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -76,11 +77,10 @@ STATUS_HTML = (
     '</body></html>'
 )
 
-# T4：4 条 308 跳转 + /status HTML（render 输出片段，与 config/Caddyfile 公网块一致）
+# r5 §4-8：4 条 308 跳转 + /status 反代（HTML 由 router GET /status 唯一提供，不再内联）
 PUBLIC_FIXED = """    @status path /status
     handle @status {
-        header Content-Type "text/html; charset=utf-8"
-        respond `STATUS_HTML_PLACEHOLDER` 200
+        reverse_proxy router:8080
     }
 
     @rootHome path /home /home/*
@@ -242,8 +242,8 @@ def render(routes):
         "    }"
     )
 
-    # T6：公网固定片段（status HTML + 4 跳转）用真实 HTML 替换占位符
-    public_fixed = PUBLIC_FIXED.replace("STATUS_HTML_PLACEHOLDER", STATUS_HTML)
+    # r5 §4-8：/status 已改 reverse_proxy router:8080，无需再内联替换 HTML 占位符。
+    public_fixed = PUBLIC_FIXED
 
     return f"""# 由 router /render 生成的完整路径型 Caddyfile（== 实跑配置）
 {{
@@ -328,10 +328,10 @@ def do_render():
 
 
 class Handler(BaseHTTPRequestHandler):
-    def _send(self, code, text):
+    def _send(self, code, text, content_type="text/plain; charset=utf-8"):
         body = text.encode()
         self.send_response(code)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -339,6 +339,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/healthz":
             self._send(200, "ok"); return
+        if self.path == "/status":
+            # r5 §4-8：状态页唯一真源（文本 HTML；Caddy @status reverse_proxy 到此）
+            self._send(200, STATUS_HTML, content_type="text/html; charset=utf-8"); return
         if self.path == "/routes":
             try:
                 # T1：展示层脱敏，去内网 IP 与证书路径（下发实跑配置不受影响）

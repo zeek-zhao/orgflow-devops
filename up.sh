@@ -37,13 +37,14 @@ if [[ -z "${JENKINS_AGENT_HOST_KEY:-}" && -s secrets/agent_host_key.pub ]]; then
   export JENKINS_AGENT_HOST_KEY="$(awk '{print $1" "$2}' secrets/agent_host_key.pub)"
 fi
 
-# ---- 读 manifest（顺序 + 依赖 + 健康地址）----
+# ---- 读 manifest（顺序 + 依赖）----
+# r5 §4-5：health_url 等列为文档元数据，脚本不消费（原先解析进 HEALTHURL 却从未使用，已删）。
 declare -a ORDER=()
-declare -A DEPS=() HEALTHURL=()
+declare -A DEPS=()
 while IFS=$'\t' read -r order svc deps health monitor ping path tags kind; do
   [[ "$svc" == "service" || -z "$svc" ]] && continue
-  ORDER+=("$svc"); DEPS["$svc"]="$deps"; HEALTHURL["$svc"]="$health"
-done < <(python3.11 -c "import csv; [print('\t'.join([r['order'],r['service'],r['depends_on'],r['health_url'],r['monitor_url'],r['ping_url'],r['public_path'],r['tags'],r['ui_kind']])) for r in csv.DictReader(open('services/manifest.tsv',encoding='utf-8-sig'),delimiter='\t')]")
+  ORDER+=("$svc"); DEPS["$svc"]="$deps"
+done < <(python3.11 -c "import csv; [print('\t'.join([r['order'],r['service'],r['depends_on'],r['health_url_doc'],r['monitor_url_doc'],r['ping_url_doc'],r['public_path'],r['tags'],r['ui_kind']])) for r in csv.DictReader(open('services/manifest.tsv',encoding='utf-8-sig'),delimiter='\t') if r['service']]")
 
 # project 名：默认 per-service（独立命名空间测试隔离）；
 # 接管存量整栈容器（如线上 orgflow-minimal project）时设 COMPOSE_PROJECT=orgflow-minimal，

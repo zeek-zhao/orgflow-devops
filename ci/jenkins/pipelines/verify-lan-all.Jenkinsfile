@@ -20,21 +20,6 @@ pipeline {
             archiveArtifacts artifacts: 'lan-report.md', allowEmptyArchive: true
             cleanWs()
         }
-        // E2：失败时发飞书通知；webhook 走 plain-credentials（id: feishu-webhook）。
-        // 凭据未配置时脚本优雅跳过，不影响构建结果；配置后立即生效。
-        failure {
-            script {
-                try {
-                    withCredentials([string(credentialsId: 'feishu-webhook', variable: 'FEISHU_WEBHOOK')]) {
-                        sh '''
-                            /opt/orgflow/ci/shared-library/bin/notify-feishu.sh \
-                              "$JOB_NAME" "$BUILD_NUMBER" "$BUILD_URL" FAILURE
-                        '''
-                    }
-                } catch (Exception e) {
-                    echo "[notify] feishu-webhook 凭据不可用，跳过通知：${e.getMessage()}"
-                }
-            }
-        }
+        // r5 §3：失败通知（E2）因无邮件/webhook 通道暂缓，死代码已摘除，保留 always 归档。
     }
 }
