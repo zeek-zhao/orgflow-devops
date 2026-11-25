@@ -43,4 +43,5 @@
     smtpServer = localhost
 
 [container]
-    user = gerrit2
+    # 官方 gerrit 3.9 镜像实际运行用户为 gerrit(uid1000)，非 debian 包的 gerrit2。
+    user = gerrit

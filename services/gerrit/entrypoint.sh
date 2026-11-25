@@ -33,18 +33,27 @@ fi
 
 export GERRIT_PUBLIC_URL P_GERRIT_HTTP P_GERRIT_SSH
 # 模板里的 ${username}/${groupname} 是 Gerrit 运行时 LDAP 变量，必须原样保留。
-# 官方 gerrit 镜像不保证带 gettext-base（envsubst），故优先 sed 定点替换这三个占位符，
-# 不碰 ${username}/${groupname}；envsubst 白名单路径仅作兜底。
-if sed -e "s|\${GERRIT_PUBLIC_URL}|$GERRIT_PUBLIC_URL|g" \
-       -e "s|\${P_GERRIT_HTTP}|$P_GERRIT_HTTP|g" \
-       -e "s|\${P_GERRIT_SSH}|$P_GERRIT_SSH|g" \
-       -e "s|\${LDAP_BIND_CREDENTIAL}|$LDAP_ADMIN_PASSWORD|g" "$TMPL" > "$OUT_CFG"; then
-  :
-elif command -v envsubst >/dev/null 2>&1; then
-  LDAP_BIND_CREDENTIAL="$LDAP_ADMIN_PASSWORD" \
-    envsubst '${GERRIT_PUBLIC_URL} ${P_GERRIT_HTTP} ${P_GERRIT_SSH} ${LDAP_BIND_CREDENTIAL}' < "$TMPL" > "$OUT_CFG"
-else
-  echo "FATAL: 无法渲染 gerrit.config（sed 失败且无 envsubst）" >&2
+# 用 python3 str.replace 做纯字面替换：口令含 | & \ / 等特殊字符时不会破坏配置
+# （sed s|...| 会因 | 截断、& 展开成匹配串，清单风险项）。值经环境变量传入，
+# 不经命令行参数，避免口令出现在 ps/argv。envsubst 白名单兜底同样只替换这 4 个占位符。
+GERRIT_PUBLIC_URL="$GERRIT_PUBLIC_URL" P_GERRIT_HTTP="$P_GERRIT_HTTP" \
+P_GERRIT_SSH="$P_GERRIT_SSH" LDAP_BIND_CREDENTIAL="$LDAP_ADMIN_PASSWORD" \
+python3 - "$TMPL" > "$OUT_CFG" <<'PYEOF'
+import os, sys
+src = open(sys.argv[1], encoding="utf-8").read()
+# 只替换这 4 个已知占位符；${username}/${groupname} 等 Gerrit 运行时变量原样保留。
+for key in ("GERRIT_PUBLIC_URL", "P_GERRIT_HTTP", "P_GERRIT_SSH", "LDAP_BIND_CREDENTIAL"):
+    src = src.replace("${" + key + "}", os.environ.get(key, ""))
+sys.stdout.write(src)
+PYEOF
+RENDER_RC=$?
+if [[ $RENDER_RC -ne 0 ]]; then
+  echo "FATAL: python3 渲染 gerrit.config 失败（rc=$RENDER_RC）" >&2
+  exit 1
+fi
+# 防止模板占位符未被替换（值缺失时 python 会替换为空串，这里校验公钥变量非空）
+if grep -q '\${GERRIT_PUBLIC_URL}\|\${LDAP_BIND_CREDENTIAL}' "$OUT_CFG"; then
+  echo "FATAL: gerrit.config 仍有未替换占位符" >&2
   exit 1
 fi
 # 明文口令只落在卷内 gerrit.config（600/gerrit），不进源码/文档；收紧权限并归主。
