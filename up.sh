@@ -53,9 +53,12 @@ svc_project() { echo "${COMPOSE_PROJECT:-orgflow-$1}"; }
 svc_compose() { echo "services/$1/compose.yml"; }
 # T10：USE_LOCAL_IMAGES=1 时把 images.env 放最后（后者覆盖前者）注入本地镜像名。
 DC() {
-  local extra=()
+  local extra=() svc="$1"
+  shift  # 去掉服务名，剩余参数（up/pull/config 及选项）原样透传给 docker compose
   [[ "$USE_LOCAL_IMAGES" == "1" ]] && extra=(--env-file "$IMAGES_ENV")
-  docker compose --env-file "$ENVFILE" "${extra[@]}" -p "$(svc_project "$1")" -f "$(svc_compose "$1")"
+  # M2.0 P1：原实现丢弃 "$@"（只拼 -p/-f 不接子命令），导致 DC up/pull 打印 usage 却退出 0
+  # ——这是"重建了但没重建"假成功的真正根因。修复：透传剩余参数。
+  docker compose --env-file "$ENVFILE" "${extra[@]}" -p "$(svc_project "$svc")" -f "$(svc_compose "$svc")" "$@"
 }
 
 # T10：解析默认（GHCR）镜像名，用于 dry-run 展示回退目标
@@ -247,17 +250,49 @@ run_one() {
     USE_LOCAL_IMAGES=0
   fi
   fp="$(fingerprint "$svc")"
+  # M2.0 P1：重建前记录 StartedAt，FORCE 分支据此判断是否真的重建（防"重建了但没重建"假成功）
+  local old_started=""
+  (( FORCE )) && old_started="$(docker inspect -f '{{.State.StartedAt}}' "$(svc_cid "$svc")" 2>/dev/null || true)"
   t0=$(date +%s%3N)
-  if (( PULL )) && [[ "$USE_LOCAL_IMAGES" != "1" ]]; then DC "$svc" pull >/dev/null 2>&1; fi
+  # M2.0 P1：捕获 pull 输出与退出码，失败打印 stderr 末 15 行并中止（原 >/dev/null 吞错误导致假成功）
+  if (( PULL )) && [[ "$USE_LOCAL_IMAGES" != "1" ]]; then
+    local pull_out pull_rc=0
+    pull_out="$(DC "$svc" pull 2>&1)" || pull_rc=$?
+    if (( pull_rc != 0 )); then
+      echo "✗ [$svc] pull 失败（exit $pull_rc），stderr 末 15 行：" >&2
+      printf '%s\n' "$pull_out" | tail -15 >&2
+      USE_LOCAL_IMAGES="$saved_local"
+      return 1
+    fi
+  fi
   # --recreate/FP_STRICT 重建才加 --force-recreate；普通 up 对不健康容器只 up -d（不改线上健康容器）
+  # M2.0 P1：显式 --pull never（拉取已由上方独立步骤完成），避免坏镜像在 up 阶段隐式拉取阻塞；
+  #         捕获 compose up 输出与退出码，失败打印 stderr 末 15 行并 return 1
+  local up_out up_rc=0
   if (( FORCE )); then
-    FP_VALUE="$fp" DC "$svc" up -d --no-deps --force-recreate "$svc" >/dev/null 2>&1
+    up_out="$(FP_VALUE="$fp" DC "$svc" up -d --no-deps --pull never --force-recreate "$svc" 2>&1)" || up_rc=$?
   else
-    FP_VALUE="$fp" DC "$svc" up -d --no-deps "$svc" >/dev/null 2>&1
+    up_out="$(FP_VALUE="$fp" DC "$svc" up -d --no-deps --pull never "$svc" 2>&1)" || up_rc=$?
+  fi
+  if (( up_rc != 0 )); then
+    echo "✗ [$svc] compose up 失败（exit $up_rc），stderr 末 15 行：" >&2
+    printf '%s\n' "$up_out" | tail -15 >&2
+    USE_LOCAL_IMAGES="$saved_local"
+    return 1
   fi
   t1=$(date +%s%3N)
   # 等容器名出现（compose 创建有微小延迟；一次性容器可能已 Exited，用 -aq 查）
   for _ in 1 2 3 4 5; do cid="$(svc_cid "$svc")"; [[ -n "$cid" ]] && break; sleep 1; done
+  # M2.0 P1：FORCE 分支比对 StartedAt——compose 报成功但容器未重建（StartedAt 未变）判失败
+  if (( FORCE )) && [[ -n "$old_started" ]]; then
+    local new_started=""
+    new_started="$(docker inspect -f '{{.State.StartedAt}}' "$cid" 2>/dev/null || true)"
+    if [[ -n "$new_started" && "$new_started" == "$old_started" ]]; then
+      echo "✗ [$svc] force-recreate 后 StartedAt 未变（$old_started）——判定重建失败" >&2
+      USE_LOCAL_IMAGES="$saved_local"
+      return 1
+    fi
+  fi
   if wait_healthy "$svc"; then healthy="healthy"; else healthy="UNHEALTHY"; fi
   [[ -n "$cid" ]] || cid="$(svc_cid "$svc")"
   USE_LOCAL_IMAGES="$saved_local"  # T10：恢复全局开关，降级只作用于本服务本次启动

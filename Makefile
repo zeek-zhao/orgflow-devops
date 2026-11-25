@@ -15,9 +15,10 @@ help: ## 列出全部目标
 	@grep -E '^[a-zA-Z0-9_%-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*##' '{printf "  %-18s %s\n", $$1, $$2}'
 
 # ---------- 配置 ----------
-render: ## 渲染配置产物（含 HomePage services.yaml；非敏感值来自 defaults.env）
+render: ## 渲染配置产物（含 HomePage services.yaml、urls.env；非敏感值来自 defaults.env）
 	@mkdir -p out && bash scripts/render.sh
 	@python3.11 scripts/render-homepage.py
+	@bash scripts/render-urls.sh
 
 # ---------- 部署 ----------
 up: images-guard ## 按顺序起全栈（up.sh 五段输出/就绪断言/失败中止）

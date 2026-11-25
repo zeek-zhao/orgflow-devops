@@ -45,7 +45,7 @@ fi
 #    jenkins.yaml 含 ${VAR} 字符串，safe_load 不报错（已验证）。
 if python3 - <<'PY'
 import glob, yaml, sys
-files = glob.glob('services/*/compose.yml') + glob.glob('config/**/*.yaml', recursive=True)
+files = [f for f in glob.glob('services/*/compose.yml') if '/_' not in f.split('/')[1]] + glob.glob('config/**/*.yaml', recursive=True)
 bad = []
 for f in files:
     try:

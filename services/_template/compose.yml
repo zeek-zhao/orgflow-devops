@@ -1,0 +1,30 @@
+# 服务脚手架模板 —— 复制后把 <SVC> 替换为实际服务名，并按 README 的 5 步手工补齐。
+# 硬约束（M2 §1/§2）：对外端口一律用 ${P_<SVC>_...} 占位，固定 IP 用 ${IP_<SVC>}；
+#   禁止在本文件写死任何对外字面端口；镜像用 ${IMAGE_<SVC>:-<GHCR 代理 digest>}。
+services:
+  <SVC>:
+    image: ${IMAGE_<SVC>:-ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/<SVC>@sha256:REPLACE_WITH_DIGEST}
+    pull_policy: never
+    container_name: ${CONTAINER_PREFIX:-of}-<SVC>
+    labels:
+      org.of.fp: ${FP_VALUE:-}
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+    ports:
+      # 容器内监听口来自第③层 P_<SVC>_HTTP（defaults.env），宿主发布口按实际需要配置。
+      - "${P_<SVC>_HTTP:-8080}:8080"
+    volumes:
+      - ../../config/<SVC>:/app/config:ro
+    networks:
+      orgflow:
+        ipv4_address: ${IP_<SVC>:-192.168.90.20}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+networks:
+  orgflow:
+    external: true
+    name: ${ORG_NETWORK:-orgflow-minimal_orgflow}

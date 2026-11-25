@@ -30,6 +30,7 @@ UBUNTU_DIGEST='sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce112
 SERVICES=(); BUILDABLE=(); HASHED=(jenkins jenkins-agent)
 for d in services/*/; do
   svc="${d#services/}"; svc="${svc%/}"
+  [[ "$svc" == _* ]] && continue  # M2 P4：下划线开头为脚手架模板（_template），非真实服务
   [[ -f "$d/compose.yml" ]] && SERVICES+=("$svc")
   [[ -f "$d/Dockerfile" ]] && BUILDABLE+=("$svc")
 done
@@ -121,6 +122,7 @@ check_upstream() {
     BY_NAME["$ref"]="$digest"
   done < <(sed -n '/^```$/,/^```$/p' "$REG" | grep -E '^(ubuntu|caddy|ldap|ldapadmin|homepage|jenkins)[[:space:]]')
   for df in services/*/Dockerfile; do
+    [[ "$df" == services/_*/Dockerfile ]] && continue  # 排除脚手架模板
     from="$(grep -m1 '^FROM ' "$df" 2>/dev/null || true)"
     [[ -n "$from" ]] || continue
     img="$(echo "$from" | awk '{print $2}')"; ref="${img%@*}"; dg="${img#*@}"

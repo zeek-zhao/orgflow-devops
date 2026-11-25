@@ -2,6 +2,18 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m2.0-prep] — 2026-11-25（M2.0 前置治理 P1~P4，未封版）
+
+> 分支 `feat/m1-jenkins`，基线 `m1-v1.0 @ 72c2f63`。详见 `docs/records/执行日志/2026-11-25-r8.md`。M2.1+ 服务部署待资源闸门决策（内存 5.62GiB < 8GiB）。
+
+### Fixed
+- **up.sh 假成功（M1 r7 遗留真正根因）**：`DC()` 未透传 `"$@"` 导致 compose 子命令被丢弃却退出 0；修复透传 + pull/up 捕获退出码打 stderr 末 15 行 + FORCE 分支 StartedAt 比对。坏镜像实测 exit 1 并打印错误，正常重建 StartedAt 变化。
+
+### Added
+- **端口三层模型（M2 §1）**：defaults.env 增 9 个端口变量（Funnel 443/8443/10000、回环 18085/18086、容器内 8080/29418/80/8080）；新增 `render-urls.sh` 生成 out/urls.env（公网 URL 单一真源）、`check-ports.sh` 六条门禁（非法 Funnel 口拦截、无字面端口硬编码）；make render / check-fast 接入。
+- **资源盘点闸门**：`preflight.sh` 输出 nproc/内存/磁盘三项，全过 exit 0、任一不过 exit 3 建议降级 registry:2（不自动降级、等人定）。
+- **服务脚手架**：`services/_template/` 三件套 + `new-service.sh`（生成骨架并打印手工 5 步）；镜像/静态门禁排除 `_template` 模板目录。
+
 ## [m1-v1.0] — 2026-11-25（M1 封版：终验 16/16 通过）
 
 > 分支 `feat/m1-jenkins`，基线 `m1-v0.3` @ `df94483`。详见 `docs/records/执行日志/2026-11-25-r6.md`。

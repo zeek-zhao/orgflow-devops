@@ -27,6 +27,7 @@ run 摘要一致 scripts/check-images.sh --mode=lock
 run 配置解析 scripts/test-static.sh
 run 文档登记 scripts/check-docs.sh
 run 域名配置 scripts/check-domain.sh
+run 端口配置 scripts/check-ports.sh
 run 测试覆盖 tests/check-v2.sh
 run 服务清单 scripts/check-service-list.sh
 if [[ $rc -eq 0 ]]; then echo "✓ 快检查通过"; else echo "✗ 快检查未通过" >&2; fi
