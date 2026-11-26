@@ -84,6 +84,23 @@ credentials:
               scope: GLOBAL
               id: "ldap-admin-password"
               secret: "${LDAP_ADMIN_PASSWORD}"
+          # M2.3：ci-bot SSH 私钥——gerrit-trigger 收 patchset-created 事件 + pipeline
+          # checkout/SSH review 回写 Verified。明文不入库，由 up.sh 从 secrets/ 注入。
+          - basicSSHUserPrivateKey:
+              scope: GLOBAL
+              id: "gerrit-ci-ssh"
+              username: "ci-bot"
+              description: "Gerrit CI service account SSH key (M2.3)"
+              privateKeySource:
+                directEntry:
+                  privateKey: "${GERRIT_CI_SSH_KEY}"
+          # M2.3：registry 凭据——buildctl push + REST manifest 校验。口令走 .env 注入，不入库。
+          - usernamePassword:
+              scope: GLOBAL
+              id: "registry-ci"
+              username: "${REGISTRY_CI_USER}"
+              password: "${REGISTRY_CI_PASSWORD}"
+              description: "Internal registry push/verify credential (M2.3)"
 
 # Job as Code：9 条 Job 由以下 3 个 Job DSL 幂等生成；- file: 必须是容器内绝对路径。
 # config/jenkins 是只读挂载，Job 不得往里写；不再有 globalLibraries（共享库走文件挂载）。

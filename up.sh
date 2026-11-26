@@ -36,6 +36,17 @@ fi
 if [[ -z "${JENKINS_AGENT_HOST_KEY:-}" && -s secrets/agent_host_key.pub ]]; then
   export JENKINS_AGENT_HOST_KEY="$(awk '{print $1" "$2}' secrets/agent_host_key.pub)"
 fi
+# M2.3：ci-bot SSH 私钥（gerrit-trigger 收事件 + pipeline checkout/SSH review 回写 Verified）。
+# 从 secrets/ 注入，不进仓库/.env；已有 env 值优先。公钥已注册 Gerrit，严禁覆盖私钥。
+if [[ -z "${GERRIT_CI_SSH_KEY:-}" && -s secrets/gerrit_ci_ssh_key ]]; then
+  export GERRIT_CI_SSH_KEY="$(cat secrets/gerrit_ci_ssh_key)"
+fi
+# M2.3：registry CI 凭据（buildctl push + REST 校验）。从 gitignore 的 .env 读取，
+# 若宿主未显式 export 则补读，让 jenkins compose 的 ${REGISTRY_USER}/${REGISTRY_PASSWORD} 拿到值。
+if [[ -f .env ]]; then
+  [[ -n "${REGISTRY_USER:-}" ]] || export REGISTRY_USER="$(sed -n 's/^REGISTRY_USER=//p' .env | head -1)"
+  [[ -n "${REGISTRY_PASSWORD:-}" ]] || export REGISTRY_PASSWORD="$(sed -n 's/^REGISTRY_PASSWORD=//p' .env | head -1)"
+fi
 
 # ---- 读 manifest（顺序 + 依赖）----
 # r5 §4-5：health_url 等列为文档元数据，脚本不消费（原先解析进 HEALTHURL 却从未使用，已删）。

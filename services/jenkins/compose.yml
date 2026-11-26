@@ -26,6 +26,11 @@ services:
       # 缺省空值只为让 compose 解析通过，缺值由 up.sh 拦截（不进仓库、不进 .env）。
       JENKINS_AGENT_SSH_KEY: ${JENKINS_AGENT_SSH_KEY:-}
       JENKINS_AGENT_HOST_KEY: ${JENKINS_AGENT_HOST_KEY:-}
+      # M2.3：CI 凭据（不入库）——ci-bot SSH 私钥（收事件 + SSH review 回写 Verified）、
+      # registry 用户名/口令（buildctl push + REST 校验）。由 up.sh 从 secrets/ 与 .env 注入。
+      GERRIT_CI_SSH_KEY: ${GERRIT_CI_SSH_KEY:-}
+      REGISTRY_CI_USER: ${REGISTRY_USER:-admin}
+      REGISTRY_CI_PASSWORD: ${REGISTRY_PASSWORD:-}
       TZ: Asia/Shanghai
     volumes:
       - jenkins_home:/var/jenkins_home

@@ -86,6 +86,11 @@ jobs:
         env:
           SVC: ${{ matrix.svc }}
         run: |
+          # image-hash.sh 的 sort 受 locale 影响：runner 默认 C locale 会算出与部署端
+          # en_US.UTF-8 不同的 tag（builder 实测 ctx-c0b5... vs 本地 ctx-972b...），
+          # 导致 compose 引用的 tag 拉不到。必须与 mirror-m2.yml 及部署端口径一致。
+          export LC_ALL=en_US.UTF-8
+          locale -a | grep -qi '^en_US\.utf8$' || sudo locale-gen en_US.UTF-8
           if [[ -n "$SVC" ]]; then
             HASH="$(bash scripts/image-hash.sh "$SVC")"
             echo "tag=ctx-${HASH:0:12}" >> "$GITHUB_OUTPUT"
