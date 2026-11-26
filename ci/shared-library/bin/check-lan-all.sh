@@ -6,7 +6,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$HERE/check-lan.sh"
 
-ALL=(dns ldap caddy homepage ldapadmin router jenkins jenkins-agent gerrit cgit)
+ALL=(dns ldap caddy homepage ldapadmin router jenkins jenkins-agent gerrit cgit registry)
 SERVICES=("$@")
 [[ ${#SERVICES[@]} -eq 0 ]] && SERVICES=("${ALL[@]}")
 

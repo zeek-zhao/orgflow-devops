@@ -1,14 +1,14 @@
 # orgflow 最小 DevOps 底座 · 文档入口
 
-> 状态：适用 | 最后核对：2026-11-25 | 对应分支：feat/m1-jenkins（M1 二轮修复 T1~T9）
+> 状态：适用 | 最后核对：2026-11-26 | 对应分支：feat/m2-gerrit-cgit-harbor（M2.1 封版 m2.1-v1.0 + M2.2 启动）
 
 
-> 9 服务单机自托管底座：M0 七服务（DNS → 证书 → Caddy 唯一入口 → OpenLDAP → HomePage → Router）+ M1 两服务（Jenkins controller + SSH agent）。Jenkins 手册见 [jenkins.md](services/jenkins.md)（含 LDAP 账号、深色主题、Job 冒烟、匿名 403 勘误）。
-> 全部镜像 @sha256 锁定，逐服务 compose 按 manifest 顺序拉起，一功能一 Issue 一 PR。
+> 12 服务单机自托管底座：M0 七服务（DNS → 证书 → Caddy 唯一入口 → OpenLDAP → HomePage → Router）+ M1 两服务（Jenkins controller + SSH agent）+ M2.1 两服务（Gerrit + cgit）+ M2.2 一服务（registry 轻量镜像仓库）。Jenkins 手册见 [jenkins.md](services/jenkins.md)。
+> 全部镜像 @sha256 / 内容哈希锁定，逐服务 compose 按 manifest 顺序拉起，一功能一 Issue 一 PR。
 
 ## 是什么
 
-在一台云主机上起一套最小 DevOps 底座，9 个服务（8 常驻 + certs-init 一次性）按依赖顺序启动：
+在一台云主机上起一套最小 DevOps 底座，12 个服务（11 常驻 + certs-init 一次性）按依赖顺序启动：
 
 | # | 服务 | 职责 | 长驻 |
 |---|---|---|---|
@@ -21,6 +21,7 @@
 | 7 | router | routes.yaml 渲染 + Caddy reload | 是 |
 | 8 | gerrit | Gerrit 代码评审 + Git（M2.1） | 是 |
 | 9 | cgit | Gerrit 裸库只读 Web（M2.1） | 是 |
+| 10 | registry | OCI 镜像仓库 + htpasswd（M2.2） | 是 |
 
 ## 前置
 
@@ -113,6 +114,7 @@ make verify                   # 全量验收矩阵 AC-1~22
 | DOC-S-009 | Jenkins agent 服务手册 | docs/services/jenkins-agent.md | 参考 | review | zeek.zhao | 6 | M1-T7 |
 | DOC-S-010 | Gerrit 服务手册 | docs/services/gerrit.md | 参考 | review | zeek.zhao | 6 | M2.1 |
 | DOC-S-011 | cgit 服务手册 | docs/services/cgit.md | 参考 | review | zeek.zhao | 6 | M2.1 |
+| DOC-S-012 | registry 服务手册 | docs/services/registry.md | 参考 | review | zeek.zhao | 6 | M2.2 |
 | DOC-P-004 | 分支与合并策略 | docs/records/分支与合并策略.md | 规程 | review | zeek.zhao | 6 | T12 |
 | DOC-P-005 | 备份与恢复 | docs/运维/备份与恢复.md | 规程 | review | zeek.zhao | 6 | R8 |
 | DOC-P-006 | 升级与回滚 | docs/运维/升级与回滚.md | 规程 | review | zeek.zhao | 6 | R8 |

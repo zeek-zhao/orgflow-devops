@@ -27,7 +27,7 @@ done
 
 UBUNTU_DIGEST='sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852'
 # 扫描派生：有 compose.yml 的服务即 SERVICES；有 Dockerfile 的即 BUILDABLE；M1 走内容哈希的服务。
-SERVICES=(); BUILDABLE=(); HASHED=(jenkins jenkins-agent cgit)
+SERVICES=(); BUILDABLE=(); HASHED=(jenkins jenkins-agent cgit registry)
 for d in services/*/; do
   svc="${d#services/}"; svc="${svc%/}"
   [[ "$svc" == _* ]] && continue  # M2 P4：下划线开头为脚手架模板（_template），非真实服务
@@ -120,7 +120,7 @@ check_upstream() {
   while IFS=$'\t' read -r name ref digest; do
     [[ "$name" =~ ^[a-z] ]] || continue
     BY_NAME["$ref"]="$digest"
-  done < <(sed -n '/^```$/,/^```$/p' "$REG" | grep -E '^(ubuntu|caddy|ldap|ldapadmin|homepage|jenkins)[[:space:]]')
+  done < <(sed -n '/^```$/,/^```$/p' "$REG" | grep -E '^(ubuntu|caddy|ldap|ldapadmin|homepage|jenkins|registry)[[:space:]]')
   for df in services/*/Dockerfile; do
     [[ "$df" == services/_*/Dockerfile ]] && continue  # 排除脚手架模板
     from="$(grep -m1 '^FROM ' "$df" 2>/dev/null || true)"

@@ -3,7 +3,7 @@
 #
 # 服务清单此前在 5 处各写一遍、靠人同步，已出现 verify-lan-all 描述写 7 项而实际 8 项的漂移。
 # 本门禁以 services/manifest.tsv 的 service 列为唯一真源，派生两组并逐项比对：
-#   A) 探测服务集 = manifest 全部 - certs-init（一次性任务） = 10 项（M2.1 含 gerrit/cgit）；
+#   A) 探测服务集 = manifest 全部 - certs-init（一次性任务） = 11 项（M2.2 含 gerrit/cgit/registry）；
 #      核对 check-lan.sh 的 case 标签、check-lan-all.sh 的 ALL、verify-service.groovy 的 services 数组。
 #      别名归一化：dns → dnsmasq。
 #   B) M0 集合 = manifest 中 tag 含 m0 的项（6 常驻 + certs-init）= 7 项；
@@ -53,5 +53,5 @@ v2_env=$(grep -oE 'for svc in [a-z -]+; do' tests/check-v2.sh tests/run-v2.sh \
 # check-v2.sh 第52行是 7 项循环，run-v2.sh 第46行也是 7 项；两者都应等于 M0
 compare "check-v2.sh / run-v2.sh M0 循环" "$M0" "$v2_env"
 
-if [[ $rc -eq 0 ]]; then echo "✓ 服务清单一致（探测 10 项 + M0 7 项）"; else echo "✗ 服务清单存在漂移" >&2; fi
+if [[ $rc -eq 0 ]]; then echo "✓ 服务清单一致（探测 11 项 + M0 7 项）"; else echo "✗ 服务清单存在漂移" >&2; fi
 exit $rc

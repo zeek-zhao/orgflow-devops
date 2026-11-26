@@ -59,6 +59,12 @@
         icon: "mdi-git"
         siteMonitor: "http://cgit:80/"
         ping: "cgit"
+    - registry:
+        href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/status"
+        description: "registry"
+        icon: "mdi-circle"
+        siteMonitor: "http://registry:5000/v2/"
+        ping: "registry"
 - 公网入口:
     - 统一入口:
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/"

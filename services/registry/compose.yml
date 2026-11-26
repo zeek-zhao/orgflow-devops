@@ -1,0 +1,54 @@
+# registry:2（M2.2 轻量镜像仓库）：Docker 镜像 push/pull + htpasswd 基础鉴权，固定 IP .20。
+# 公网入口：Tailscale Funnel :10000 → 回环 ${PUB_HTTP_HARBOR} → 容器 5000（不经 Caddy，
+#   因 Docker Registry 的 /v2/ 协议对路径前缀/重定向敏感，独立端口直连最稳）。
+# 镜像：官方 library/registry:2 由 GitHub CI（mirror-m2.yml）中转推 GHCR；
+#   国内经 ghcr.nju.edu.cn 代理拉同 tag。上游 digest 钉在 config/images.env（UPSTREAM_REGISTRY）。
+# 凭据：REGISTRY_USER / REGISTRY_PASSWORD 由 env 注入，entrypoint 运行时渲染 htpasswd 到卷内
+#   （600/属主 registry），不入库、不进文档、不经 git。
+services:
+  registry:
+    image: ${IMAGE_REGISTRY:-ghcr.io/zeek-zhao/orgflow-devops/m2-registry:ctx-04446f23aa73}
+    pull_policy: missing
+    container_name: ${CONTAINER_PREFIX:-of}-registry
+    labels:
+      org.of.fp: ${FP_VALUE:-}
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      REGISTRY_USER: ${REGISTRY_USER:-admin}
+      REGISTRY_PASSWORD: ${REGISTRY_PASSWORD:-change-me}
+      # 官方 registry:2 环境变量覆盖默认 config.yml，启用 htpasswd 基础鉴权。
+      REGISTRY_AUTH_HTPASSWD_REALM: ${REGISTRY_AUTH_REALM:-orgflow-registry}
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+      # 数据落在卷内（默认 /var/lib/registry），日志降到 warning 减少噪声。
+      REGISTRY_LOG_LEVEL: warning
+    ports:
+      # 回环口：Funnel :10000 的回源目标；只绑 127.0.0.1，公网经 Funnel 边缘 TLS 终止后到此。
+      - "127.0.0.1:${PUB_HTTP_HARBOR:-18086}:5000"
+    volumes:
+      - registry_data:/var/lib/registry
+      - registry_auth:/auth
+      - ./entrypoint.sh:/usr/local/bin/orgflow-registry-entrypoint.sh:ro
+    entrypoint: ["/usr/local/bin/orgflow-registry-entrypoint.sh"]
+    networks:
+      orgflow:
+        ipv4_address: ${IP_REGISTRY:-192.168.90.20}
+    healthcheck:
+      # /v2/ 未鉴权返回 401 + Docker-Distribution-API-Version 头，属正常（鉴权已启用）。
+      # busybox wget 对 401 返回非 0，故用 -S 抓头判定：含docker-distribution头即视为存活。
+      test: ["CMD-SHELL", "wget -S -q -O /dev/null http://127.0.0.1:5000/v2/ 2>&1 | grep -qi 'docker-distribution' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  registry_data:
+    external: true
+    name: ${REGISTRY_DATA_VOLUME:-orgflow-minimal_registry_data}
+  registry_auth:
+    external: true
+    name: ${REGISTRY_AUTH_VOLUME:-orgflow-minimal_registry_auth}
+
+networks:
+  orgflow:
+    external: true
+    name: ${ORG_NETWORK:-orgflow-minimal_orgflow}

@@ -109,8 +109,20 @@ case "$SVC" in
     body="$(curl -fsS http://cgit:80/ 2>&1)"; rc=$?
     [[ $rc -eq 0 && -n "$body" ]] && pass "cgit 列表非空" || { fail "cgit rc=$rc"; exit 1; }
     ;;
+  registry)
+    # registry:2 启用 htpasswd 后 /v2/ 未鉴权返回 401 + Docker-Distribution-API-Version 头，
+    # 这是「鉴权生效且守护进程存活」的正常表现；200（无鉴权）也接受。
+    echo "[registry] curl http://registry:5000/v2/（鉴权启用，200/401 均可）"
+    out="$(curl -s -D - -o /dev/null http://registry:5000/v2/ 2>&1)"; rc=$?
+    code="$(printf '%s\n' "$out" | awk 'NR==1{print $2}' | tr -d '\r')"
+    if [[ $rc -eq 0 && ( "$code" == "200" || "$code" == "401" ) ]]; then
+      pass "registry HTTP $code（/v2/ 存活）"
+    else
+      fail "registry rc=$rc code=$code"; exit 1
+    fi
+    ;;
   *)
-    echo "用法：$0 <dns|dnsmasq|ldap|caddy|homepage|ldapadmin|router|jenkins|jenkins-agent|gerrit|cgit>" >&2
+    echo "用法：$0 <dns|dnsmasq|ldap|caddy|homepage|ldapadmin|router|jenkins|jenkins-agent|gerrit|cgit|registry>" >&2
     exit 2
     ;;
 esac
