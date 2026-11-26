@@ -87,9 +87,22 @@ case "$SVC" in
     pass "jenkins-agent uid=1000 java/dig/dns ok ($ip)"
     ;;
   gerrit)
-    echo "[gerrit] curl http://gerrit:8080/（Web 首页应 200）"
-    code="$(curl -s -o /dev/null -w '%{http_code}' http://gerrit:8080/)"; rc=$?
-    [[ $rc -eq 0 && "$code" == "200" ]] && pass "gerrit HTTP $code" || { fail "gerrit rc=$rc code=$code"; exit 1; }
+    # Gerrit 配 canonicalWebUrl=https://HOST:8443/，内网 HTTP 探测对所有路径一律 301 跳公网 HTTPS，
+    # 这是正常行为（daemon 活着且 canonical 生效）。故判据为：收到 2xx/3xx 即视为可达；
+    # 若为 3xx，要求 Location 指向 https://（排除被无关服务误接管）。不再强求严格 200。
+    echo "[gerrit] curl http://gerrit:8080/（canonical 跳 HTTPS，2xx/3xx 视为可达）"
+    out="$(curl -s -D - -o /dev/null http://gerrit:8080/ 2>&1)"; rc=$?
+    code="$(printf '%s\n' "$out" | awk 'NR==1{print $2}' | tr -d '\r')"
+    loc="$(printf '%s\n' "$out" | grep -i '^location:' | tr -d '\r' | head -1)"
+    loc_val="${loc#*: }"   # 剥离 "Location: " 前缀，得到 URL 值
+    if [[ $rc -eq 0 && "$code" =~ ^[23][0-9][0-9]$ ]]; then
+      if [[ "$code" =~ ^3 && "$loc_val" != https://* ]]; then
+        fail "gerrit 3xx 但 Location 非 https ($loc_val)"; exit 1
+      fi
+      pass "gerrit HTTP $code${loc_val:+ -> $loc_val}"
+    else
+      fail "gerrit rc=$rc code=$code"; exit 1
+    fi
     ;;
   cgit)
     echo "[cgit] curl http://cgit:80/（仓库列表非空）"
