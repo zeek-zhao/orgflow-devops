@@ -51,34 +51,73 @@ UPSTREAM_RE = re.compile(r"^[a-zA-Z0-9_.-]+:\d+$")
 _last_hash = None
 
 # r5 §4-8：/status HTML 说明页的唯一真源。Caddy 的 @status 改为 reverse_proxy router:8080，
-# 本文件 GET /status 直接返回下面的 HTML；config/Caddyfile 不再内联第二份，消除双写漂移。
-# r6 终验判据 7/8：本机真源由 router GET /status 提供，列全 9 个 of-* 容器
-# （含 Jenkins / Agent），并带 Status-Source: router 头供公网侧判定来源。
-# 每行一个 <code>of-*</code>，判据 `grep -c 'of-'` ≥ 9。
-STATUS_HTML = (
-    '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
-    '<meta name="viewport" content="width=device-width,initial-scale=1">'
-    '<title>OrgFlow 服务状态</title>'
-    '<style>body{font-family:system-ui,sans-serif;max-width:760px;margin:2rem auto;padding:0 1rem;color:#1b2430}'
-    'h1{font-size:1.4rem}table{border-collapse:collapse;width:100%}th,td{border:1px solid #d8dee9;padding:.5rem .7rem;text-align:left}'
-    'th{background:#f2f5f9}code{background:#eef2f7;padding:.1rem .35rem;border-radius:4px}'
-    '.note{margin-top:1.2rem;color:#556}</style></head><body>'
-    '<h1>OrgFlow 底座 · 服务状态</h1>'
-    '<p>本页是 9 个服务的状态说明（来源 <code>router</code>）。各服务入口与探测方式如下（DNS / LDAP / Caddy / Jenkins Agent 无独立 Web UI，状态见<a href="/">首页卡片</a>）。</p>'
-    '<table><thead><tr><th>服务</th><th>容器</th><th>探测方式</th><th>公网入口</th></tr></thead><tbody>\n'
-    '<tr><td>统一面板 homepage</td><td><code>of-homepage</code></td><td>HTTP 根路径 /</td><td><a href="/">/</a></td></tr>\n'
-    '<tr><td>LDAP 管理 ldapadmin</td><td><code>of-ldapadmin</code></td><td>HTTP /ldapadmin/</td><td><a href="/ldapadmin/">/ldapadmin/</a></td></tr>\n'
-    '<tr><td>路由注册 router</td><td><code>of-router</code></td><td>HTTP /router/healthz</td><td><a href="/router/healthz">/router/healthz</a></td></tr>\n'
-    '<tr><td>DNS 解析 dnsmasq</td><td><code>of-dnsmasq</code></td><td>ICMP 探容器 + dig</td><td>无 UI，见首页卡片</td></tr>\n'
-    '<tr><td>身份目录 ldap</td><td><code>of-ldap</code></td><td>ldapsearch 探 389</td><td>无 UI，见首页卡片</td></tr>\n'
-    '<tr><td>Caddy 网关 caddy</td><td><code>of-caddy</code></td><td>admin /config/ 探活</td><td>无 UI，见首页卡片</td></tr>\n'
-    '<tr><td>证书初始化 certs-init</td><td><code>of-certs-init</code></td><td>一次性任务 exit 0</td><td>不放假页面</td></tr>\n'
-    '<tr><td>持续集成 Jenkins</td><td><code>of-jenkins</code></td><td>HTTP /jenkins/login</td><td><a href="/jenkins/">/jenkins/</a>（需登录）</td></tr>\n'
-    '<tr><td>构建节点 Jenkins Agent</td><td><code>of-jenkins-agent</code></td><td>SSH 22 / Job 在线探测</td><td>无 UI，见首页卡片</td></tr>\n'
-    '</tbody></table>'
-    '<p class="note">健康探针：<code>/healthz</code>（纯文本 ok）。配置渲染仅允许容器内本机调用，公网 <code>/router/render</code> 返回 403。</p>'
-    '</body></html>'
-)
+# 本文件 GET /status 直接返回动态生成的 HTML；config/Caddyfile 不再内联第二份，消除双写漂移。
+# M2.1 复核：服务清单改为从 services/manifest.tsv 动态读取（与主页/服务清单同源），
+# 不再写死 9 行——新增服务（含 gerrit/cgit）自动进状态页，判据 `grep -c 'of-*'` 随之变化。
+# 每行一个 <code><prefix>-<svc></code>，带 Status-Source: router 头供公网侧判定来源。
+MANIFEST_PATH = os.environ.get("MANIFEST", "/etc/router/manifest.tsv")
+CONTAINER_PREFIX = os.environ.get("CONTAINER_PREFIX", "of")
+
+# 展示元数据（探测方式 / 公网入口 HTML）：服务清单来自 manifest，这里只给展示文案。
+# 新增服务若在表里没有条目，用通用回退文案，不会漏行。
+STATUS_META = {
+    "homepage":       ("统一面板", "HTTP 根路径 /", '<a href="/">/</a>'),
+    "ldapadmin":      ("LDAP 管理", "HTTP /ldapadmin/", '<a href="/ldapadmin/">/ldapadmin/</a>'),
+    "router":         ("路由注册", "HTTP /router/healthz", '<a href="/router/healthz">/router/healthz</a>'),
+    "dnsmasq":        ("DNS 解析", "ICMP 探容器 + dig", "无 UI，见首页卡片"),
+    "ldap":           ("身份目录", "ldapsearch 探 389", "无 UI，见首页卡片"),
+    "caddy":          ("Caddy 网关", "admin /config/ 探活", "无 UI，见首页卡片"),
+    "certs-init":     ("证书初始化", "一次性任务 exit 0", "不放假页面"),
+    "jenkins":        ("持续集成 Jenkins", "HTTP /jenkins/login", '<a href="/jenkins/">/jenkins/</a>（需登录）'),
+    "jenkins-agent":  ("构建节点 Jenkins Agent", "SSH 22 / Job 在线探测", "无 UI，见首页卡片"),
+    "gerrit":         ("代码评审 Gerrit", "HTTP :8443/ + LDAP 登录", "见首页 Gerrit 入口卡（:8443）"),
+    "cgit":           ("代码浏览 cgit", "HTTP /cgit/", '<a href="/cgit/">/cgit/</a>'),
+}
+
+
+def status_rows():
+    """从 manifest.tsv 读服务清单（order 排序）；读不到时返回空，由调用方回退。"""
+    import csv
+    with open(MANIFEST_PATH, encoding="utf-8-sig") as f:
+        rows = [r for r in csv.DictReader(f, delimiter="\t") if (r.get("service") or "").strip()]
+    rows.sort(key=lambda r: int(r.get("order", 0)))
+    return rows
+
+
+def build_status_html():
+    """按 manifest 动态生成状态页；manifest 不可读时回退到已知服务全集（不假绿）。"""
+    try:
+        rows = status_rows()
+        svcs = [r["service"] for r in rows]
+    except (OSError, ValueError, TypeError):
+        svcs = list(STATUS_META.keys())
+    n = len(svcs)
+    tr = []
+    for svc in svcs:
+        label, probe, entry = STATUS_META.get(svc, (svc, "见首页卡片", "见首页卡片"))
+        tr.append(f'<tr><td>{html.escape(label)} {html.escape(svc)}</td>'
+                  f'<td><code>{html.escape(CONTAINER_PREFIX)}-{html.escape(svc)}</code></td>'
+                  f'<td>{probe}</td><td>{entry}</td></tr>\n')
+    return (
+        '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<title>OrgFlow 服务状态</title>'
+        '<style>body{font-family:system-ui,sans-serif;max-width:760px;margin:2rem auto;padding:0 1rem;color:#1b2430}'
+        'h1{font-size:1.4rem}table{border-collapse:collapse;width:100%}th,td{border:1px solid #d8dee9;padding:.5rem .7rem;text-align:left}'
+        'th{background:#f2f5f9}code{background:#eef2f7;padding:.1rem .35rem;border-radius:4px}'
+        '.note{margin-top:1.2rem;color:#556}</style></head><body>'
+        '<h1>OrgFlow 底座 · 服务状态</h1>'
+        f'<p>本页是 {n} 个服务的状态说明（来源 <code>router</code>，清单取自 <code>manifest.tsv</code>）。'
+        '各服务入口与探测方式如下（DNS / LDAP / Caddy / Jenkins Agent 无独立 Web UI，状态见<a href="/">首页卡片</a>）。</p>'
+        '<table><thead><tr><th>服务</th><th>容器</th><th>探测方式</th><th>公网入口</th></tr></thead><tbody>\n'
+        + "".join(tr) +
+        '</tbody></table>'
+        '<p class="note">健康探针：<code>/healthz</code>（纯文本 ok）。配置渲染仅允许容器内本机调用，公网 <code>/router/render</code> 返回 403。</p>'
+        '</body></html>'
+    )
+
+
+STATUS_HTML = build_status_html()
 
 # r5 §4-8：4 条 308 跳转 + /status 反代（HTML 由 router GET /status 唯一提供，不再内联）
 PUBLIC_FIXED = """    @status path /status

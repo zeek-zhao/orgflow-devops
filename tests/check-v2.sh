@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # check-v2.sh —— §8 测试体系静态覆盖门禁（无 docker / 无 bats 可跑）
-# 校验：15 个测试文件齐全、§8.3 关键断言存在、S_bats 已参数化（无硬编码 of-*）。
+# 校验：17 个测试文件齐全（M2.1 加 S_gerrit/S_cgit）、§8.3 关键断言存在、S_bats 已参数化（无硬编码 of-*）。
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -8,8 +8,8 @@ rc=0
 ok(){ echo "  ✓ $1"; }
 bad(){ echo "  ✗ $1" >&2; rc=1; }
 
-# 1) 15 个测试文件齐全（7 S + 8 全栈）
-need=(S_caddy S_certs-init S_dnsmasq S_homepage S_ldapadmin S_ldap S_router
+# 1) 测试文件齐全（9 S + 8 全栈；M2.1 新增 S_gerrit/S_cgit）
+need=(S_caddy S_certs-init S_dnsmasq S_homepage S_ldapadmin S_ldap S_router S_gerrit S_cgit
       00_full_stack 10_dns 11_certs 12_caddy 13_ldap 14_ldapadmin 15_homepage 16_router)
 for n in "${need[@]}"; do
   [[ -f "tests/bats/$n.bats" ]] && ok "$n.bats" || bad "缺 tests/bats/$n.bats"

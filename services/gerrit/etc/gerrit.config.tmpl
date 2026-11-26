@@ -27,7 +27,16 @@
     listenUrl = proxy-http://*:${P_GERRIT_HTTP}
 
 [sshd]
+    # 容器内必须绑通配，宿主 ports 映射才能把 tailnet 的 29418 转进来。
+    # 宿主侧实际暴露面由 compose ports + Funnel（不转 TCP）+ 宿主防火墙兜底，
+    # 真正收紧到 tailscale0 具体 IP 属现网网络变更，见 docs/services/gerrit.md §边界。
     listenAddress = *:${P_GERRIT_SSH}
+
+[accounts]
+    # 匿名不得枚举全部账号（M2.1 复核安全项）：仅管理员可见账号列表。
+    # Gerrit 3.9 合法值 ALL / NONE（实测 ALL_REGISTERED 会使守护进程启动失败），默认 ALL。
+    # 取最强收紧 NONE：账号仅管理员可见，不影响代码评审与 cgit 公开只读视图。
+    visibility = NONE
 
 [database]
     type = h2

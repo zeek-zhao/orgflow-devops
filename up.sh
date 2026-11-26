@@ -120,6 +120,24 @@ while (( $# )); do
 done
 start_ts=$(date +%s)
 
+# ---- 前置渲染（M2.1 复核项）：确保 bind mount 依赖的生成物在起栈前是文件 ----
+# Gerrit compose 挂载 ../../out/urls.env → /etc/orgflow/urls.env:ro。若该文件缺失，
+# docker 会把挂载源建成目录，entrypoint 的 `[[ -f ]]` 判定失效 → canonicalWebUrl 空、
+# 容器 FATAL。渲染幂等、只读 env、纯文本生成；精简 env 缺端口时回退 defaults.env。
+# 所有提示走 stderr，避免污染 --json 机读输出。
+ensure_render_artifacts() {
+  local u="out/urls.env"
+  if [[ -e "$u" && ! -f "$u" ]]; then
+    echo "→ $u 是目录（曾被 docker 误建），移除后重建" >&2
+    rmdir "$u" 2>/dev/null || { echo "✗ 无法移除 $u 目录" >&2; return 1; }
+  fi
+  if [[ ! -f "$u" ]]; then
+    echo "→ 起栈前前置渲染 $u（ENV_FILE=$ENVFILE）" >&2
+    ENV_FILE="$ENVFILE" bash scripts/render-urls.sh >&2 || return 1
+  fi
+}
+ensure_render_artifacts || { echo "✗ 前置渲染失败，中止起栈" >&2; exit 2; }
+
 # M1 T9.1：实起 jenkins（非 dry-run）时缺密钥直接拦，避免 JCasC 空私钥让节点脱机。
 if (( ! DRY )) && [[ "$TARGET" == "jenkins" && ( -z "${JENKINS_AGENT_SSH_KEY:-}" || -z "${JENKINS_AGENT_HOST_KEY:-}" ) ]]; then
   echo "✗ 起 jenkins 缺 SSH 密钥：先跑 scripts/gen-jenkins-secrets.sh 生成 secrets/（见 docs/services/jenkins.md）" >&2

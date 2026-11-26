@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-# cgit entrypoint（文档 §M2.1）：启动前刷新 projects.list（从 Gerrit 裸库目录扫 *.git），
+# cgit entrypoint（文档 §M2.1）：启动前刷新业务仓清单（repo. 显式白名单），
 # 然后拉起 spawn-fcgi(fcgiwrap) + nginx（前台）。
-# projects.list 也可由 Jenkins 定时 Job（cgit-refresh）刷新；此处保证冷启即可读。
+# 清单也可由 Jenkins 定时 Job（cgit-refresh）刷新；此处保证冷启即可读。
 set -euo pipefail
 
 GIT_ROOT="${GIT_ROOT:-/var/gerrit/git}"
-PROJECTS_LIST="${PROJECTS_LIST:-/var/gerrit/git/projects.list}"
 
-# Gerrit 裸库目录只读挂载，projects.list 需在可写位置；cgitrc 指向 GIT_ROOT 下，
-# 若为只读则退到 /tmp（并在 cgitrc 注释说明）。默认写 /tmp，避免写只读卷失败。
-LIST_OUT="${CGIT_PROJECTS_LIST:-/tmp/projects.list}"
+# Gerrit 裸库目录只读挂载，仓库清单需在可写位置；默认写 /tmp，避免写只读卷失败。
+# cgitrc 用 include=/tmp/projects.conf（repo. 显式清单白名单），非 project-list。
+LIST_OUT="${CGIT_PROJECTS_LIST:-/tmp/projects.conf}"
 
 # 白名单排除：All-Users 存用户 SSH key/配置/邮箱，All-Projects 存全局 ACL，
 # 二者均不得公开。用空格分隔的精确库名（含 .git），可用 CGIT_EXCLUDE 覆盖。
@@ -20,14 +19,18 @@ refresh_list() {
   : > "$tmp"
   if [[ -d "$GIT_ROOT" ]]; then
     # 逐行精确匹配排除，避免误伤名字含 All-Projects 子串的业务仓。
+    # 生成 cgit repo. 显式清单（白名单）：project-list 单独使用实测无效。
     while IFS= read -r repo; do
       [[ -z "$repo" ]] && continue
       local skip=0 ex
       for ex in $CGIT_EXCLUDE; do
         [[ "$repo" == "$ex" ]] && { skip=1; break; }
       done
-      [[ $skip -eq 0 ]] && printf '%s\n' "$repo"
-    done < <(find "$GIT_ROOT" -maxdepth 1 -name '*.git' -printf '%f\n' 2>/dev/null | sort) >> "$tmp" || true
+      if [[ $skip -eq 0 ]]; then
+        printf 'repo.url=%s\n' "$repo" >> "$tmp"
+        printf 'repo.path=%s/%s\n' "$GIT_ROOT" "$repo" >> "$tmp"
+      fi
+    done < <(find "$GIT_ROOT" -maxdepth 1 -name '*.git' -printf '%f\n' 2>/dev/null | sort) || true
   fi
   mv "$tmp" "$LIST_OUT"
 }

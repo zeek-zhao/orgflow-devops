@@ -1,11 +1,13 @@
 # cgit 配置真源（文档 §M2.1）：virtual-root 对齐公网 /cgit/ 路径前缀。
 virtual-root=/cgit/
-# projects.list 写在 /tmp（裸库目录只读挂载），由 entrypoint / Jenkins Job 刷新。
-project-list=/tmp/projects.list
-# 用 project-root + project-list 白名单，不用 scan-path：
-# scan-path 会扫全目录，把 All-Users.git（存用户 SSH key/配置/邮箱）也公开，属安全泄露。
-# 白名单模式下 cgit 只暴露 project-list 里明写的业务仓，路径相对 project-root 解析。
-project-root=/var/gerrit/git
+# 业务仓清单写在 /tmp（裸库目录只读挂载），由 entrypoint 启动时生成、每 5 分钟刷新：
+#   repo.url=<name>\nrepo.path=<GIT_ROOT>/<name>.git\n
+# 用 repo. 显式清单（include）实现白名单，不用 scan-path / project-list：
+#   - scan-path 会扫全目录，把 All-Users.git（存用户 SSH key/配置/邮箱）也公开，属安全泄露；
+#   - project-list 单独使用实测无效（cgit 1.2.3 返回 "No repositories found"，
+#     它是 scan-path 的缓存输出、不是独立输入白名单），2026-11-26 复核纠正。
+# repo. 显式清单只暴露列出的业务仓，All-* 天然不出现，是可靠的白名单实现。
+include=/tmp/projects.conf
 enable-http-clone=1
 enable-index-links=1
 enable-log-filecount=1

@@ -76,6 +76,10 @@
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/jenkins/"
         description: "持续集成与流水线 · jenkins:8080"
         icon: "mdi-jenkins"
+    - Gerrit:
+        href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}:{{HOMEPAGE_VAR_GERRIT_PORT}}/"
+        description: "代码评审与 Git 服务 · gerrit:8080"
+        icon: "mdi-source-review"
     - cgit:
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/cgit/"
         description: "Gerrit 裸库只读视图 · /cgit/"

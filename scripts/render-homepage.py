@@ -49,6 +49,13 @@ META = {
 # 公网入口组排除的 public_path：指向 /status 的假入口与一次性任务的 /none
 NON_ENTRY_PATHS = {"/status", "/none"}
 
+# 独立 Funnel 端口的服务入口：Gerrit 走 :8443（不在 443 门面 path 路由里）。
+# 用 homepage VAR 占位符拼完整 URL，端口来自 defaults.env 的 FUNNEL_PORT_GERRIT，
+# 不写死字面域名/端口（C-2）。compose 注入 HOMEPAGE_VAR_GERRIT_PORT。
+ENTRY_OVERRIDE = {
+    "gerrit": "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}:{{HOMEPAGE_VAR_GERRIT_PORT}}/",
+}
+
 # 固定追加的入口卡：代表状态页入口本身（与 R6 删除的三张假入口不同，它是唯一并名的 /status 卡）
 STATUS_CARD = ("状态总览", "mdi-chart-line", "全部服务入口与探测说明", "/status")
 
@@ -125,14 +132,22 @@ def render(rows):
         status_href = "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}" + STATUS_HREF_PATH
         out += card_lines(name, icon, status_href, note,
                           r.get("monitor_url_doc", ""), r.get("ping_url_doc", ""))
-    # 分组二：公网入口（排除 certs-init），按 public_path 规则筛选真实入口
+    # 分组二：公网入口（排除 certs-init），按 public_path 规则筛选真实入口。
+    # 独立 Funnel 端口服务（ENTRY_OVERRIDE，如 gerrit:8443）即使 public_path=/none
+    # 也纳入，用完整占位符 URL 表达独立端口入口（复核：Gerrit 无主页入口）。
     out.append("- 公网入口:")
     for r in rows:
         svc = r["service"]
-        if svc == "certs-init" or not is_public_entry(r):
+        if svc == "certs-init":
+            continue
+        if svc in ENTRY_OVERRIDE:
+            href = ENTRY_OVERRIDE[svc]
+        elif is_public_entry(r):
+            href = public_href(r)
+        else:
             continue
         name, icon, note = META.get(svc, (svc, "mdi-circle", svc))
-        out += card_lines(name, icon, public_href(r), note)
+        out += card_lines(name, icon, href, note)
     # 状态总览：代表 /status 页入口本身（唯一一张 /status 卡，不是重复假入口）
     name, icon, note, path = STATUS_CARD
     out += card_lines(name, icon, "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}" + path, note)

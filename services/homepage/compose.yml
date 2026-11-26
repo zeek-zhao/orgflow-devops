@@ -13,6 +13,9 @@ services:
       HOMEPAGE_ALLOWED_HOSTS: ${PUBLIC_HOST:-localhost},localhost,127.0.0.1
       # 域名入口卡 href 的占位变量（services.yaml 的 {{HOMEPAGE_VAR_PUBLIC_HOST}}）
       HOMEPAGE_VAR_PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
+      # Gerrit 独立 Funnel 端口入口（services.yaml 的 {{HOMEPAGE_VAR_GERRIT_PORT}}）；
+      # 端口来自 defaults.env 的 FUNNEL_PORT_GERRIT，不写死（对外端口可配）。
+      HOMEPAGE_VAR_GERRIT_PORT: ${FUNNEL_PORT_GERRIT:-8443}
       PUID: "1000"
       PGID: "1000"
     ports:

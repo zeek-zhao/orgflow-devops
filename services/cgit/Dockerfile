@@ -10,7 +10,7 @@ LABEL org.opencontainers.image.description="cgit read-only web frontend for Gerr
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      cgit fcgiwrap nginx-light ca-certificates spawn-fcgi \
+      cgit fcgiwrap nginx-light ca-certificates spawn-fcgi git \
  && rm -rf /var/lib/apt/lists/*
 
 # nginx 前台运行配置：所有请求转给 cgit fcgiwrap，监听容器内 80。
@@ -22,7 +22,7 @@ RUN ln -sf /etc/nginx/sites-available/cgit.conf /etc/nginx/sites-enabled/cgit.co
            -e 's|^error_log /var/log/nginx/error.log;|error_log /var/log/nginx/error.log warn;|' \
            /etc/nginx/nginx.conf
 
-# cgit 配置真源（COPY 进镜像；projects.list 由 entrypoint 启动时生成）。
+# cgit 配置真源（COPY 进镜像；业务仓 repo. 清单由 entrypoint 启动时生成到 /tmp/projects.conf）。
 COPY cgitrc /etc/cgitrc
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

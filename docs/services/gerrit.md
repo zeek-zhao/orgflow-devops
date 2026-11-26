@@ -74,7 +74,8 @@ M0 LDAP 安全基线是**匿名拒读**（`docs/services/ldap.md` / `tests/bats/
 | 风险项 | 现状 | 处理 |
 |---|---|---|
 | 匿名项目列表可读 | `https://<host>:8443/projects/?d` 匿名可见项目名，与"LDAP 匿名拒读"口径似乎矛盾 | **既定公开策略**：cgit 本身是公开只读视图，项目名非敏感；LDAP 匿名拒读针对用户条目（含 SSH key/邮箱），二者对象不同。写进本文明确，非缺陷。若要收回，调 `All-Projects` 的 `refs/*` READ 权限给 `Anonymous Users`（会影响 cgit 公开视图，需同步评估）。 |
-| SSH 29418 绑 0.0.0.0 | compose `ports` 发布 `${P}:${P}`，宿主若直连公网则暴露 Gerrit SSH | **当前由 Funnel 不转 TCP + 宿主防火墙兜底**：公网只走 :8443 HTTP，29418 仅 tailnet 可达。加固建议（未改，避免破坏 SSH 判据）：把 compose ports 改为绑定 tailscale0 的具体 IP（`100.x.y.z:29418:29418`），或在宿主加 `iptables` 仅放行 tailnet 段。属现网网络变更，待窗口。 |
+| SSH 29418 绑 0.0.0.0 | compose `ports` 发布 `${P}:${P}`，宿主若直连公网则暴露 Gerrit SSH | **当前由 Funnel 不转 TCP + 宿主防火墙兜底**：公网只走 :8443 HTTP，29418 仅 tailnet 可达。加固建议（未改，避免破坏 SSH 判据）：把 compose ports 改为绑定 tailscale0 的具体 IP（`100.x.y.z:29418:29418`），或在宿主加 `iptables` 仅放行 tailnet 段。属现网网络变更，待窗口。容器内 sshd 必须绑通配（`*:29418`），否则宿主 ports 映射无法转入——不在容器层改。 |
+| `accounts.visibility=ALL` 匿名枚举全部账号 | Gerrit 默认 `ALL`，匿名可见账号列表 | ✅ **本轮修**：`gerrit.config.tmpl` 加 `[accounts] visibility = NONE`，账号仅管理员可见。⚠️ 实测 Gerrit 3.9 合法值仅 `ALL`/`NONE`，`ALL_REGISTERED` 会让守护进程启动失败（Guice `Invalid value`），已排除。2026-11-26 重建 Gerrit 后 `NONE` 生效、healthy。 |
 | 口令 sed 渲染 | 见 §6，已修 | ✅ 本轮改 python3 字面替换 |
 | `[container] user = gerrit2` | 与镜像实际用户不符 | ✅ 本轮改 `gerrit` |
 | cgit `scan-path` 全目录 | 见 `docs/services/cgit.md`，已修 | ✅ 本轮改 `project-root` + 白名单 |

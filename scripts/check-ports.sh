@@ -58,15 +58,29 @@ for k in "${loop[@]}"; do
 done
 if (( ${#bad4[@]} > 0 )); then bad "4) 回环端口异常: ${bad4[*]}"; else ok "4) 宿主回环端口合法且无冲突"; fi
 
-# 5) out/urls.env 与端口变量一致（若不存在则提示先 make render）
+# 5) out/urls.env 与端口变量一致。
+#    门禁自洽：干净 clone 缺生成物时按当前 ENV_FILE 现场渲染，不再依赖预先 make render。
+#    render-urls.sh 只读 ENV_FILE、纯文本生成，无 docker/无网络，符合快检查约束。
+if [[ ! -f out/urls.env ]]; then
+  if ENV_FILE="$ENV_FILE" OUT_URLS="out/urls.env" bash scripts/render-urls.sh >/dev/null 2>&1; then
+    : # 生成成功，继续校验
+  else
+    bad "5) out/urls.env 自动生成失败（render-urls.sh 报错）"
+  fi
+fi
 if [[ -f out/urls.env ]]; then
+  # 443 为 https 默认端口应省略；8443/10000 保留。与 render-urls.sh 的 pub_url 规则一致。
+  ph="$(val PUBLIC_HOST)"
+  want_entry="https://${ph}$([[ "$fentry" == "443" ]] || echo ":$fentry")"
+  want_gerrit="https://${ph}$([[ "$fgerrit" == "443" ]] || echo ":$fgerrit")"
+  want_harbor="https://${ph}$([[ "$fharbor" == "443" ]] || echo ":$fharbor")"
   bad5=()
-  grep -q "URL_ENTRY=https://$(val PUBLIC_HOST):$fentry$" out/urls.env || bad5+=("URL_ENTRY")
-  grep -q "URL_GERRIT=https://$(val PUBLIC_HOST):$fgerrit$" out/urls.env || bad5+=("URL_GERRIT")
-  grep -q "URL_HARBOR=https://$(val PUBLIC_HOST):$fharbor$" out/urls.env || bad5+=("URL_HARBOR")
-  if (( ${#bad5[@]} > 0 )); then bad "5) out/urls.env 漂移（先 make render）: ${bad5[*]}"; else ok "5) out/urls.env 与端口一致"; fi
-else
-  bad "5) out/urls.env 不存在（先 make render）"
+  grep -q "^URL_ENTRY=${want_entry}$" out/urls.env || bad5+=("URL_ENTRY")
+  grep -q "^URL_GERRIT=${want_gerrit}$" out/urls.env || bad5+=("URL_GERRIT")
+  grep -q "^URL_HARBOR=${want_harbor}$" out/urls.env || bad5+=("URL_HARBOR")
+  # JENKINS/CGIT 派生自 URL_ENTRY，不应残留 :443。
+  grep -qE '^URL_(JENKINS|CGIT)=https://[^:]+:443/' out/urls.env && bad5+=("URL_JENKINS/CGIT 残留 :443")
+  if (( ${#bad5[@]} > 0 )); then bad "5) out/urls.env 漂移: ${bad5[*]}"; else ok "5) out/urls.env 与端口一致（443 省略）"; fi
 fi
 
 # 6) 对外端口无字面硬编码：公网相关源码不写死对外端口数字

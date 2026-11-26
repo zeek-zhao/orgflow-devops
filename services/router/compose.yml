@@ -19,6 +19,8 @@ services:
     volumes:
       - ../../services/router/server.py:/app/server.py:ro
       - ../../config/routes.yaml:/etc/router/routes.yaml:ro
+      # M2.1 复核：状态页 /status 服务清单与主页同源，动态读 manifest（消除写死 9 行假绿）。
+      - ../../services/manifest.tsv:/etc/router/manifest.tsv:ro
       - ca-data:/ca:ro
     networks:
       orgflow:
