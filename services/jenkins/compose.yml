@@ -35,9 +35,10 @@ services:
       # M2.3.2：Gerrit 前端 URL——gerrit-trigger 回写 Verified 时据此生成 review 链接。
       # 域名/端口均从 defaults.env 派生（与 out/urls.env 的 URL_GERRIT 真源同口径），不硬编码。
       GERRIT_FRONTEND_URL: https://${PUBLIC_HOST}:${FUNNEL_PORT_GERRIT:-8443}
-      # M2.4 Phase3：评审流自检 Job 的 HTTP Basic 凭据（LDAP 口令，不入库）。
+      # M2.5 P2-3：评审流 HTTP Basic 凭据必填，不再静默回退 change-me 弱口令。
+      # 缺 GERRIT_HTTP_PASSWORD 时 compose 直接 fail-fast（提示在 .env 设置）。
       GERRIT_HTTP_USER: ${GERRIT_HTTP_USER:-zeek.zhao}
-      GERRIT_HTTP_PASSWORD: ${GERRIT_HTTP_PASSWORD:-${LDAP_PASSWORD:-change-me}}
+      GERRIT_HTTP_PASSWORD: ${GERRIT_HTTP_PASSWORD:?ERROR_missing_GERRIT_HTTP_PASSWORD_set_in_.env}
       TZ: Asia/Shanghai
     volumes:
       - jenkins_home:/var/jenkins_home
@@ -47,6 +48,12 @@ services:
       - ../../ci:/opt/orgflow/ci:ro
       # M2.4 Phase3：自检报告共享卷（Jenkins 可写 /reports/selfcheck，Caddy 只读 /srv/reports）
       - selfcheck-reports:/reports/selfcheck:rw
+      # M2.5 P0：构建资源配额证据（宿主 quota-guard.sh 写，controller 只读消费，不挂 docker.sock）
+      - ../../artifacts/quota:/opt/orgflow/quota:ro
+      # M2.5 P1-3：repo 根只读挂载，供报告取真实 commit（git -C /opt/orgflow/repo）
+      - ../../:/opt/orgflow/repo:ro
+      # M2.5 P1-3：镜像 tag 键值真源，供报告输出 键=值（不含口令）
+      - ../../config/images.env:/opt/orgflow/config/images.env:ro
     expose:
       - "8080"
     # 启动顺序（ldap 就绪 → jenkins → agent）由 services/manifest.tsv 的 depends_on

@@ -69,6 +69,14 @@ jobs:
           - image: m2-builder
             context: services/builder
             svc: builder
+          # M2.5 P1-1：gerrit 官方镜像薄封装 + certs-init 独立薄镜像，均按内容 tag 构建。
+          # gerrit 的 FROM 为官方 digest（mirror-m2.yml 中转的基底仅作 FROM，不再推送裸 3.9.0 tag）。
+          - image: m2-gerrit
+            context: services/gerrit
+            svc: gerrit
+          - image: m1-certs-init
+            context: services/certs-init
+            svc: certs-init
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: 同步自包含构建上下文

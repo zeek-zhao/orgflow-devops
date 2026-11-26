@@ -18,3 +18,4 @@ feat-registry-auth	job	verify-registry-auth	镜像仓库鉴权	匿名 401 / ci-p
 feat-theme	job	verify-jenkins-theme	深色主题	登录页 CSS 含深色标记 + /theme 生效	SUCCESS	5
 feat-status	job	verify-status-page	状态页	行数等于 manifest 服务数，每行链接非 /none	SUCCESS	5
 feat-review-flow	job	verify-gerrit-review-flow	评审流（重）	建探针 change → 触发构建 → Verified +1 → abandon	SUCCESS	20
+guard-quota	job	verify-quota-guard	构建资源配额	只读证据 verdict=PASS/of-builder/三项配额 0（无 docker.sock）	SUCCESS	3

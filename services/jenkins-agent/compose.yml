@@ -24,6 +24,8 @@ services:
       - ../../ci/shared-library:/opt/orgflow/shared:ro
       # 探针脚本 DOMAIN/IP_DNSMASQ 兜底真源（env 快路径缺失时只读回退）
       - ../../config/defaults.env:/opt/orgflow/config/defaults.env:ro
+      # M2.5 P0：构建资源配额证据（只读消费；agent 依旧不带 docker.sock）
+      - ../../artifacts/quota:/opt/orgflow/quota:ro
       # M2.4 Phase0-4：Gerrit SSH host key 固定校验（ssh-keyscan -p 29418 gerrit 落卷），
       # 替代 StrictHostKeyChecking=no，防中间人；host 公钥非敏感可入库。
       - ../../config/jenkins/known_hosts:/opt/orgflow/config/known_hosts:ro

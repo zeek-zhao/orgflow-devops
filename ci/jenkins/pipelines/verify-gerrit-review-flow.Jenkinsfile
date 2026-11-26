@@ -17,7 +17,8 @@ pipeline {
         KH          = '/opt/orgflow/config/known_hosts'
         GERRIT_HOST = 'gerrit'
         GERRIT_PORT = '8080'
-        GHDR_HOST   = 'orgflow-sandbox.tail0b7621.ts.net'  // canonicalWebUrl host，绕开 301
+        // M2.5 P1-2：canonicalWebUrl host 不再写死，运行期从 defaults.env 读 PUBLIC_HOST。
+        DEF_ENV     = '/opt/orgflow/config/defaults.env'
     }
     stages {
         stage('Probe review flow') {
@@ -28,6 +29,10 @@ pipeline {
                 ]) {
                     sh '''
                         set -e
+                        # M2.5 P1-2：域名单一真源 = defaults.env 的 PUBLIC_HOST；取不到则 fail，禁止静默回退字面域名。
+                        GHDR_HOST="$(grep -E '^PUBLIC_HOST=' "$DEF_ENV" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+                        [ -n "$GHDR_HOST" ] || { echo "PUBLIC_HOST 未配置（$DEF_ENV 缺 PUBLIC_HOST），终止评审流探测"; exit 1; }
+                        echo "GHDR_HOST=$GHDR_HOST (from $DEF_ENV)"
                         H1="Host: ${GHDR_HOST}"
                         H2="X-Forwarded-Proto: https"
                         AUTH="${GH_USER}:${GH_PASS}"

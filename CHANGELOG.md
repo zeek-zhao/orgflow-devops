@@ -2,6 +2,30 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m2.5-quota-guard] — 2026-11-27（M2 封版：构建资源铁律 + M2.4 复核缺陷收口）
+
+> 分支 `feat/m2-gerrit-cgit-harbor`，基线 `f0084b2`（tag `m2.4-selfcheck`）。依据《OrgFlow M2.5 施工文档》。本轮只做修复与加固，不开新功能。详见 `docs/records/执行日志/2026-11-27.md` 与 `docs/运维/构建资源配额.md`。
+
+### P0 构建资源铁律
+- 新增 `scripts/quota-guard.sh`：采集 nproc / MemTotal(kB) / docker info NCPU+MemTotal / docker inspect NanoCpus+Memory+CpuQuota 四项；7 条判据（NCPU==nproc、MemTotal 偏差≤1%、三项配额精确 0、落盘证据、新鲜度≤10min）；退出码 0=PASS/2=BLOCKED/3=环境不可用；固定 `[quota]` 行 stdout + JSON 证据（`<UTC>-<container>.json` + `latest.json`）。不读 .env 配额变量。
+- 三处接入点：① `up.sh` 在 builder/jenkins-agent 启动后落证据、不满足即 BLOCKED 非 0 中止；② `build-from-gerrit` 新增 `stage('Quota gate')`（jq 只读 latest.json，断言 verdict/container/ts 新鲜度/三项原值，不满足 `BUILD BLOCKED` 不 build 不回写）；③ `artifacts/quota` 只读挂进 controller+agent `/opt/orgflow/quota:ro`，agent 依旧无 docker.sock。
+- 新增 `verify-quota-guard` 功能级 Job（只读证据、无 docker.sock）+ checks.tsv `guard-quota` 行（自检 19→20 项）；`make quota-guard` 入口；`docs/运维/构建资源配额.md`（已登记 docs/README.md DOC-E-011）。
+
+### P1 复核缺陷
+- P1-1（Dockerfile 真被引用）：gerrit/certs-init compose 改引用本服务 `ctx-` tag；CI `build-images.yml` 矩阵加 m2-gerrit/m1-certs-init（`mirror-m2.yml` 裸 3.9.0 仅作 FROM 基底兜底）；`check-images.sh` HASHED 增加 gerrit+certs-init；`tests/images.lock` 两行改 imageId=- 回填 contextSha256、删"复用 router"注释；`check-dockerfiles.sh` 增"有 Dockerfile 必引用本服务镜像"断言（EXEMPT 只 _template）。
+- P1-2（去写死域名）：`verify-gerrit-review-flow` 与 `gerrit-abandon.sh` 的 canonical host 改从 `defaults.env` 的 `PUBLIC_HOST` 读取，取不到 fail，禁止静默回退字面域名。
+- P1-3（报告快照失真）：selfcheck 报告 commit 改 `git -C /opt/orgflow/repo`（repo 根只读挂 controller，取不到写 unknown+warning）；Jenkins 版本 jenkins.version→war MANIFEST→unknown；镜像改输出 `键=值` 并单独列"镜像 tag"表；加 `heavyNote`（heavy 未纳入本轮）。
+
+### P2 加固
+- P2-1：`check-selfcheck.sh` 反向校验从 `grep -qF` 子串匹配改第 3 列整字段相等（`verify-cgit` 不再被 `verify-cgit-smart-http` 顶替）。
+- P2-2：selfcheck 的 `EXCLUDE` 默认 `feat-review-flow`（heavy 改单独定时），报告顶部注明"heavy 未纳入本轮"。
+- P2-3：`GERRIT_HTTP_PASSWORD` 去掉 `change-me` 弱默认，compose 用 `${GERRIT_HTTP_PASSWORD:?}` fail-fast，.env 显式配置（与 LDAP 侧一致）；JCasC 用 `${GERRIT_HTTP_PASSWORD}` 无默认。
+
+### 验收
+- 门禁：`make check` / `check-all` / `test` 全绿（含 Dockerfile 引用断言、自检整字段匹配）；check-dockerfiles/check-selfcheck 正反双向验证通过。
+- 反证：quota-guard 正常 PASS(exit0)/容器不存在 BLOCKED(exit3)/`--cpus 2` BLOCKED(exit2 NanoCpus=2000000000)/证据过期+缺失 Quota gate BLOCKED；`full-quota PASS` 仅 PASS 态出现。
+- 终验：容器重建（jenkins/agent 新挂载）+ JCasC reload（22 Job）+ verify-quota-guard 正反（SUCCESS/篡改 FAILURE）+ selfcheck #10 PASS 19/19（报告快照全修复：commit=f0084b2/version=2.580.2/images 键值/heavyNote）；报告 URL 200 no-store、敏感扫描空、12/12 healthy、Gerrit open=0。详见执行日志。
+
 ## [m2.4-selfcheck] — 2026-11-26（M2 增补：收口小项 + 每服务 Dockerfile + Gerrit 手册 + 自检框架）
 
 > 分支 `feat/m2-gerrit-cgit-harbor`，基线 `c0b58c3`（tag `m2.3-closeout`）。依据《OrgFlow M2.4 施工文档》。详见 `docs/records/执行日志/2026-11-26.md`。

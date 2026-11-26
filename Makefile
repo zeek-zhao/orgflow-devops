@@ -7,7 +7,7 @@ ENV_FILE ?= config/defaults.env
 SERVICES := dnsmasq certs-init caddy ldap ldapadmin homepage router
 
 .PHONY: help render up down status up-% down-% check check-all test verify doctor \
-        routes hosts ca ca-rotate record images-hash images-guard \
+        routes hosts ca ca-rotate record images-hash images-guard quota-guard \
         test-svc-% sync-context images-upstream e2e e2e-up e2e-down e2e-test
 
 # ---------- 帮助 ----------
@@ -83,6 +83,10 @@ ca-rotate: ## 轮换内部 CA（FORCE 重签）
 
 record: ## 记录一条操作（见 scripts/record.sh --help）
 	@bash scripts/record.sh $(ARGS)
+
+# ---------- 构建资源配额（M2.5 P0）----------
+quota-guard: ## 四项资源铁律：采集宿主全资源 + 容器零限制证据（需 docker，默认 of-builder）
+	@bash scripts/quota-guard.sh --container ${CONTAINER:-of-builder} --out artifacts/quota
 
 # ---------- 镜像 ----------
 images-guard: ## 镜像标识闸门：内容哈希与 lock/compose tag 漂移则拒绝部署（r5）

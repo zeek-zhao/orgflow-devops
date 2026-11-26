@@ -54,10 +54,12 @@ while IFS=$'\t' read -r id kind target title what expect timeout; do
 done < "$TSV"
 
 # ---- 4. 反向：每个 verify-* Job 必须在清单 ----
+# P2-1：按第 3 列整字段相等匹配（原 grep -qF 子串匹配会让 verify-cgit 被 verify-cgit-smart-http 顶替）。
 while read -r job; do
   [[ "$job" == verify-* ]] || continue
   [[ "$job" == *'${'* ]] && continue  # 跳过未展开的模板字面 verify-${svc}
-  grep -qF "$job" <(awk -F'\t' 'NR>1{print $3}' "$TSV") || { echo "✗ Job $job 未登记进 checks.tsv" >&2; rc=1; }
+  awk -F'\t' -v t="$job" 'NR>1 && $3==t{found=1} END{exit found?0:1}' "$TSV" \
+    || { echo "✗ Job $job 未登记进 checks.tsv（第3列整字段匹配）" >&2; rc=1; }
 done < "$jobs_file"
 
 rm -f "$jobs_file"

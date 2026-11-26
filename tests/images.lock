@@ -1,6 +1,6 @@
 # 镜像标识表（r5 §2：M1 改「内容哈希」口径，替代不可靠的 CI digest 回填链路）
 # 字段: service / tag / imageId / upstreamDigest / contextSha256
-# certs-init 复用 router，不单独构建。
+# M2.5 P1-1：certs-init / gerrit 均有独立 Dockerfile，走 ctx-<12> 内容哈希 tag，不再复用/中转官方 tag。
 # M0 六项（homepage/caddy/ldap/ldapadmin/dnsmasq/router/certs-init）：
 #   tag=orgflow/m0-<svc>:v2 不变；imageId 保留历史构建 64hex；upstreamDigest=Dockerfile FROM 的基底 digest。
 # M1 两项（jenkins/jenkins-agent）：
@@ -16,11 +16,11 @@ caddy	orgflow/m0-caddy:v2	ae4c63a8b595118e58a929dc477a2ed31dfa46a0eb1d151c4c75f1
 ldap	orgflow/m0-ldap:v2	e6f2df6cdc576349760691f227ca632d7b26405c8c82537bb623573c1868d341	sha256:18742e9c449c9c1afe129d3f2f3ee15fb34cc43e5f940a20f3399728f41d7c28	d97bfd6dcaee1576b5d5f4c26c1a712c0cdb7f26f1d9cc09bb0a40f7606329b2
 dnsmasq	orgflow/m0-dnsmasq:v2	bdbb9471d1037c83fa194acad869713ce9e0da5261d96bc97a52ffe10e9f7146	sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852	1476a849385b5df3c16c8eb33059ff7dae00cc077d54ce28ca3d7b2baec7e644
 router	orgflow/m0-router:v2	6c4edabeebc95eb816396647d79ef1cb7985875440103040f8f97a1acc737e27	sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852	30553536fd75c15bd3a9f9d1a20b84388ff00c32fbe71b58db617032ddf3b505
-certs-init	orgflow/m0-router:v2	6c4edabeebc95eb816396647d79ef1cb7985875440103040f8f97a1acc737e27	sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852	30553536fd75c15bd3a9f9d1a20b84388ff00c32fbe71b58db617032ddf3b505
+certs-init	orgflow/m1-certs-init:ctx-f993d91e2ffc	-	sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852	f993d91e2ffc3a00e92d48e2fe66fe8207ce2172fc3310e55ac4d947137284c6
 jenkins	orgflow/m1-jenkins:ctx-7bef03563adb	-	sha256:74401de6a6f92e1afe1b02d1c8e3d0c33f263bfb5275dd8813f9150355f2367b	7bef03563adb0c4d50af4a9ea1ea334cf1323886f4457426326e310db9892330
 jenkins-agent	orgflow/m1-jenkins-agent:ctx-2bc09f334ae1	-	sha256:8fbbc589fa4257287cb9903ed1e021b90db2be2827a80e86a433d9395ca7d019	2bc09f334ae186786963dae305608c9a4eb88d6e44cc38ae36691e665b0aa2b2
 cgit	orgflow/m2-cgit:ctx-de0c2431bdbb	-	sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852	de0c2431bdbb1c791a69c40f960a200379243223af4a51d1de974b23a7d1b77c
-gerrit	ghcr.io/zeek-zhao/orgflow-devops/m2-gerrit:3.9.0	cb613d45e5986097736e272c262155a9189b3dc22bc8b88fce67141e5bea9481	sha256:25f02a983db5f2323fa2a4be7ea672a13dbe8a12cc0e0d31feaa5a348ad8df0f	-
+gerrit	orgflow/m2-gerrit:ctx-547cec6a8cd0	-	sha256:25f02a983db5f2323fa2a4be7ea672a13dbe8a12cc0e0d31feaa5a348ad8df0f	547cec6a8cd09d07ef687dcf5a600f52f73a9900a613a2d5915d73f393d97bb3
 # M2.2：registry:2 薄封装（HASHED）；upstreamDigest = CI docker pull registry:2 真实 manifest digest。
 registry	orgflow/m2-registry:ctx-e22b46a7fb48	-	sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373	e22b46a7fb4825f7b159ea5d07c63bf387ecd5ed6f4e6edbea31329d54351dbc
 # M2.3：builder（HASHED）；upstreamDigest = moby/buildkit:v0.16.0-rootless amd64 manifest digest。

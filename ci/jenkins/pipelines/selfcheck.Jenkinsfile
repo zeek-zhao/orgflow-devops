@@ -79,14 +79,36 @@ pipeline {
                     script {
                         def nFail = results.count{it.result in ['FAIL','UNKNOWN','ABORTED']}
                         def nSkip = results.count{it.result == 'SKIPPED'}
-                        // 环境快照（不含口令/私钥/IP）
-                        def commit = sh(script: "git -C /opt/orgflow rev-parse --short HEAD 2>/dev/null || echo n/a", returnStdout: true).trim()
-                        def jver = sh(script: "cat /var/jenkins_home/.jenkins-version 2>/dev/null || echo Jenkins", returnStdout: true).trim()
+                        // M2.5 P1-3：环境快照三项修复（不含口令/私钥/IP）。
+                        // 1) commit：repo 根只读挂到 /opt/orgflow/repo（见 jenkins compose）；取不到写 unknown + warning，不写 n/a。
+                        // repo 只读挂载属主 root、jenkins 进程 uid1000 → git 报 dubious ownership；
+                        // 用 -c safe.directory 内联豁免（不写全局 config，挂载只读）。
+                        def commit = sh(script: "git -c safe.directory='*' -C /opt/orgflow/repo rev-parse --short HEAD 2>/dev/null || echo unknown", returnStdout: true).trim()
+                        if (commit == 'unknown') { echo "⚠ 报告 commit=unknown：/opt/orgflow/repo 不可读或非 git 仓库" }
+                        // 2) Jenkins 版本：jenkins.version → war MANIFEST Implementation-Version → unknown。
+                        def jver = sh(script: '''
+                            v="$(cat /var/jenkins_home/jenkins.version 2>/dev/null | tr -d '\\r\\n' || true)"
+                            [ -n "$v" ] && { echo "$v"; exit 0; }
+                            war="$(find / -maxdepth 4 -name jenkins.war 2>/dev/null | head -1)"
+                            if [ -n "$war" ]; then
+                                v="$(unzip -p "$war" META-INF/MANIFEST.MF 2>/dev/null | tr -d '\\r' | sed -n 's/^Implementation-Version: //p' | head -1)"
+                                [ -n "$v" ] && { echo "$v"; exit 0; }
+                            fi
+                            echo unknown
+                        ''', returnStdout: true).trim()
+                        if (jver == 'unknown') { echo "⚠ 报告 jenkinsVersion=unknown：版本文件与 war MANIFEST 均不可读" }
                         def now = sh(script: "date '+%Y-%m-%d %H:%M:%S %z'", returnStdout: true).trim()
-                        def imageKeys = sh(script: "grep -E '^IMAGE_[A-Z_]+=' /opt/orgflow/config/images.env 2>/dev/null | sed 's/=.*//' | tr '\\n' ' '", returnStdout: true).trim()
+                        // 3) 镜像：输出 键=值（仅镜像名与 tag，无口令），报告表格单独一列"镜像 tag"。
+                        def images = sh(script: "grep -E '^IMAGE_[A-Z_]+=' /opt/orgflow/config/images.env 2>/dev/null | tr '\\n' ' '", returnStdout: true).trim()
+                        def imageKeys = sh(script: "grep -E '^IMAGE_[A-Z_]+=' /opt/orgflow/config/images.env 2>/dev/null | cut -d= -f1 | tr '\\n' ' '", returnStdout: true).trim()
 
-                        def json = buildJson(env.BUILD_NUMBER, now, overall, commit, jver, imageKeys, results, nFail, nSkip)
-                        def html = renderHtml(env.BUILD_NUMBER, now, overall, commit, jver, imageKeys, results, nFail, nSkip)
+                        // M2.5 P2-2：heavy 未纳入本轮时，报告顶部显式注明。
+                        def excl = (params.EXCLUDE ?: '').split(',').collect{it.trim()}
+                        def heavyNote = (excl.contains('feat-review-flow'))
+                            ? 'heavy 评审流（feat-review-flow）未纳入本轮：默认跳过，改由单独定时任务执行。'
+                            : ''
+                        def json = buildJson(env.BUILD_NUMBER, now, overall, commit, jver, imageKeys, images, heavyNote, results, nFail, nSkip)
+                        def html = renderHtml(env.BUILD_NUMBER, now, overall, commit, jver, imageKeys, images, heavyNote, results, nFail, nSkip)
                         def reportDir = '/reports/selfcheck'
                         def base = "${reportDir}/selfcheck-${env.BUILD_NUMBER}"
                         writeFile file: "${base}.json", text: json
@@ -104,7 +126,7 @@ pipeline {
 }
 
 // 手工 JSON 序列化（沙箱无 groovy.json.JsonOutput）：字符串转义 + 拼接。
-def buildJson(build, now, overall, commit, jver, imageKeys, results, nFail, nSkip) {
+def buildJson(build, now, overall, commit, jver, imageKeys, images, heavyNote, results, nFail, nSkip) {
     def esc = { s -> (s ?: '').toString()
         .replace('\\', '\\\\').replace('"', '\\"')
         .replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t') }
@@ -115,12 +137,13 @@ def buildJson(build, now, overall, commit, jver, imageKeys, results, nFail, nSki
     }.join(',')
     return '{' + '"build":"' + esc(build) + '","time":"' + esc(now) + '","overall":"' + esc(overall) +
         '","commit":"' + esc(commit) + '","jenkinsVersion":"' + esc(jver) + '","imageKeys":"' + esc(imageKeys) +
+        '","images":"' + esc(images) + '","heavyNote":"' + esc(heavyNote) +
         '","fail":' + nFail + ',"skipped":' + nSkip + ',"total":' + results.size() +
         ',"results":[' + rows + ']}'
 }
 
 // 自包含 HTML：内联 CSS、无外链、无 JS；表格 + 状态色块 + 总判 + 环境快照 + 未覆盖提示。
-def renderHtml(build, now, overall, commit, jver, imageKeys, results, nFail, nSkip) {
+def renderHtml(build, now, overall, commit, jver, imageKeys, images, heavyNote, results, nFail, nSkip) {
     def esc = { s -> (s ?: '').toString().replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;') }
     def color = overall=='PASS' ? '#2e7d32' : (overall=='FAIL' ? '#c62828' : '#ef6c00')
     def sb = ''
@@ -134,9 +157,19 @@ def renderHtml(build, now, overall, commit, jver, imageKeys, results, nFail, nSk
     sb = sb + '.meta{color:#556;font-size:.85rem}.ev{font-family:monospace;font-size:.8rem;color:#444}.note{margin-top:1rem;color:#556}</style></head><body>'
     sb = sb + '<h1>OrgFlow 自检报告 <span class="meta">#' + build + '</span></h1>'
     sb = sb + '<p>生成时间：' + esc(now) + '　总判：<span class="verdict">' + overall + '</span></p>'
+    if (heavyNote) sb = sb + '<p class="note" style="color:#ef6c00">⚠ ' + esc(heavyNote) + '</p>'
     sb = sb + '<p class="meta">commit=' + esc(commit) + '　Jenkins=' + esc(jver)
     sb = sb + '　检查=' + results.size() + '　FAIL=' + nFail + '　SKIPPED=' + nSkip + '</p>'
-    sb = sb + '<p class="meta">镜像 tag 键：' + esc(imageKeys) + '</p>'
+    // M2.5 P1-3：镜像段输出 键=值（仅名与 tag），单独列一栏"镜像 tag"，不再只列键名。
+    if (images) {
+        sb = sb + '<h2 style="font-size:1.05rem;margin-top:1.2rem">镜像 tag（环境快照）</h2>'
+        sb = sb + '<table><thead><tr><th>变量</th><th>镜像 tag</th></tr></thead><tbody>'
+        images.split(' ').findAll{it}.each { kv ->
+            def p = kv.split('=', 2)
+            sb = sb + '<tr><td class="ev">' + esc(p[0]) + '</td><td class="ev">' + esc(p.length > 1 ? p[1] : '') + '</td></tr>'
+        }
+        sb = sb + '</tbody></table>'
+    }
     sb = sb + '<table><thead><tr><th>检查项</th><th>测什么</th><th>结果</th><th>耗时</th><th>证据</th><th>Console</th></tr></thead><tbody>'
     results.each { r ->
         def cls = r.result=='SUCCESS' ? 'ok' : (r.result=='FAIL' ? 'fail' : 'skip')

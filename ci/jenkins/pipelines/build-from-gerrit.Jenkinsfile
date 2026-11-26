@@ -22,6 +22,54 @@ pipeline {
         REGISTRY      = 'registry:5000'
     }
     stages {
+        // M2.5 P0 接入点②：消费宿主 quota-guard.sh 预生成的证据；只读取，不给 agent 开 docker 权限。
+        // 证据缺失/过期/非 PASS/container≠of-builder → error，绝不进入 checkout/build/回写 Verified。
+        stage('Quota gate') {
+            steps {
+                withEnv(["MAX_AGE_MIN=${env.MAX_AGE_MIN ?: '10'}"]) {
+                    sh '''
+                        set -e
+                        Q=/opt/orgflow/quota/latest.json
+                        [ -f "$Q" ] || { echo "BUILD BLOCKED: quota evidence missing ($Q)"; exit 1; }
+                        jq -e . "$Q" >/dev/null 2>&1 || { echo "BUILD BLOCKED: quota evidence invalid JSON"; exit 1; }
+
+                        verdict="$(jq -r '.verdict // empty' "$Q")"
+                        container="$(jq -r '.container // empty' "$Q")"
+                        ts="$(jq -r '.ts // empty' "$Q")"
+                        nano="$(jq -r '.inspect.nano_cpus // empty' "$Q")"
+                        mem="$(jq -r '.inspect.memory // empty' "$Q")"
+                        quota="$(jq -r '.inspect.cpu_quota // empty' "$Q")"
+
+                        echo "[quota] nproc=$(jq -r '.host.nproc' "$Q")"
+                        echo "[quota] MemTotal=$(jq -r '.host.mem_total_kb' "$Q") kB"
+                        echo "[quota] docker info NCPU=$(jq -r '.docker.ncpu' "$Q") MemTotal=$(jq -r '.docker.mem_total_bytes' "$Q")"
+                        echo "[quota] inspect NanoCpus=$nano Memory=$mem CpuQuota=$quota"
+                        echo "[quota] checks=$(jq -c '.checks' "$Q")"
+
+                        blocked=""
+                        [ "$verdict" = "PASS" ] || blocked="$blocked verdict=$verdict"
+                        [ "$container" = "of-builder" ] || blocked="$blocked container=$container"
+                        # 新鲜度：证据 ts 距今 ≤ MAX_AGE_MIN 分钟
+                        if [ -n "$ts" ]; then
+                          ets=$(date -u -d "$ts" +%s 2>/dev/null || echo 0)
+                          now=$(date -u +%s)
+                          age_sec=$(( now - ets ))
+                          age_min=$(( age_sec / 60 ))
+                          max_sec=$(( MAX_AGE_MIN * 60 ))
+                          [ "$ets" -gt 0 ] || blocked="$blocked ts-bad"
+                          [ "$age_sec" -le "$max_sec" ] || blocked="$blocked stale=${age_min}min"
+                        else
+                          blocked="$blocked ts-missing"
+                        fi
+                        if [ -n "$blocked" ]; then
+                          echo "BUILD BLOCKED: quota evidence$blocked"
+                          exit 1
+                        fi
+                        echo "BUILD QUOTA OK: verdict=PASS container=of-builder age=${age_min}min limits all zero"
+                    '''
+                }
+            }
+        }
         stage('Checkout change') {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'gerrit-ci-ssh', keyFileVariable: 'GERRIT_KEY')]) {

@@ -19,8 +19,10 @@ norm() { local x="$1"; [[ "$x" == dns ]] && echo dnsmasq || echo "$x"; }
 # 真源：manifest 的 service 列（跳过表头）
 ALL=$(awk -F'\t' 'NR>1 && $2!="" {print $2}' services/manifest.tsv | sort -u)
 PROBE=$(echo "$ALL" | grep -v '^certs-init$' | sort -u)
-# M0 真源：images.lock 中 tag 以 :v2 结尾的 service（6 常驻 + certs-init 复用 router）= 7 项
-M0=$(awk -F'\t' 'NR>1 && $2 ~ /:v2$/ {print $1}' tests/images.lock | sort -u)
+# M0 真源：images.lock 中 tag 以 :v2 结尾的 service（6 常驻）= 6 项；
+# + certs-init：M2.5 P1-1 起其镜像改 ctx tag（不再 :v2），但它仍是 M0 阶段的一次性服务，
+#   且 check-v2.sh / run-v2.sh 的 M0 循环仍含它，故显式纳入真源，保持 7 项口径一致。
+M0=$({ awk -F'\t' 'NR>1 && $2 ~ /:v2$/ {print $1}' tests/images.lock; echo certs-init; } | sort -u)
 
 # 从各处提取服务 token（每行一个，排序归一）
 case_lan=$(grep -oE '^  [a-z][a-z-]*(\|[a-z-]+)?\)' ci/shared-library/bin/check-lan.sh \

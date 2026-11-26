@@ -8,7 +8,8 @@ pipelineJob('selfcheck') {
     logRotator { daysToKeep(14); numToKeep(20) }
     parameters {
         stringParam('INCLUDE', '', '逗号分隔的 id；留空=全部')
-        stringParam('EXCLUDE', '', '逗号分隔要跳过的 id（如 feat-review-flow 跳过重项）')
+        // M2.5 P2-2：heavy 评审流默认不纳入常规自检（探针会推真实 change），改走单独定时。
+        stringParam('EXCLUDE', 'feat-review-flow', '逗号分隔要跳过的 id；默认跳过 heavy 评审流（单独定时跑）')
         booleanParam('NEGATIVE', false, '演示报告失败态：强制第一条判 FAIL，不影响真实子 Job')
         stringParam('TIMEOUT_MIN', '20', '总超时（分钟）')
     }

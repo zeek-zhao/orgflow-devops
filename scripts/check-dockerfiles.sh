@@ -6,6 +6,10 @@
 #   2. FROM 必须带 @sha256 锁定上游（允许 ARG BASE_DIGEST，但其默认值须为 sha256）；
 #   3. 必须有 org.opencontainers.image.source LABEL；
 #   4. config/images.env 的 UPSTREAM_<SVC> 与 Dockerfile FROM digest 一致。
+#   5. (M2.5 P1-1) 有 Dockerfile 的服务，compose image fallback 必须引用本服务自己的镜像：
+#      - HASHED（产本地 ctx 镜像）服务必须带 ctx- tag（防 gerrit 裸 tag / certs-init 复用 router）；
+#      - M0 基线（官方 @sha256 mirror）服务镜像名必须含本服务标识；
+#      EXEMPT 白名单只允许 _template。
 #
 # 退出非 0 表示有漂移；接入 check-fast.sh。
 set -uo pipefail
@@ -13,6 +17,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 rc=0
 n=0
+
+# 走 ctx tag 的服务集合（与 check-images.sh HASHED 同口径）。
+HASHED="jenkins jenkins-agent cgit registry builder gerrit certs-init"
 
 for d in services/*/; do
   svc="${d#services/}"; svc="${svc%/}"
@@ -37,6 +44,23 @@ for d in services/*/; do
   # (3) source LABEL
   if ! grep -q 'org.opencontainers.image.source' "$df"; then
     echo "✗ $svc Dockerfile 缺 org.opencontainers.image.source LABEL" >&2; rc=1
+  fi
+  # (5) M2.5 P1-1：compose 必须真正引用本服务的 Dockerfile 产物，不能"有文件不用"。
+  imgtag="$(grep -m1 '^[[:space:]]*image:' "${d}compose.yml" 2>/dev/null || true)"
+  fallback="${imgtag#*:-}"; fallback="${fallback%}"
+  is_hashed=0
+  case " $HASHED " in *" $svc "*) is_hashed=1;; esac
+  if (( is_hashed )); then
+    # 产本地 ctx 镜像的服务：fallback 必须带该服务的 ctx tag
+    if ! printf '%s' "$fallback" | grep -qE -- "-${svc}:ctx-"; then
+      echo "✗ $svc 有 Dockerfile 但 compose image 未引用本服务 ctx tag: ${fallback:-空}（疑似复用/裸 tag）" >&2; rc=1
+    fi
+  else
+    # M0 基线：镜像名须含本服务标识（ldap 允许 openldap/phpldapadmin 等含子串）
+    key="${svc%%-*}"  # certs-init 等连字符取首段兜底
+    if ! printf '%s' "$fallback" | grep -qi -- "$key"; then
+      echo "✗ $svc 有 Dockerfile 但 compose image 未引用本服务镜像: ${fallback:-空}（疑似复用其它服务）" >&2; rc=1
+    fi
   fi
   n=$((n+1))
 done

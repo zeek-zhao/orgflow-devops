@@ -1,8 +1,8 @@
 # certs-init —— 一次性证书签发容器（exit 0，非常驻）
-# 复用 main CI 产物 router:24.04-v1（含 openssl/bash），挂载 gen-ca.sh 执行，本仓不自建。
+# M2.5 P1-1：改用本仓独立 Dockerfile（ubuntu:24.04 + openssl）构建的 ctx tag，不再复用 router。
 services:
   certs-init:
-    image: ${IMAGE_CERTS_INIT:-ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/router@sha256:e5fd71d1cd7cec5068a24ce1165e35587856e2cafe7ca2e772a3b50944f9fe87}
+    image: ${IMAGE_CERTS_INIT:-ghcr.io/zeek-zhao/orgflow-devops/m1-certs-init:ctx-f993d91e2ffc}
     pull_policy: never
     container_name: ${CONTAINER_PREFIX:-of}-certs-init
     labels:

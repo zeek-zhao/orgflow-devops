@@ -79,6 +79,7 @@ make verify                   # 全量验收矩阵 AC-1~22
 - 新增服务标准作业：[运维/新增服务标准作业.md](运维/新增服务标准作业.md)
 - Gerrit 人工使用指南：[使用手册/Gerrit-人工使用指南.md](使用手册/Gerrit-人工使用指南.md)（登录/SSH key/clone/push/评审）
 - 自检框架：[运维/自检框架.md](运维/自检框架.md)（checks.tsv / HTML 报告 / 加检查项）
+- 构建资源配额：[运维/构建资源配额.md](运维/构建资源配额.md)（四项铁律 / quota-guard / Quota gate）
 - 架构决策记录：[records/ADR-*.md](records/)
 - 服务手册：[services/](services/)
 
@@ -127,3 +128,4 @@ make verify                   # 全量验收矩阵 AC-1~22
 | DOC-E-010 | 新增服务标准作业（SOP） | docs/运维/新增服务标准作业.md | 规程 | review | zeek.zhao | 6 | M2.0-P4 |
 | DOC-P-008 | Gerrit 人工使用指南（面向写代码的人） | docs/使用手册/Gerrit-人工使用指南.md | 规程 | review | zeek.zhao | 6 | M2.4-P2 |
 | DOC-P-009 | 自检框架（checks.tsv / 报告 / 加检查项） | docs/运维/自检框架.md | 规程 | review | zeek.zhao | 6 | M2.4-P3 |
+| DOC-E-011 | 构建资源配额（四项铁律 / quota-guard / Quota gate） | docs/运维/构建资源配额.md | 规程 | review | zeek.zhao | 6 | M2.5-P0 |

@@ -27,7 +27,7 @@ done
 
 UBUNTU_DIGEST='sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852'
 # 扫描派生：有 compose.yml 的服务即 SERVICES；有 Dockerfile 的即 BUILDABLE；M1 走内容哈希的服务。
-SERVICES=(); BUILDABLE=(); HASHED=(jenkins jenkins-agent cgit registry builder)
+SERVICES=(); BUILDABLE=(); HASHED=(jenkins jenkins-agent cgit registry builder gerrit certs-init)
 for d in services/*/; do
   svc="${d#services/}"; svc="${svc%/}"
   [[ "$svc" == _* ]] && continue  # M2 P4：下划线开头为脚手架模板（_template），非真实服务
@@ -113,9 +113,10 @@ check_lock() {
     if is_hashed "$svc"; then
       hash="$(bash scripts/image-hash.sh "$svc" 2>/dev/null)" || { echo "✗ $svc image-hash.sh 执行失败" >&2; rc=1; continue; }
       [[ "$hash" == "${LK_ctx[$svc]:-}" ]] || { echo "✗ $svc 内容哈希不一致: 计算=$hash lock=${LK_ctx[$svc]:-}（改完 Dockerfile 请跑 make images-hash 并同步 compose）" >&2; rc=1; }
-      # M2.2 P1-3：M1 服务（jenkins/jenkins-agent）保留 m1 前缀；M2 服务（cgit/registry）统一 m2。
+      # M2.2 P1-3：M1 服务（jenkins/jenkins-agent/certs-init）保留 m1 前缀；
+      # M2 服务（cgit/registry/builder/gerrit）统一 m2。
       case "$svc" in
-        cgit|registry|builder) wantprefix="m2" ;;
+        cgit|registry|builder|gerrit) wantprefix="m2" ;;
         *) wantprefix="m1" ;;
       esac
       wanttag="orgflow/$wantprefix-$svc:ctx-${hash:0:12}"

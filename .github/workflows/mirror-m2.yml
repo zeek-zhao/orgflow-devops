@@ -42,7 +42,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 拉取 Gerrit 官方镜像 → 中转推 GHCR
+      # M2.5 P1-1：gerrit 部署镜像已改由 build-images.yml 用本仓 Dockerfile（FROM 官方 digest）
+      # 构建推 ctx tag。此处中转的裸 3.9.0 仅作上游基底兜底/摘要核验，不再作为部署引用。
+      - name: 拉取 Gerrit 官方镜像 → 中转推 GHCR（仅作 FROM 基底兜底）
         id: gerrit
         run: |
           set -euo pipefail
@@ -111,7 +113,7 @@ jobs:
             echo "## M2 镜像镜像结果"
             echo "- gerrit upstream digest: \`${{ steps.gerrit.outputs.upstream_digest }}\`"
             echo "- gerrit GHCR digest: \`${{ steps.gerrit.outputs.ghcr_digest }}\`"
-            echo "- 包地址：ghcr.io/zeek-zhao/orgflow-devops/m2-gerrit:3.9.0"
+            echo "- gerrit 部署镜像：ghcr.io/zeek-zhao/orgflow-devops/m2-gerrit:ctx-<12（由 build-images.yml 构建；裸 3.9.0 仅 FROM 基底）"
             echo "- 包地址：ghcr.io/zeek-zhao/orgflow-devops/m2-cgit:<ctx tag，见上>"
             echo "- registry upstream digest: \`${{ steps.registry.outputs.upstream_digest }}\`"
             echo "- 包地址：ghcr.io/zeek-zhao/orgflow-devops/m2-registry:ctx-<12，见上>"

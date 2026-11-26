@@ -50,6 +50,10 @@ if [[ -f .env ]]; then
   # 让 registry/jenkins compose 的 ${REGISTRY_CI_USER}/${REGISTRY_CI_PASSWORD} 拿到值。
   [[ -n "${REGISTRY_CI_USER:-}" ]] || export REGISTRY_CI_USER="$(sed -n 's/^REGISTRY_CI_USER=//p' .env | head -1)"
   [[ -n "${REGISTRY_CI_PASSWORD:-}" ]] || export REGISTRY_CI_PASSWORD="$(sed -n 's/^REGISTRY_CI_PASSWORD=//p' .env | head -1)"
+  # M2.5 P2-3：评审流 HTTP Basic 凭据（必填，无弱默认）。从 .env 补读并 export，
+  # 让 jenkins compose 的 ${GERRIT_HTTP_PASSWORD:?} 拿到显式值；缺失则 compose fail-fast。
+  [[ -n "${GERRIT_HTTP_USER:-}" ]] || export GERRIT_HTTP_USER="$(sed -n 's/^GERRIT_HTTP_USER=//p' .env | head -1)"
+  [[ -n "${GERRIT_HTTP_PASSWORD:-}" ]] || export GERRIT_HTTP_PASSWORD="$(sed -n 's/^GERRIT_HTTP_PASSWORD=//p' .env | head -1)"
 fi
 
 # ---- 读 manifest（顺序 + 依赖）----
@@ -378,9 +382,33 @@ fi
 
 (( ! JSON )) && echo "== up.sh 逐服务顺序启动（顺序: ${SEQ[*]}）=="
 ensure_resources
+
+# M2.5 P0：构建相关容器启动后落四项资源证据（宿主 docker 权限，脚本内置全部判据）。
+# 只记录实际值、不满足即 BLOCKED 非 0 退出，绝不写 full-quota PASS。
+# builder(order 13) 在 jenkins-agent(order 9) 之后写，latest.json 最终指向 builder（与 Quota gate 断言一致）。
+quota_record() {
+  local svc="$1" qrc=0
+  (( DRY )) && { (( JSON )) || echo "[quota] [dry] 跳过 $svc 证据采集"; return 0; }
+  local out="$ROOT/artifacts/quota"
+  mkdir -p "$out"
+  (( JSON )) || echo "[quota] 采集 $svc（${PREFIX}-${svc}）四项资源…"
+  bash "$ROOT/scripts/quota-guard.sh" --container "${PREFIX}-${svc}" --out "$out"
+  qrc=$?
+  if (( qrc != 0 )); then
+    echo "✗ [$svc] 构建资源铁律 BLOCKED（quota-guard exit $qrc），停止启动后续服务" >&2
+    return 1
+  fi
+  return 0
+}
+
 failed=0; failed_at=""
 for s in "${SEQ[@]}"; do
   if ! run_one "$s"; then failed=1; failed_at="$s"; break; fi
+  case "$s" in
+    builder|jenkins-agent)
+      if ! quota_record "$s"; then failed=1; failed_at="$s"; break; fi
+      ;;
+  esac
 done
 
 if (( failed )); then
