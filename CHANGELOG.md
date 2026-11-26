@@ -2,6 +2,22 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m2.1-v1.0] — 2026-11-26（M2.1 封版：Gerrit + cgit 上线，评审流 4/4 通过）
+
+> 分支 `feat/m2-gerrit-cgit-harbor`，封版 tag `m2.1-v1.0` @ `fca5c19`。详见 `docs/records/执行日志/2026-11-26.md`。交付主线仍是 `feat/m0-release` / `feat/m1-jenkins` 的历史链，本 tag 标记 M2.1 功能面封版快照。
+
+### Added
+- **Gerrit 3.9 代码评审服务**：LDAP/osixia 统一身份接入（正确键 `username/password/supportAnonymous=false`），`accounts.visibility=NONE` 收紧账号枚举；业务仓 `orgflow-devops` 导入源码 188 文件为 commit `cba7f0b`；Web `:8443`、SSH `:29418`（Funnel 不转 TCP，tailnet/本机可达）。
+- **cgit 1.2.3 浏览服务**：`/cgit/` 公网只读视图，`repo.` 显式白名单（排除 All-Projects/All-Users），`git-http-backend` 支持 smart-http clone；镜像 tag `ctx-e0643a8c475e`（内容哈希，GHCR + 南大代理中转）。
+- **状态页/主页/门禁同步**：router `/status` 从 manifest 动态生成（9→11 服务含 gerrit/cgit）；主页补 Gerrit 公网入口；bats 新增 `S_gerrit.bats`/`S_cgit.bats`，verify-lan-all 判据接受安全 3xx。
+
+### Verified
+- **评审流 4/4 判据全绿**：HTTP 认证（ls-remote 非 401）、`refs/for/main` 接受（输出 `+/<id>`）、Change #1 浏览器/REST 可见、SSH `gerrit ls-projects` 列出业务仓。截图 `artifacts/m2.1/gerrit-review-open.png`。
+- 全量门禁 `make check`/`check-all`/`test` 全绿；Jenkins verify-lan-all #14 SUCCESS 失败 0 项；公网 443/8443/`/status`=200。
+
+### 边界
+- Harbor/M2.2 未纳入本版：无容器/无配置，10000→18086 无后端；按施工文档 A/B 路线对比另起阶段。
+
 ## [m2.0-prep] — 2026-11-25（M2.0 前置治理 P1~P4，未封版）
 
 > 分支 `feat/m1-jenkins`，基线 `m1-v1.0 @ 72c2f63`。详见 `docs/records/执行日志/2026-11-25-r8.md`。M2.1+ 服务部署待资源闸门决策（内存 5.62GiB < 8GiB）。
