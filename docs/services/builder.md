@@ -24,7 +24,7 @@
 
 - 薄封装：`FROM moby/buildkit:v0.16.0-rootless@${BASE_DIGEST}`（amd64 manifest digest 钉死），仅补 `buildkitd.toml`。
 - 上游 digest 真值：`UPSTREAM_BUILDER`（config/images.env）、`tests/images.lock`、`docs/运维/镜像与供应链.md`。
-- tag：`orgflow/m2-builder:ctx-972b50e038c6`（= `image-hash.sh builder` 前 12 位），CI（build-images.yml）推 GHCR
+- tag：`orgflow/m2-builder:ctx-9e393f1c9787`（= `image-hash.sh builder` 前 12 位），CI（build-images.yml）推 GHCR
   `ghcr.io/zeek-zhao/orgflow-devops/m2-builder:<tag>`，国内经 `ghcr.nju.edu.cn` 代理拉取。
 - agent 侧 `buildctl` 从同版本 buildkit 镜像多阶段 COPY，避免版本漂移。
 

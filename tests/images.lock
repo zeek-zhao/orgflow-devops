@@ -24,4 +24,4 @@ gerrit	ghcr.io/zeek-zhao/orgflow-devops/m2-gerrit:3.9.0	cb613d45e5986097736e272c
 # M2.2：registry:2 薄封装（HASHED）；upstreamDigest = CI docker pull registry:2 真实 manifest digest。
 registry	orgflow/m2-registry:ctx-1cb303e1dbfa	-	sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373	1cb303e1dbfa6424e50bc5854563528b1638dbb993c92a57aeb9abfe6f4e17b3
 # M2.3：builder（HASHED）；upstreamDigest = moby/buildkit:v0.16.0-rootless amd64 manifest digest。
-builder	orgflow/m2-builder:ctx-972b50e038c6	-	sha256:ae19c93689d1a9f510c656c83a68f41a9d97a87dddbc285af078fc7522074111	972b50e038c62ba40f17fc4689b69e051b11f3385b7012846ec0b3f0e5afebe0
+builder	orgflow/m2-builder:ctx-9e393f1c9787	-	sha256:ae19c93689d1a9f510c656c83a68f41a9d97a87dddbc285af078fc7522074111	9e393f1c97878524bcfb58d4ce8aeac30f03e258d80899e08338b4439258b9f2

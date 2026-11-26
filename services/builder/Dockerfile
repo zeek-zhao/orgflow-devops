@@ -16,6 +16,8 @@ LABEL org.opencontainers.image.description="rootless BuildKit daemon for Jenkins
 USER root
 COPY buildkitd.toml /etc/buildkit/buildkitd.toml
 RUN chmod 644 /etc/buildkit/buildkitd.toml
-# 官方 rootless 镜像以 USER buildkit(1000) 运行、入口 /usr/bin/entrypoint.sh → buildkitd。
-# 运行时 compose 用 command 覆盖 buildkitd 参数（--addr / --oci-worker-no-process-sandbox）。
-USER buildkit
+# 官方 rootless 镜像 Config.User=buildkit 但 /etc/passwd 无该用户名条目（用数字 UID）。
+# 若写 USER buildkit，docker 启动时会解析用户名失败（unable to find user buildkit）；
+# 必须用数字 UID 1000（与上游一致），rootlesskit entrypoint 再做 user namespace 映射。
+# 实测 USER 1000 + command 覆盖参数可正常起 buildkitd 并暴露 linux/amd64 worker。
+USER 1000
