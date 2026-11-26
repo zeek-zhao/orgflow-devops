@@ -9,7 +9,7 @@ name: Build M0/M1 Images
 
 on:
   push:
-    branches: [feat/m0-v2, feat/m0-final-pr, feat/m0-t2-images, feat/m1-jenkins, main]
+    branches: [feat/m0-v2, feat/m0-final-pr, feat/m0-t2-images, feat/m1-jenkins, feat/m2-gerrit-cgit-harbor, main]
     paths:
       - "services/**"
       - "config/Caddyfile"
@@ -65,6 +65,10 @@ jobs:
           - image: m1-jenkins-agent
             context: services/jenkins-agent
             svc: jenkins-agent
+          # M2.3：rootless buildkitd builder（内容 tag，同 M1 口径）
+          - image: m2-builder
+            context: services/builder
+            svc: builder
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: 同步自包含构建上下文

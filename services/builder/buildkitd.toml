@@ -1,0 +1,12 @@
+# BuildKit daemon 配置（M2.3 D1）：registry 保持内网明文 HTTP。
+#
+# 关键点：registry 不能改 HTTPS——Funnel 边缘已终止 TLS、回源明文 HTTP，
+# 改容器为 TLS 会让公网 :10000 入口立刻 502。故 builder 侧声明该仓库为 insecure，
+# 且仅限内网 bridge（192.168.90.0/24），公网不经此路径。
+#
+# 残差风险（文档化）：明文仅存在于 orgflow-minimal_orgflow 内网段，network 不对外、
+# builder 不发布宿主端口。将来上 Caddy TLS 前加一层再收紧（Funnel → Caddy TLS → registry），
+# 属独立改造，不在 M2.3。
+
+[registry."192.168.90.20:5000"]
+  http = true

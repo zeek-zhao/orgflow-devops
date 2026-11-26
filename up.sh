@@ -99,6 +99,8 @@ V_JENKINS="$(grep -E '^JENKINS_HOME_VOLUME=' "$ENVFILE" | cut -d= -f2-)"
 # M2.2：registry 镜像数据卷与鉴权卷
 V_REG_DATA="$(grep -E '^REGISTRY_DATA_VOLUME=' "$ENVFILE" | cut -d= -f2-)"
 V_REG_AUTH="$(grep -E '^REGISTRY_AUTH_VOLUME=' "$ENVFILE" | cut -d= -f2-)"
+# M2.3：BuildKit 构建缓存卷
+V_BUILDER="$(grep -E '^BUILDER_CACHE_VOLUME=' "$ENVFILE" | cut -d= -f2-)"
 SUBNET="$(grep -E '^NET_SUBNET=' "$ENVFILE" | cut -d= -f2-)"
 
 # ---- 参数 ----
@@ -200,7 +202,7 @@ ensure_resources() {
     docker network create --driver bridge --subnet "$SUBNET" "$NET" >/dev/null
     res_note "✓ 建网络 $NET $SUBNET"
   fi
-  for v in "$V_CA" "$V_LDAPD" "$V_LDAPC" "$V_JENKINS" "$V_REG_DATA" "$V_REG_AUTH"; do
+  for v in "$V_CA" "$V_LDAPD" "$V_LDAPC" "$V_JENKINS" "$V_REG_DATA" "$V_REG_AUTH" "$V_BUILDER"; do
     [[ -z "$v" ]] && continue
     if docker volume inspect "$v" >/dev/null 2>&1; then
       res_note "卷 $v 已存在，跳过"

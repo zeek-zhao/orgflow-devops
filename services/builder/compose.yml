@@ -1,0 +1,41 @@
+# BuildKit builder（M2.3）：rootless buildkitd，固定 IP .21，tcp://0.0.0.0:1234。
+# 不发布宿主端口：只在 orgflow 内网可达，Jenkins agent 经 BUILDKIT_HOST=tcp://builder:1234 提交。
+# 镜像由 GitHub CI（build-images.yml）从上游 moby/buildkit:v0.16.0-rootless 构建推 GHCR；
+#   国内经 ghcr.nju.edu.cn 代理拉。上游 digest 钉在 config/images.env（UPSTREAM_BUILDER）。
+# 健康：容器内 buildctl debug workers 返回非空 worker。
+services:
+  builder:
+    image: ${IMAGE_BUILDER:-ghcr.io/zeek-zhao/orgflow-devops/m2-builder:ctx-PENDING}
+    pull_policy: missing
+    container_name: ${CONTAINER_PREFIX:-of}-builder
+    labels:
+      org.of.fp: ${FP_VALUE:-}
+    # rootless buildkitd 需要放宽 seccomp/apparmor；不发布宿主端口。
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+    command:
+      - --addr=tcp://0.0.0.0:1234
+      - --oci-worker-no-process-sandbox
+    volumes:
+      - builder_cache:/var/lib/buildkit
+      - ./buildkitd.toml:/etc/buildkit/buildkitd.toml:ro
+    networks:
+      orgflow:
+        ipv4_address: ${IP_BUILDER:-192.168.90.21}
+    healthcheck:
+      test: ["CMD-SHELL", "buildctl --addr tcp://127.0.0.1:1234 debug workers >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+volumes:
+  builder_cache:
+    external: true
+    name: ${BUILDER_CACHE_VOLUME:-orgflow-minimal_builder_cache}
+
+networks:
+  orgflow:
+    external: true
+    name: ${ORG_NETWORK:-orgflow-minimal_orgflow}

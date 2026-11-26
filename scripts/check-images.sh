@@ -27,7 +27,7 @@ done
 
 UBUNTU_DIGEST='sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852'
 # 扫描派生：有 compose.yml 的服务即 SERVICES；有 Dockerfile 的即 BUILDABLE；M1 走内容哈希的服务。
-SERVICES=(); BUILDABLE=(); HASHED=(jenkins jenkins-agent cgit registry)
+SERVICES=(); BUILDABLE=(); HASHED=(jenkins jenkins-agent cgit registry builder)
 for d in services/*/; do
   svc="${d#services/}"; svc="${svc%/}"
   [[ "$svc" == _* ]] && continue  # M2 P4：下划线开头为脚手架模板（_template），非真实服务
@@ -115,7 +115,7 @@ check_lock() {
       [[ "$hash" == "${LK_ctx[$svc]:-}" ]] || { echo "✗ $svc 内容哈希不一致: 计算=$hash lock=${LK_ctx[$svc]:-}（改完 Dockerfile 请跑 make images-hash 并同步 compose）" >&2; rc=1; }
       # M2.2 P1-3：M1 服务（jenkins/jenkins-agent）保留 m1 前缀；M2 服务（cgit/registry）统一 m2。
       case "$svc" in
-        cgit|registry) wantprefix="m2" ;;
+        cgit|registry|builder) wantprefix="m2" ;;
         *) wantprefix="m1" ;;
       esac
       wanttag="orgflow/$wantprefix-$svc:ctx-${hash:0:12}"
@@ -135,7 +135,7 @@ check_upstream() {
   while IFS=$'\t' read -r name ref digest; do
     [[ "$name" =~ ^[a-z] ]] || continue
     BY_NAME["$ref"]="$digest"
-  done < <(sed -n '/^```$/,/^```$/p' "$REG" | grep -E '^(ubuntu|caddy|ldap|ldapadmin|homepage|jenkins|registry)[[:space:]]')
+  done < <(sed -n '/^```$/,/^```$/p' "$REG" | grep -E '^(ubuntu|caddy|ldap|ldapadmin|homepage|jenkins|registry|buildkit)[[:space:]]')
   for df in services/*/Dockerfile; do
     [[ "$df" == services/_*/Dockerfile ]] && continue  # 排除脚手架模板
     from="$(grep -m1 '^FROM ' "$df" 2>/dev/null || true)"

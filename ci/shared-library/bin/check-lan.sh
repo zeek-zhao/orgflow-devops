@@ -121,8 +121,17 @@ case "$SVC" in
       fail "registry rc=$rc code=$code"; exit 1
     fi
     ;;
+  builder)
+    # M2.3：buildkitd 在 tcp://builder:1234 监听（内网，无宿主端口）。用 nc -z 验端口可达。
+    echo "[builder] nc -z builder 1234（buildkitd gRPC 内网可达）"
+    if nc -z builder 1234 2>/dev/null; then
+      pass "builder tcp:1234 可达"
+    else
+      fail "builder tcp:1234 不可达"; exit 1
+    fi
+    ;;
   *)
-    echo "用法：$0 <dns|dnsmasq|ldap|caddy|homepage|ldapadmin|router|jenkins|jenkins-agent|gerrit|cgit|registry>" >&2
+    echo "用法：$0 <dns|dnsmasq|ldap|caddy|homepage|ldapadmin|router|jenkins|jenkins-agent|gerrit|cgit|registry|builder>" >&2
     exit 2
     ;;
 esac

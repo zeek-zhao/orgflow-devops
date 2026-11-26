@@ -3,12 +3,12 @@
 > 状态：适用 | 最后核对：2026-11-26 | 对应分支：feat/m2-gerrit-cgit-harbor（M2.1 封版 m2.1-v1.0 + M2.2 启动）
 
 
-> 12 服务单机自托管底座：M0 七服务（DNS → 证书 → Caddy 唯一入口 → OpenLDAP → HomePage → Router）+ M1 两服务（Jenkins controller + SSH agent）+ M2.1 两服务（Gerrit + cgit）+ M2.2 一服务（registry 轻量镜像仓库）。Jenkins 手册见 [jenkins.md](services/jenkins.md)。
+> 13 服务单机自托管底座：M0 七服务（DNS → 证书 → Caddy 唯一入口 → OpenLDAP → HomePage → Router）+ M1 两服务（Jenkins controller + SSH agent）+ M2.1 两服务（Gerrit + cgit）+ M2.2 一服务（registry 轻量镜像仓库）+ M2.3 一服务（builder，rootless BuildKit）。Jenkins 手册见 [jenkins.md](services/jenkins.md)。
 > 全部镜像 @sha256 / 内容哈希锁定，逐服务 compose 按 manifest 顺序拉起，一功能一 Issue 一 PR。
 
 ## 是什么
 
-在一台云主机上起一套最小 DevOps 底座，12 个服务（11 常驻 + certs-init 一次性）按依赖顺序启动：
+在一台云主机上起一套最小 DevOps 底座，13 个服务（12 常驻 + certs-init 一次性）按依赖顺序启动：
 
 | # | 服务 | 职责 | 长驻 |
 |---|---|---|---|
@@ -22,6 +22,7 @@
 | 8 | gerrit | Gerrit 代码评审 + Git（M2.1） | 是 |
 | 9 | cgit | Gerrit 裸库只读 Web（M2.1） | 是 |
 | 10 | registry | OCI 镜像仓库 + htpasswd（M2.2） | 是 |
+| 11 | builder | rootless BuildKit 构建节点（M2.3） | 是 |
 
 ## 前置
 
@@ -115,6 +116,7 @@ make verify                   # 全量验收矩阵 AC-1~22
 | DOC-S-010 | Gerrit 服务手册 | docs/services/gerrit.md | 参考 | review | zeek.zhao | 6 | M2.1 |
 | DOC-S-011 | cgit 服务手册 | docs/services/cgit.md | 参考 | review | zeek.zhao | 6 | M2.1 |
 | DOC-S-012 | registry 服务手册 | docs/services/registry.md | 参考 | review | zeek.zhao | 6 | M2.2 |
+| DOC-S-013 | builder 服务手册 | docs/services/builder.md | 参考 | review | zeek.zhao | 6 | M2.3 |
 | DOC-P-004 | 分支与合并策略 | docs/records/分支与合并策略.md | 规程 | review | zeek.zhao | 6 | T12 |
 | DOC-P-005 | 备份与恢复 | docs/运维/备份与恢复.md | 规程 | review | zeek.zhao | 6 | R8 |
 | DOC-P-006 | 升级与回滚 | docs/运维/升级与回滚.md | 规程 | review | zeek.zhao | 6 | R8 |
