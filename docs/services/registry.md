@@ -27,7 +27,7 @@ registry:2 轻量方案符合 `config/preflight.sh` 资源闸门「available < 8
 - 薄封装：`FROM registry:2@<digest>` + `apache2-utils`（提供 htpasswd）。
 - 上游 digest：CI `docker pull registry:2` 取 RepoDigests 产出，回填 `UPSTREAM_REGISTRY`（config/images.env）、
   `tests/images.lock`、`docs/运维/镜像与供应链.md`；Dockerfile 的 FROM 占位 digest 由 CI build 前 sed 注入。
-- tag：`orgflow/m2-registry:ctx-04446f23aa73`（= `image-hash.sh registry` 前 12 位），由 CI 推 GHCR
+- tag：`orgflow/m2-registry:ctx-04619a62a033`（= `image-hash.sh registry` 前 12 位），由 CI 推 GHCR
   `ghcr.io/zeek-zhao/orgflow-devops/m2-registry:<tag>`，国内经 `ghcr.nju.edu.cn` 代理拉取。
 
 ## 4. 凭据与初始化

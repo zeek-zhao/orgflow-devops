@@ -20,5 +20,5 @@ jenkins	orgflow/m1-jenkins:ctx-b4db8ffda32f	-	sha256:74401de6a6f92e1afe1b02d1c8e
 jenkins-agent	orgflow/m1-jenkins-agent:ctx-baefa430f50d	-	sha256:8fbbc589fa4257287cb9903ed1e021b90db2be2827a80e86a433d9395ca7d019	baefa430f50d6be2049dd3c005b2bfac917b698b6993e6ca736c2e7b4671d1ce
 cgit	orgflow/m1-cgit:ctx-e0643a8c475e	-	sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852	e0643a8c475e24481f3efa3f182fb06d1a6290eec78d652eeb98f794ea73e241
 gerrit	gerritcodereview/gerrit:3.9.0	cb613d45e5986097736e272c262155a9189b3dc22bc8b88fce67141e5bea9481	sha256:25f02a983db5f2323fa2a4be7ea672a13dbe8a12cc0e0d31feaa5a348ad8df0f	-
-# M2.2：registry:2 薄封装（HASHED）；upstreamDigest 占位 0000…，待 CI docker pull 后回填真值。
-registry	orgflow/m1-registry:ctx-04446f23aa73	-	sha256:0000000000000000000000000000000000000000000000000000000000000000	04446f23aa73e11b358a88341db8c116372f651a6d6af05f309d7f70efac6251
+# M2.2：registry:2 薄封装（HASHED）；upstreamDigest = CI docker pull registry:2 真实 manifest digest。
+registry	orgflow/m1-registry:ctx-04619a62a033	-	sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373	04619a62a033c9ced68367705b4306b59fb1b07fab853d0bbf447e63f946bf2f

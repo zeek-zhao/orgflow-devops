@@ -11,11 +11,17 @@ PASS="${REGISTRY_PASSWORD:-change-me}"
 
 mkdir -p "$AUTH_DIR"
 
-# -B bcrypt / -b batch（从参数读，不交互）。若已有同名用户先删除再追加，保证幂等。
+# -B bcrypt / -b batch（从参数读，不交互）。首次创建需 -c，否则 htpasswd 报
+# "cannot modify file; use -c to create it" 退出（set -e 下会让容器启动失败）。
+# 若已有同名用户先删除；文件存在与否决定 -c。保证幂等且首次可起。
 if [ -f "$HTPASSWD" ] && grep -q "^${USER}:" "$HTPASSWD" 2>/dev/null; then
   htpasswd -D -b "$HTPASSWD" "$USER" >/dev/null 2>&1 || true
 fi
-htpasswd -B -b "$HTPASSWD" "$USER" "$PASS" >/dev/null 2>&1
+if [ -f "$HTPASSWD" ]; then
+  htpasswd -B -b "$HTPASSWD" "$USER" "$PASS" >/dev/null 2>&1
+else
+  htpasswd -B -b -c "$HTPASSWD" "$USER" "$PASS" >/dev/null 2>&1
+fi
 chmod 600 "$HTPASSWD" 2>/dev/null || true
 
 echo "[registry] htpasswd ready for user=$USER (bcrypt)" >&2
