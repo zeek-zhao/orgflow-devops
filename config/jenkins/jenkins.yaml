@@ -80,10 +80,14 @@ unclassified:
           gerritUserName: "ci-bot"
           gerritFrontEndUrl: "${GERRIT_FRONTEND_URL}"
           gerritCredentialsId: "gerrit-ci-ssh"
-          # 构建结果回写 Verified：成功 +1、失败 -1、开始 0（0=不回写，避免 started 噪声）。
+          # ★ Verified 回写口径（施工文档验收 11「失败不回写/Verified 不变」）：
+          #   - 三种构建结果全部设 0 = gerrit-trigger 插件不碰 Verified；
+          #   - Verified +1 只在 Pipeline 成功末段由 SSH review 独占回写（build-from-gerrit.Jenkinsfile）；
+          #   - post.failure 只 echo、不回写 → 失败时 Change 上 Verified 保持不变，杜绝假绿。
+          #   若这里给 failed 设 -1，失败构建会被插件自动打负票（change 探针实测），违反"Verified 不变"。
           gerritBuildStartedVerifiedValue: 0
-          gerritBuildSuccessfulVerifiedValue: 1
-          gerritBuildFailedVerifiedValue: -1
+          gerritBuildSuccessfulVerifiedValue: 0
+          gerritBuildFailedVerifiedValue: 0
 
 credentials:
   system:

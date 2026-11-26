@@ -21,7 +21,8 @@
 ### Verified
 - 判据 A ✅：插件 active、JCasC export 含 gerrit-trigger、凭据加载、server `Ready to receive data from Gerrit`。
 - 判据 B ✅：推 patchset 后 40 秒内 build-from-gerrit #1 自动触发。
-- 判据 C（手工）✅：`gerrit review --verified +1` 回写 change #1 `Verified=1 by ci-bot`；自动端到端因沙箱无法访问 docker.io（拉 ubuntu:24.04 基础镜像 TLS timeout）阻塞，待有出网环境补验；失败不假绿由 `post.failure` 保证。
+- 判据 C（手工）✅：`gerrit review --verified +1` 回写 change #1 `Verified=1 by ci-bot`；自动端到端因沙箱无法访问 docker.io（拉 ubuntu:24.04 基础镜像 TLS timeout）阻塞，待有出网环境补验。
+- 反证 ✅（验收 11）：server 级 Verified 全部设 0（插件不碰），+1 只由 Pipeline 成功末段 SSH 独占回写；`post.failure` 只 echo。推 change #24 → build #2 失败 → Change Verified 保持不变（approvals 为空），失败不假绿实证。
 - builder/agent 内网三条链路（builder:1234 / gerrit:29418 / registry:5000）全通；全栈 13 服务 healthy。
 
 ### 边界
