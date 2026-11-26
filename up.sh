@@ -46,6 +46,10 @@ fi
 if [[ -f .env ]]; then
   [[ -n "${REGISTRY_USER:-}" ]] || export REGISTRY_USER="$(sed -n 's/^REGISTRY_USER=//p' .env | head -1)"
   [[ -n "${REGISTRY_PASSWORD:-}" ]] || export REGISTRY_PASSWORD="$(sed -n 's/^REGISTRY_PASSWORD=//p' .env | head -1)"
+  # M2.3 收口 P2-4：CI 独立账号（第二 htpasswd 用户），同样从 .env 补读并 export，
+  # 让 registry/jenkins compose 的 ${REGISTRY_CI_USER}/${REGISTRY_CI_PASSWORD} 拿到值。
+  [[ -n "${REGISTRY_CI_USER:-}" ]] || export REGISTRY_CI_USER="$(sed -n 's/^REGISTRY_CI_USER=//p' .env | head -1)"
+  [[ -n "${REGISTRY_CI_PASSWORD:-}" ]] || export REGISTRY_CI_PASSWORD="$(sed -n 's/^REGISTRY_CI_PASSWORD=//p' .env | head -1)"
 fi
 
 # ---- 读 manifest（顺序 + 依赖）----

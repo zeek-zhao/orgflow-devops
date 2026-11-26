@@ -8,5 +8,20 @@
 # builder 不发布宿主端口。将来上 Caddy TLS 前加一层再收紧（Funnel → Caddy TLS → registry），
 # 属独立改造，不在 M2.3。
 
+# 内网 registry：两种写法都声明为明文 HTTP。
+# - IP 写法：历史遗留入口（宿主回环/文档示例）仍用。
+# - DNS 写法：CI Pipeline（build-from-gerrit）按"地址全走配置项/服务名"口径用 registry:5000，
+#   buildkit push 的目标域名是 registry:5000，必须在此声明，否则 buildkit 走 HTTPS 失败。
 [registry."192.168.90.20:5000"]
   http = true
+
+[registry."registry:5000"]
+  http = true
+
+# M2.3 收口 P1：Dockerfile 的 FROM 是 docker.io/library/ubuntu:24.04@sha256:...，
+# 宿主直连 auth.docker.io 在该网络下超时（判据 C 卡点）。给 buildkitd 配内容寻址镜像站，
+# digest 引用在镜像站同样可解析，无需改任何 Dockerfile / digest。
+# 已验证 docker.m.daocloud.io 可达（/v2/ 返回 401 鉴权=正常）；dockerproxy.com、
+# docker.1panel.live 在该网络下超时，不选。若 daocloud 后续不通，可换 docker.1ms.run（已验证可达）。
+[registry."docker.io"]
+  mirrors = ["docker.m.daocloud.io"]

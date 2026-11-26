@@ -17,7 +17,9 @@ pipeline {
     }
     environment {
         BUILDKIT_HOST = 'tcp://builder:1234'
-        REGISTRY      = '192.168.90.20:5000'
+        // M2.3 收口 P2-3：用 compose 服务名而非硬编码 IP（orgflow 内网 DNS 可解析 registry）。
+        // buildkitd.toml 已声明 registry:5000 为 insecure HTTP，push 无需改协议。
+        REGISTRY      = 'registry:5000'
     }
     stages {
         stage('Checkout change') {
@@ -25,7 +27,7 @@ pipeline {
                 withCredentials([sshUserPrivateKey(credentialsId: 'gerrit-ci-ssh', keyFileVariable: 'GERRIT_KEY')]) {
                     sh '''
                         set -e
-                        echo "SERVICE=${SERVICE} GERRIT_CHANGE_NUMBER=${GERRIT_CHANGE_NUMBER:-} GERRIT_PATCHSET_REVISION=${GERRIT_PATCHSET_REVISION:-}"
+                        echo "SERVICE=${SERVICE} GERRIT_CHANGE_NUMBER=${GERRIT_CHANGE_NUMBER:-} GERRIT_PATCHSET_NUMBER=${GERRIT_PATCHSET_NUMBER:-} GERRIT_PATCHSET_REVISION=${GERRIT_PATCHSET_REVISION:-}"
                         : "${GERRIT_REFSPEC:?GERRIT_REFSPEC 未注入（需 gerrit-trigger 事件参数）}"
                         rm -rf src && mkdir src && cd src
                         git init -q
@@ -86,9 +88,15 @@ pipeline {
                         set -e
                         : "${GERRIT_CHANGE_NUMBER:?}"
                         : "${GERRIT_PATCHSET_REVISION:?}"
+                        # M2.3 收口：Gerrit 3.9 的 `gerrit review` 必须带 patchset 序号：
+                        #   gerrit review <change>,<patchset#>
+                        # 传 revision hash 或省略 patchset 都报 "<n>" is not a valid patch set。
+                        # gerrit-trigger 注入 GERRIT_PATCHSET_NUMBER（1/2/...）；缺失时回退 1。
+                        : "${GERRIT_PATCHSET_NUMBER:=1}"
+                        REV8="$(printf '%s' "$GERRIT_PATCHSET_REVISION" | cut -c1-8)"
                         ssh -i "$GERRIT_KEY" -o StrictHostKeyChecking=no -p 29418 ci-bot@gerrit \
-                          "gerrit review ${GERRIT_CHANGE_NUMBER},${GERRIT_PATCHSET_REVISION} \
-                           --verified +1 --message 'CI: image ${IMG} built & pushed'"
+                          "gerrit review ${GERRIT_CHANGE_NUMBER},${GERRIT_PATCHSET_NUMBER} \
+                           --verified +1 --message 'CI: image ${IMG} built & pushed (rev ${REV8})'"
                     '''
                 }
             }

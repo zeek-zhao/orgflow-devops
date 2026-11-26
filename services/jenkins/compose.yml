@@ -29,8 +29,9 @@ services:
       # M2.3：CI 凭据（不入库）——ci-bot SSH 私钥（收事件 + SSH review 回写 Verified）、
       # registry 用户名/口令（buildctl push + REST 校验）。由 up.sh 从 secrets/ 与 .env 注入。
       GERRIT_CI_SSH_KEY: ${GERRIT_CI_SSH_KEY:-}
-      REGISTRY_CI_USER: ${REGISTRY_USER:-admin}
-      REGISTRY_CI_PASSWORD: ${REGISTRY_PASSWORD:-}
+      # M2.3 收口 P2-4：CI 用独立账号（不再默认 admin）。.env 未注入时回退 admin 兼容旧部署。
+      REGISTRY_CI_USER: ${REGISTRY_CI_USER:-${REGISTRY_USER:-admin}}
+      REGISTRY_CI_PASSWORD: ${REGISTRY_CI_PASSWORD:-${REGISTRY_PASSWORD:-}}
       # M2.3.2：Gerrit 前端 URL——gerrit-trigger 回写 Verified 时据此生成 review 链接。
       # 域名/端口均从 defaults.env 派生（与 out/urls.env 的 URL_GERRIT 真源同口径），不硬编码。
       GERRIT_FRONTEND_URL: https://${PUBLIC_HOST}:${FUNNEL_PORT_GERRIT:-8443}

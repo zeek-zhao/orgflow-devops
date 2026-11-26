@@ -1,10 +1,10 @@
 # Jenkins controller 服务手册
 
-> 状态：适用 | 最后核对：2026-11-25 | 对应分支：feat/m1-jenkins
+> 状态：适用 | 最后核对：2026-11-26 | 对应分支：feat/m2-gerrit-cgit-harbor
 
 
 ## 1. 定位
-持续集成控制器：M1 唯一构建调度中枢，JCasC 定义全部配置（安全域/授权/节点/凭据/9 条 Job），UI 上点出来的一律不算数。controller 自身 `numExecutors: 0` 不跑构建，所有 Job 在 SSH agent `orgflow-agent` 上执行。
+持续集成控制器：M1 唯一构建调度中枢，JCasC 定义全部配置（安全域/授权/节点/凭据/14 条 Job），UI 上点出来的一律不算数。controller 自身 `numExecutors: 0` 不跑构建，所有 Job 在 SSH agent `orgflow-agent` 上执行。M2.3 起新增 `build-from-gerrit`（Gerrit patchset 触发链）与 `verify-builder` 两条 Job。
 
 ## 2. 依赖
 - **LDAP**：`ldap:389`（osixia），登录唯一入口；管理员 `cn=admin,dc=orgflow,dc=local`，口令取自 `LDAP_ADMIN_PASSWORD`（默认 change-me，敏感值走不入库的 `.env`/宿主环境）。
@@ -45,7 +45,7 @@
   ```
   校验：`ldapsearch -x -b dc=orgflow,dc=local '(cn=jenkins-admins)' member` 应见 jenkins-ci 与 zeek.zhao 两个 member；`curl -u jenkins-ci:Jenkins@2026 $JENKINS_URL/api/json` → 200。
 - **JCasC 自锁兜底**：`jenkins.yaml` 写错（如 LDAP 连不上）会启动即不可登录。出问题时用仓库里的 `jenkins.yaml.bak`（上一版）替换后 `docker compose ... up -d --force-recreate`，**不要**开 `ignoreInvalid` 掩盖错误（错误必须暴露在启动日志）。
-- Job 即代码：`config/jenkins/jobs/*.groovy` 生成 9 条 Job；UI 删除后 `POST /jenkins/configuration-as-code/reload` 自动重建。**流水线逻辑的注入方式**：Job DSL 在生成时用 `new File('/opt/orgflow/ci/jenkins/pipelines/x.Jenkinsfile').text` 把内容**内联**进 `cps { script(...) }`（不是 UI 配 scriptPath）。后果：改 `*.Jenkinsfile` 后**不会自动生效**，必须 `POST /jenkins/configuration-as-code/reload` 重新生成 Job（见下方 reload 命令）。
+- Job 即代码：`config/jenkins/jobs/*.groovy` 生成 14 条 Job（4 个 Job DSL：verify-service 批量 11 条 + verify-lan-all + verify-jenkins-agent + build-from-gerrit）；UI 删除后 `POST /jenkins/configuration-as-code/reload` 自动重建。**流水线逻辑的注入方式**：Job DSL 在生成时用 `new File('/opt/orgflow/ci/jenkins/pipelines/x.Jenkinsfile').text` 把内容**内联**进 `cps { script(...) }`（不是 UI 配 scriptPath）。后果：改 `*.Jenkinsfile` 后**不会自动生效**，必须 `POST /jenkins/configuration-as-code/reload` 重新生成 Job（见下方 reload 命令）。
 - 资源：`JAVA_OPTS` 含 `-Xmx1g -Xms512m`（宿主内存有限），`restart: unless-stopped`。
 - 镜像：CI 按内容 tag 构建推 GHCR，compose 用 `${IMAGE_JENKINS:-ghcr.io/.../m1-jenkins:ctx-<12>}` + `pull_policy: missing`；`ctx-<12>` = `scripts/image-hash.sh jenkins` 前 12 位（与 lock 第 5 列一致），改 Dockerfile/plugins.txt 须跑 `make images-hash` 并同步 compose；切源只改 `IMAGE_JENKINS`（ghcr.io ↔ ghcr.nju.edu.cn 同 tag）。
 - **默认深色主题（T7，已生效）**：`config/jenkins/jenkins.yaml` 顶层 `appearance.themeManager`（`disableUserThemes: true`、`theme: "dark"`）是唯一真源，UI 点的一律不算；插件 `theme-manager` + `dark-theme` 钉在 `services/jenkins/plugins.txt`（版本由 update-center 解析，见 `plugins.lock.md`）。运行镜像按内容 tag `ctx-b4db8ffda32f` 引用（其 Dockerfile/plugins.txt 内容哈希见 `tests/images.lock` 第 5 列）已含两插件，公网 `/jenkins/appearance/` 显示 Dark、`disableUserThemes`，pluginManager 含两插件，UI 深色已生效。生效顺序**必须**「先重建镜像带插件 → 再 reload JCasC」——缺插件时 reload 会因 `No such theme` 让 Jenkins 起不来。若 `dark` 报 `No such theme` 换 `darkSystem`。切勿把 `appearance` 嵌进 `unclassified`（静默不生效）。

@@ -17,19 +17,28 @@ P_GERRIT_SSH="${P_GERRIT_SSH:-29418}"
 # 渲染到卷内 gerrit.config（600/gerrit），不进 git 源码/文档。
 LDAP_ADMIN_PASSWORD="${LDAP_ADMIN_PASSWORD:-}"
 # Gerrit serverId 必须跨重启稳定（NoteDb change meta 里固化了创建时的 server id）。
-# 优先用 env 注入值；否则读卷内持久化文件；再否则用与存量 NoteDb 一致的固定默认并落盘。
-# 默认 UUID 来自本底座首次创建 Change 时的 server id（5593956a...），保证存量 change 可写。
+# M2.3 收口 P2-5：单一真源 = etc 卷内的 server_id 文件，首次由 Gerrit 自身生成并落盘；
+#   不再在脚本里硬编码常量 UUID（换卷/重装会把旧 id 带过去，属隐性耦合）。
+#   迁移兼容：存量卷若无此文件，从 gerrit.config 已有的 serverId 读取并落盘（不新造 id，
+#   否则存量 change 会不可写）；都没有则让 Gerrit 首次启动时自行生成。
 SERVER_ID_FILE="$ROOT_CFG/server_id"
-GERRIT_SERVER_ID="${GERRIT_SERVER_ID:-}"
-if [[ -z "$GERRIT_SERVER_ID" && -s "$SERVER_ID_FILE" ]]; then
+GERRIT_CONFIG="$ROOT_CFG/gerrit.config"
+if [[ -s "$SERVER_ID_FILE" ]]; then
   GERRIT_SERVER_ID="$(cat "$SERVER_ID_FILE")"
+elif [[ -f "$GERRIT_CONFIG" ]]; then
+  # 存量 NoteDb 的 gerrit.config 可能已含 serverId，迁移时读出来固化到独立文件。
+  EXIST_ID="$(git -C "$ROOT_CFG" config --get gerrit.serverId 2>/dev/null || true)"
+  [[ -n "$EXIST_ID" ]] && GERRIT_SERVER_ID="$EXIST_ID"
 fi
-if [[ -z "$GERRIT_SERVER_ID" ]]; then
-  GERRIT_SERVER_ID="5593956a-8275-4e5c-82ee-8fb6b2c067dd"
+# env 注入仅作显式覆盖（如灾难恢复指定已知 id），优先级低于卷内持久化真源。
+if [[ -n "${GERRIT_SERVER_ID_OVERRIDE:-}" ]]; then
+  GERRIT_SERVER_ID="$GERRIT_SERVER_ID_OVERRIDE"
 fi
-printf '%s' "$GERRIT_SERVER_ID" > "$SERVER_ID_FILE"
-chown gerrit:gerrit "$SERVER_ID_FILE" 2>/dev/null || true
-chmod 600 "$SERVER_ID_FILE" 2>/dev/null || true
+if [[ -n "${GERRIT_SERVER_ID:-}" ]]; then
+  printf '%s' "$GERRIT_SERVER_ID" > "$SERVER_ID_FILE"
+  chown gerrit:gerrit "$SERVER_ID_FILE" 2>/dev/null || true
+  chmod 600 "$SERVER_ID_FILE" 2>/dev/null || true
+fi
 
 if [[ -f "$URLS_ENV" ]]; then
   # shellcheck disable=SC1090

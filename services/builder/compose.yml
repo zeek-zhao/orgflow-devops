@@ -17,6 +17,9 @@ services:
     command:
       - --addr=tcp://0.0.0.0:1234
       - --oci-worker-no-process-sandbox
+      # M2.3 收口 P1：rootlesskit 重执行 buildkitd 时不保证读默认路径，显式指定 config，
+      # 否则 docker.io mirror / registry insecure 声明全部不生效（判据 C 卡点根因）。
+      - --config=/etc/buildkit/buildkitd.toml
     volumes:
       - builder_cache:/var/lib/buildkit
       - ./buildkitd.toml:/etc/buildkit/buildkitd.toml:ro

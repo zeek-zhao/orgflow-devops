@@ -2,6 +2,22 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m2.3-closeout] — 2026-11-26（收口复核：判据 C 闭环 + P2 收口）
+
+> 分支 `feat/m2-gerrit-cgit-harbor`，基线 `730cdec`（tag `m2.3-gerrit-ci`）。依据《orgflow-M2.3-收口复核-2026-11-26.md》。详见 `docs/records/执行日志/2026-11-26.md`。
+
+### Fixed
+- **判据 C 根因（P1）**：buildkitd 拉 `docker.io/library/ubuntu:24.04@sha256:...` 直连 `registry-1.docker.io` 超时。两处修复：① `services/builder/buildkitd.toml` 给 docker.io 配内容寻址镜像站 `docker.m.daocloud.io`（digest 引用同样可解析，不改任何 Dockerfile/@sha256）；② `services/builder/compose.yml` 给 buildkitd 显式加 `--config=/etc/buildkit/buildkitd.toml`——rootlesskit 重执行时未读默认路径，是 mirror 配置一直没生效的真正根因。
+- **P2-3 IP 硬编码**：Pipeline `REGISTRY` 从 `192.168.90.20:5000` 改为 DNS 服务名 `registry:5000`；buildkitd.toml 同步声明 `registry:5000 http=true`。
+- **P2-4 CI 最小权限**：registry entrypoint 支持第二个 htpasswd 用户，CI 用独立账号 `ci-push`（.env 注入），不再复用 admin；admin 保留供运维。
+- **P2-5 serverId 去硬编码**：gerrit entrypoint 不再写死 UUID 常量，单一真源改为 etc 卷内 `server_id` 文件（迁移时从 gerrit.config 读存量 id，避免存量 change 不可写）。
+- **P2-2 状态页文案**：router STATUS_META 补 builder 条目（探测 `buildctl debug workers`、入口 `tcp://builder:1234`（仅内网））。
+- **P2-7 文档漂移**：jenkins.md / jenkins.yaml 注释 Job 数 9→14、DSL 3→4。
+
+### Verified
+- **判据 C 端到端 ✅**：镜像源修复后 buildctl 成功拉取带 digest 的 ubuntu base 并完成构建；完整 cgit 镜像 build+push 到 `registry:5000` 成功、`BUILD_RC=0`、REST 校验 manifest `200`；DNS 名与 insecure HTTP 均生效。
+- registry 双用户鉴权：`ci-push` 200、admin 200、旧口令 `admin:change-me` 401。
+
 ## [m2.3-gerrit-ci] — 2026-11-26（Gerrit → Jenkins 触发链）
 
 > 分支 `feat/m2-gerrit-cgit-harbor`，基线 `8caf5bd`。依据《orgflow-M2.3-触发链施工文档-2026-11-26.md》。详见 `docs/records/执行日志/2026-11-26.md`。

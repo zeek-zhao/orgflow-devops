@@ -16,6 +16,9 @@ services:
       TZ: ${TZ:-Asia/Shanghai}
       REGISTRY_USER: ${REGISTRY_USER:-admin}
       REGISTRY_PASSWORD: ${REGISTRY_PASSWORD:-change-me}
+      # M2.3 收口 P2-4：CI 独立账号（第二 htpasswd 用户），最小权限——CI 不再复用 admin。
+      REGISTRY_CI_USER: ${REGISTRY_CI_USER:-}
+      REGISTRY_CI_PASSWORD: ${REGISTRY_CI_PASSWORD:-}
       # 官方 registry:2 环境变量覆盖默认 config.yml，启用 htpasswd 基础鉴权。
       REGISTRY_AUTH_HTPASSWD_REALM: ${REGISTRY_AUTH_REALM:-orgflow-registry}
       REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd

@@ -73,6 +73,9 @@ STATUS_META = {
     "gerrit":         ("代码评审 Gerrit", "HTTP :8443/ + LDAP 登录", "见首页 Gerrit 入口卡（:8443）"),
     "cgit":           ("代码浏览 cgit", "HTTP /cgit/", '<a href="/cgit/">/cgit/</a>'),
     "registry":       ("镜像仓库 registry", "HTTP :5000/v2/（401 鉴权生效）", "API only · 公网 :10000 / 内网 :18086"),
+    # M2.3 收口 P2-2：builder 无 Web UI，也不在首页渲染卡片（manifest public_path=/none），
+    # 状态页给出真实探测方式与内网入口，避免"入口见首页卡片 / 首页指向状态页"互相推诿。
+    "builder":        ("构建器 BuildKit builder", "容器内 buildctl debug workers", "tcp://builder:1234（仅内网，无 Web UI）"),
 }
 
 

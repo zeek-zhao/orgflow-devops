@@ -15,8 +15,9 @@ services:
       P_GERRIT_HTTP: ${P_GERRIT_HTTP:-8080}
       P_GERRIT_SSH: ${P_GERRIT_SSH:-29418}
       GERRIT_PUBLIC_URL: ${URL_GERRIT:-}
-      # serverId 跨重启稳定（NoteDb change meta 固化创建时 id）；入口脚本也落卷兜底。
-      GERRIT_SERVER_ID: ${GERRIT_SERVER_ID:-5593956a-8275-4e5c-82ee-8fb6b2c067dd}
+      # serverId 单一真源 = etc 卷内 server_id 文件（首次由 Gerrit 生成）；不再硬编码常量。
+      # 仅灾难恢复需指定已知 id 时用 GERRIT_SERVER_ID_OVERRIDE 显式覆盖（默认空）。
+      GERRIT_SERVER_ID_OVERRIDE: ${GERRIT_SERVER_ID_OVERRIDE:-}
       # LDAP 服务账号 bind 口令（M0 ACL 匿名拒读）：入口脚本写入 secure.config，不入库。
       LDAP_ADMIN_PASSWORD: ${LDAP_PASSWORD:-change-me}
     ports:

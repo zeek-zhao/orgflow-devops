@@ -125,7 +125,7 @@ credentials:
               password: "${REGISTRY_CI_PASSWORD}"
               description: "Internal registry push/verify credential (M2.3)"
 
-# Job as Code：9 条 Job 由以下 3 个 Job DSL 幂等生成；- file: 必须是容器内绝对路径。
+# Job as Code：14 条 Job 由以下 4 个 Job DSL 幂等生成；- file: 必须是容器内绝对路径。
 # config/jenkins 是只读挂载，Job 不得往里写；不再有 globalLibraries（共享库走文件挂载）。
 jobs:
   - file: /var/jenkins_home/casc/jobs/verify-service.groovy
