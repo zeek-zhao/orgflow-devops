@@ -8,7 +8,7 @@ Gerrit 裸库的只读 Web 视图（cgit），公网经 Caddy `:443` 的 `/cgit/
 
 ## 2. 镜像与网络
 
-- 镜像：`orgflow/m1-cgit:ctx-e0643a8c475e`（自建，内容哈希 tag）。`Dockerfile` = `ubuntu:24.04@sha256:fe8156…` + `cgit fcgiwrap nginx-light git`；`user 1000:1000`（须与 Gerrit 容器 uid 对齐，否则读不到裸库）。
+- 镜像：`orgflow/m2-cgit:ctx-e0643a8c475e`（自建，内容哈希 tag；M2.2 P1-3 由 m1 统一为 m2，hash 后缀不变）。`Dockerfile` = `ubuntu:24.04@sha256:fe8156…` + `cgit fcgiwrap nginx-light git`；`user 1000:1000`（须与 Gerrit 容器 uid 对齐，否则读不到裸库）。
 - 固定 IP `.19`，只读挂载 `gerrit_git:/var/gerrit/git:ro`，不发布宿主端口。
 - 内容哈希 `e0643a8c475e…`（`scripts/image-hash.sh cgit`），登记于 `tests/images.lock`；改 Dockerfile/cgitrc/entrypoint/nginx 配置后必须 `make images-hash` 并同步 images.env/compose/tag 四处。
 - 2026-11-26 迭代：① 白名单初版 `project-root`+`project-list` 哈希 `c3b8b5ce…`；② smart-http clone 修复（Dockerfile 加 `git`、nginx 加 `git-http-backend` location）→ `b95e2a13d3b6…`；③ **白名单机制纠正**：`project-list` 单独使用实测无效，改 `repo.` 显式清单（`include=/tmp/projects.conf`）→ `e0643a8c475e…`。CI（mirror-m2.yml）按 `services/cgit/**` 变更自动重建并推 GHCR 新 tag。

@@ -52,7 +52,17 @@ check_base() {
     df="services/$svc/Dockerfile"
     [[ -f "$df" ]] || { echo "✗ 缺 $df" >&2; rc=1; continue; }
     from="$(grep -m1 '^FROM ' "$df" | awk '{print $2}')"
-    [[ "$from" == *@sha256:* ]] || { echo "✗ $df FROM 未固定 digest: $from" >&2; rc=1; }
+    if [[ "$from" == *@sha256:* ]]; then
+      : # 字面固定 digest（M0/M1/cgit 既有口径）
+    elif [[ "$from" == *@\$\{*\} ]]; then
+      # M2.2 P2-2：FROM registry:2@${BASE_DIGEST}。必须在本文件声明真实 digest 默认值，
+      # 保证仓库可直接 docker build（默认可构建）、CI 再用 --build-arg 注入当日实拉值。
+      arg="${from#*@\$\{}"; arg="${arg%%\}*}"
+      grep -qE "^ARG ${arg}=sha256:[0-9a-f]{64}$" "$df" \
+        || { echo "✗ $df 缺 ARG ${arg}=sha256:<真实64位> 默认值（本地不可构建）" >&2; rc=1; }
+    else
+      echo "✗ $df FROM 未固定 digest: $from" >&2; rc=1
+    fi
   done
   local f
   for svc in "${SERVICES[@]}"; do
@@ -103,7 +113,12 @@ check_lock() {
     if is_hashed "$svc"; then
       hash="$(bash scripts/image-hash.sh "$svc" 2>/dev/null)" || { echo "✗ $svc image-hash.sh 执行失败" >&2; rc=1; continue; }
       [[ "$hash" == "${LK_ctx[$svc]:-}" ]] || { echo "✗ $svc 内容哈希不一致: 计算=$hash lock=${LK_ctx[$svc]:-}（改完 Dockerfile 请跑 make images-hash 并同步 compose）" >&2; rc=1; }
-      wanttag="orgflow/m1-$svc:ctx-${hash:0:12}"
+      # M2.2 P1-3：M1 服务（jenkins/jenkins-agent）保留 m1 前缀；M2 服务（cgit/registry）统一 m2。
+      case "$svc" in
+        cgit|registry) wantprefix="m2" ;;
+        *) wantprefix="m1" ;;
+      esac
+      wanttag="orgflow/$wantprefix-$svc:ctx-${hash:0:12}"
       [[ "$tag" == "$wanttag" ]] || { echo "✗ $svc tag 后缀不一致: lock=$tag 应为 $wanttag（跑 make images-hash）" >&2; rc=1; }
       [[ "$iid" == "-" ]] || { echo "✗ $svc（HASHED）imageId 应为 '-'，实为 '$iid'" >&2; rc=1; }
     fi

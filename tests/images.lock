@@ -4,7 +4,8 @@
 # M0 六项（homepage/caddy/ldap/ldapadmin/dnsmasq/router/certs-init）：
 #   tag=orgflow/m0-<svc>:v2 不变；imageId 保留历史构建 64hex；upstreamDigest=Dockerfile FROM 的基底 digest。
 # M1 两项（jenkins/jenkins-agent）：
-#   tag=orgflow/m1-<svc>:ctx-<12>（12 = contextSha256 前 12 位，compose 直接引用此 tag）；
+#   tag=orgflow/m<阶段>-<svc>:ctx-<12>（12 = contextSha256 前 12 位，compose 直接引用此 tag）；
+#   M2.2 P1-3 命名统一：M1(jenkins*) 用 m1、M2(cgit/registry) 用 m2，与 GHCR 路径对齐。
 #   imageId="-"（构建产物 ID 每次随机，无标识价值，不再使用）；
 #   contextSha256=scripts/image-hash.sh <svc> 的输出（Dockerfile + 其 COPY 真源文件的内容哈希，64hex，为本方案主标识）。
 #   改 Dockerfile/plugins.txt 后必须跑 make images-hash 更新本列与 tag，并同步 compose；--mode=lock 会强校验。
@@ -18,7 +19,7 @@ router	orgflow/m0-router:v2	6c4edabeebc95eb816396647d79ef1cb7985875440103040f8f9
 certs-init	orgflow/m0-router:v2	6c4edabeebc95eb816396647d79ef1cb7985875440103040f8f97a1acc737e27	sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852	30553536fd75c15bd3a9f9d1a20b84388ff00c32fbe71b58db617032ddf3b505
 jenkins	orgflow/m1-jenkins:ctx-b4db8ffda32f	-	sha256:74401de6a6f92e1afe1b02d1c8e3d0c33f263bfb5275dd8813f9150355f2367b	b4db8ffda32fa0c6d1e8f5cf75c4a67ab1e0828eee6b774094973c02709d3c5e
 jenkins-agent	orgflow/m1-jenkins-agent:ctx-baefa430f50d	-	sha256:8fbbc589fa4257287cb9903ed1e021b90db2be2827a80e86a433d9395ca7d019	baefa430f50d6be2049dd3c005b2bfac917b698b6993e6ca736c2e7b4671d1ce
-cgit	orgflow/m1-cgit:ctx-e0643a8c475e	-	sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852	e0643a8c475e24481f3efa3f182fb06d1a6290eec78d652eeb98f794ea73e241
-gerrit	gerritcodereview/gerrit:3.9.0	cb613d45e5986097736e272c262155a9189b3dc22bc8b88fce67141e5bea9481	sha256:25f02a983db5f2323fa2a4be7ea672a13dbe8a12cc0e0d31feaa5a348ad8df0f	-
+cgit	orgflow/m2-cgit:ctx-e0643a8c475e	-	sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852	e0643a8c475e24481f3efa3f182fb06d1a6290eec78d652eeb98f794ea73e241
+gerrit	ghcr.io/zeek-zhao/orgflow-devops/m2-gerrit:3.9.0	cb613d45e5986097736e272c262155a9189b3dc22bc8b88fce67141e5bea9481	sha256:25f02a983db5f2323fa2a4be7ea672a13dbe8a12cc0e0d31feaa5a348ad8df0f	-
 # M2.2：registry:2 薄封装（HASHED）；upstreamDigest = CI docker pull registry:2 真实 manifest digest。
-registry	orgflow/m1-registry:ctx-04619a62a033	-	sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373	04619a62a033c9ced68367705b4306b59fb1b07fab853d0bbf447e63f946bf2f
+registry	orgflow/m2-registry:ctx-1cb303e1dbfa	-	sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373	1cb303e1dbfa6424e50bc5854563528b1638dbb993c92a57aeb9abfe6f4e17b3

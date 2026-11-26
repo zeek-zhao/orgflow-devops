@@ -2,6 +2,30 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m2.2-registry] — 2026-11-26（M2.2 registry 上线 + 第五轮收口）
+
+> 分支 `feat/m2-gerrit-cgit-harbor`，tag `m2.2-registry`。基线 `e3d3331`。详见 `docs/records/执行日志/2026-11-26.md`。本版只做 M2.2 收口，不开 M2.3。
+
+### Added
+- **registry:2 轻量镜像仓库（路线 B）**：htpasswd 基础鉴权，`Funnel :10000 → 127.0.0.1:${PUB_HTTP_HARBOR} → 容器 5000`；push/pull 端到端 5/5 验证（401 鉴权、login、push/pull digest 一致、匿名拒绝、门禁全绿）。镜像由 CI 中转推 GHCR m2-registry，国内经南大代理拉取。
+- **内网 TLS/insecure 客户端接入清单入库**（registry.md §6.1）：厘清 loopback 内置明文信任 vs 非回环地址需 TLS/insecure，明确 M2.3 两条路线与注入责任人，杜绝配置只活在机器上。
+
+### Fixed（第五回复核 4 P1 + 4 P2）
+- P1-1 `/status` 启动快照停在 11 服务 → router 改按 manifest mtime 缓存重建，recreate 后 12 服务含 registry（公网+本地实测）。
+- P1-2 `verify-registry` Job 缺失 → JCasC reload（容器内带 crumb，HTTP 302）后 Job 11→12，手动触发 #1 SUCCESS。
+- P1-3 镜像命名 m1/m2 混用 → cgit/registry 统一 `m2-` 前缀，四处真源同步（images.env/lock/compose/CI），hash 后缀不变。
+- P1-4 registry 无 TLS/insecure 不在仓库 → 见上 §6.1 客户端接入清单入库。
+- P2-1 `IMAGE_GERRIT` 墙外 Docker Hub 地址 → 改 GHCR `m2-gerrit:3.9.0`，删过期 TODO。
+- P2-2 registry Dockerfile FROM 全零占位 → 改 `ARG BASE_DIGEST=<真实默认值>` + CI `--build-arg` 注入，仓库可直接构建；门禁 check_base 同步放宽。
+- P2-3 首页 registry 卡片文案含糊 → 明确「API only · 公网 :10000 / 内网 :18086（无 Web UI）」。
+- P2-4 `verify-lan-all` 未含 registry 全量跑 → #15 SUCCESS（11 项含 registry）。
+
+### Verified
+- `make check`/`check-all`/`test` 全绿；verify-registry #1、verify-lan-all #15 SUCCESS；公网 `/`、`/healthz`、`/cgit/`、`/status`=200，`:10000/v2/`=401。
+
+### 边界
+- Harbor 官方栈（UI/项目/robot）按 B 路线有意不做；M2.3 Jenkins 触发链、内网 registry TLS 落地未开始。
+
 ## [m2.1-v1.0] — 2026-11-26（M2.1 封版：Gerrit + cgit 上线，评审流 4/4 通过）
 
 > 分支 `feat/m2-gerrit-cgit-harbor`，封版 tag `m2.1-v1.0` @ `fca5c19`。详见 `docs/records/执行日志/2026-11-26.md`。交付主线仍是 `feat/m0-release` / `feat/m1-jenkins` 的历史链，本 tag 标记 M2.1 功能面封版快照。

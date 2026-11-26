@@ -59,10 +59,10 @@
         icon: "mdi-git"
         siteMonitor: "http://cgit:80/"
         ping: "cgit"
-    - registry:
+    - 镜像仓库 registry:
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/status"
-        description: "registry"
-        icon: "mdi-circle"
+        description: "镜像仓库 API only · 公网 :10000 / 内网 :18086（无 Web UI）"
+        icon: "mdi-package-variant"
         siteMonitor: "http://registry:5000/v2/"
         ping: "registry"
 - 公网入口:

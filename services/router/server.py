@@ -72,6 +72,7 @@ STATUS_META = {
     "jenkins-agent":  ("构建节点 Jenkins Agent", "SSH 22 / Job 在线探测", "无 UI，见首页卡片"),
     "gerrit":         ("代码评审 Gerrit", "HTTP :8443/ + LDAP 登录", "见首页 Gerrit 入口卡（:8443）"),
     "cgit":           ("代码浏览 cgit", "HTTP /cgit/", '<a href="/cgit/">/cgit/</a>'),
+    "registry":       ("镜像仓库 registry", "HTTP :5000/v2/（401 鉴权生效）", "API only · 公网 :10000 / 内网 :18086"),
 }
 
 
@@ -117,7 +118,22 @@ def build_status_html():
     )
 
 
-STATUS_HTML = build_status_html()
+# M2.2 第五回复核 P1-1：去掉模块级启动快照。manifest 经 bind mount 挂载，容器不重建
+# 时 STATUS_HTML 永远停在启动那刻的服务数（如 11）。改为请求时按 manifest mtime 缓存：
+# 文件变了才重建，兼顾实时性与零开销（stat 一次极廉价）。
+_status_cache = {"mtime": None, "html": None}
+
+
+def get_status_html():
+    try:
+        mtime = os.stat(MANIFEST_PATH).st_mtime
+    except OSError:
+        mtime = None
+    if _status_cache["html"] is None or _status_cache["mtime"] != mtime:
+        _status_cache["html"] = build_status_html()
+        _status_cache["mtime"] = mtime
+    return _status_cache["html"]
+
 
 # r5 §4-8：4 条 308 跳转 + /status 反代（HTML 由 router GET /status 唯一提供，不再内联）
 PUBLIC_FIXED = """    @status path /status
@@ -396,9 +412,9 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "ok"); return
         if self.path == "/status":
             # r5 §4-8：状态页唯一真源（文本 HTML；Caddy @status reverse_proxy 到此）。
-            # r6 终验判据 7/8：打访问日志 + Status-Source 头，正文列 9 个 of-* 容器。
+            # M2.2 P1-1：改为 get_status_html()（按 manifest mtime 缓存），新增服务实时进页面。
             print(f"[status] GET /status from {self.client_address[0]}", flush=True)
-            self._send(200, STATUS_HTML, content_type="text/html; charset=utf-8",
+            self._send(200, get_status_html(), content_type="text/html; charset=utf-8",
                        extra_headers={"Status-Source": "router"}); return
         if self.path == "/routes":
             try:

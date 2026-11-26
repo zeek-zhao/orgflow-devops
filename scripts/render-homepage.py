@@ -44,6 +44,9 @@ META = {
     "jenkins-agent": ("Jenkins Agent", "mdi-ssh",      "构建执行节点 · 普通用户 jenkins / SSH 22"),
     "gerrit":     ("Gerrit",     "mdi-source-review",  "代码评审与 Git 服务 · gerrit:8080"),
     "cgit":       ("cgit",       "mdi-git",            "Gerrit 裸库只读视图 · /cgit/"),
+    # M2.2 P2-3：registry 无 Web UI，文案明确「API only」并给出入口端口，
+    # 避免用户误以为点卡片能进管理界面（服务状态组 href 统一落 /status，见 STATUS_HREF_PATH）。
+    "registry":   ("镜像仓库 registry", "mdi-package-variant", "镜像仓库 API only · 公网 :10000 / 内网 :18086（无 Web UI）"),
 }
 
 # 公网入口组排除的 public_path：指向 /status 的假入口与一次性任务的 /none

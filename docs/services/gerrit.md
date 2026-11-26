@@ -9,7 +9,7 @@
 
 ## 2. 镜像与网络
 
-- 镜像：`gerritcodereview/gerrit:3.9.0`（官方镜像，不走自建）。Docker Hub 在本环境被墙，改由 GitHub Actions（`.github/workflows/mirror-m2.yml`）在海外 runner 拉取官方镜像原样推 GHCR，本地经 `ghcr.nju.edu.cn` 代理下载；上游 manifest digest `sha256:25f02a98…` 钉在 `config/images.env` 的 `UPSTREAM_GERRIT`，同步 `tests/images.lock`。
+- 镜像：真源 `ghcr.io/zeek-zhao/orgflow-devops/m2-gerrit:3.9.0`（M2.2 P2-1 起；compose 回退同址）。官方源 `gerritcodereview/gerrit:3.9.0` 在 Docker Hub 被墙，由 GitHub Actions（`.github/workflows/mirror-m2.yml`）在海外 runner 拉取原样推 GHCR，本地经 `ghcr.nju.edu.cn` 代理下载；上游 manifest digest `sha256:25f02a98…` 钉在 `config/images.env` 的 `UPSTREAM_GERRIT`，同步 `tests/images.lock`。
 - 固定 IP `.18`（`IP_GERRIT`），接 `orgflow-minimal_orgflow` 网络。
 - 卷：`gerrit_git`（裸库，cgit 只读共享）、`gerrit_etc`（配置与 secure.config）。
 - 配置：`services/gerrit/etc/gerrit.config.tmpl` → entrypoint 用 `out/urls.env` 渲染（canonicalWebUrl 等无字面域名），先备份 `.bak`。

@@ -1,10 +1,10 @@
-# registry:2 薄封装：官方基底（digest 占位 0000…，CI 构建前 sed 注入 CI 实拉的真实 digest）
-# + apache2-utils 提供 htpasswd（entrypoint 运行时生成基础鉴权文件）。
-# 上游 digest 真值由 CI（mirror-m2.yml）docker pull registry:2 取 RepoDigests 产出，
-# 回填 config/images.env 的 UPSTREAM_REGISTRY 与 docs/运维/镜像与供应链.md 登记表；
-# 本文件保留占位以满足「FROM@sha256」门禁，image-hash.sh 口径基于本文件文本，稳定可控。
-# CI 构建推 GHCR m2-registry:ctx-<12>，国内经 ghcr.nju.edu.cn 代理拉取。
-FROM registry:2@sha256:0000000000000000000000000000000000000000000000000000000000000000
+# registry:2 薄封装：官方基底通过 build-arg 注入上游 digest；默认值 = CI 实拉的真实 digest，
+# 保证仓库里的 Dockerfile 直接 `docker build services/registry` 就能构建（M2.2 P2-2）。
+# CI（mirror-m2.yml）用 `docker build --build-arg BASE_DIGEST=$UP` 注入当日实拉 digest，
+# 不再 sed 改文件——仓库内容与 CI 构建输入一致，杜绝「绿得靠口径」。
+# 上游 digest 真值同步在 config/images.env 的 UPSTREAM_REGISTRY 与 docs/运维/镜像与供应链.md。
+ARG BASE_DIGEST=sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
+FROM registry:2@${BASE_DIGEST}
 
 RUN apk add --no-cache apache2-utils \
     && rm -rf /var/cache/apk/*

@@ -72,7 +72,7 @@ jobs:
           locale -a | grep -qi '^en_US\.utf8$' || sudo locale-gen en_US.UTF-8
           HASH="$(bash scripts/image-hash.sh cgit)"
           TAG="ctx-${HASH:0:12}"
-          GHCR="ghcr.io/zeek-zhao/orgflow-devops/m1-cgit:$TAG"
+          GHCR="ghcr.io/zeek-zhao/orgflow-devops/m2-cgit:$TAG"
           echo "cgit 期望 tag=$TAG（contextSha256=$HASH）" | tee -a "$GITHUB_STEP_SUMMARY"
           docker build -t "$GHCR" services/cgit
           docker push "$GHCR"
@@ -93,14 +93,14 @@ jobs:
           RD="$(docker image inspect "$REF" --format '{{index .RepoDigests 0}}')"
           UP="${RD#*@}"
           echo "upstream_digest=$UP" >> "$GITHUB_OUTPUT"
-          # image-hash.sh 口径基于 Dockerfile 文本（FROM 占位 digest），tag 稳定。
+          # image-hash.sh 口径基于 Dockerfile 文本（ARG BASE_DIGEST 默认值固定），tag 稳定。
           HASH="$(bash scripts/image-hash.sh registry)"
           TAG="ctx-${HASH:0:12}"
           GHCR="ghcr.io/zeek-zhao/orgflow-devops/m2-registry:$TAG"
           echo "registry upstream=$UP 期望 tag=$TAG" | tee -a "$GITHUB_STEP_SUMMARY"
-          # 把占位 digest 注入 Dockerfile 的 FROM（只在本 CI 构建上下文生效，不改仓库文件）
-          sed -i "s#FROM registry:2@sha256:0000000000000000000000000000000000000000000000000000000000000000#FROM registry:2@${UP}#" services/registry/Dockerfile
-          docker build -t "$GHCR" services/registry
+          # M2.2 P2-2：Dockerfile 用 ARG BASE_DIGEST（默认值=已验证真实 digest，仓库可直接 build）。
+          # CI 用 --build-arg 注入当日实拉 digest，不再 sed 改文件——仓库内容与构建输入一致。
+          docker build --build-arg BASE_DIGEST="$UP" -t "$GHCR" services/registry
           docker push "$GHCR"
           GHRD="$(docker image inspect "$GHCR" --format '{{index .RepoDigests 0}}')"
           printf 'registry tag=%s ghcr=%s\n' "$TAG" "${GHRD#*@}" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -112,7 +112,7 @@ jobs:
             echo "- gerrit upstream digest: \`${{ steps.gerrit.outputs.upstream_digest }}\`"
             echo "- gerrit GHCR digest: \`${{ steps.gerrit.outputs.ghcr_digest }}\`"
             echo "- 包地址：ghcr.io/zeek-zhao/orgflow-devops/m2-gerrit:3.9.0"
-            echo "- 包地址：ghcr.io/zeek-zhao/orgflow-devops/m1-cgit:<ctx tag，见上>"
+            echo "- 包地址：ghcr.io/zeek-zhao/orgflow-devops/m2-cgit:<ctx tag，见上>"
             echo "- registry upstream digest: \`${{ steps.registry.outputs.upstream_digest }}\`"
             echo "- 包地址：ghcr.io/zeek-zhao/orgflow-devops/m2-registry:ctx-<12，见上>"
           } >> "$GITHUB_STEP_SUMMARY"
