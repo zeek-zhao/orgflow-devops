@@ -65,6 +65,25 @@ unclassified:
   # 不设会在日志刷 "Jenkins URL is not set"，反代下邮件/回调链接也会错。
   location:
     url: "${JENKINS_URL}"
+  # M2.3.2：Gerrit 事件源。gerrit-trigger 插件的 JCasC 支持由 GerritJcascConfigurator 提供
+  # （判据 A 已实证：configuration-as-code/export 含 gerrit-trigger 段），无需 init.groovy 豁免。
+  # gerritCredentialsId 优先于 gerritAuthKeyFile，直接复用凭据 gerrit-ci-ssh（私钥不落盘）。
+  # ★ JCasC 符号名是 gerrit-trigger（连字符），不是 gerritTrigger；写驼峰会 BootFailure：
+  #   UnknownAttributesException: Invalid configuration elements ... : gerritTrigger
+  #   Available attributes 里明确列的是 gerrit-trigger。
+  gerrit-trigger:
+    servers:
+      - name: "gerrit"
+        config:
+          gerritHostName: "gerrit"
+          gerritSshPort: 29418
+          gerritUserName: "ci-bot"
+          gerritFrontEndUrl: "${GERRIT_FRONTEND_URL}"
+          gerritCredentialsId: "gerrit-ci-ssh"
+          # 构建结果回写 Verified：成功 +1、失败 -1、开始 0（0=不回写，避免 started 噪声）。
+          gerritBuildStartedVerifiedValue: 0
+          gerritBuildSuccessfulVerifiedValue: 1
+          gerritBuildFailedVerifiedValue: -1
 
 credentials:
   system:
@@ -108,6 +127,8 @@ jobs:
   - file: /var/jenkins_home/casc/jobs/verify-service.groovy
   - file: /var/jenkins_home/casc/jobs/verify-lan-all.groovy
   - file: /var/jenkins_home/casc/jobs/verify-jenkins-agent.groovy
+  # M2.3：Gerrit patchset-created 触发的 CI Job（buildkit → registry → Verified+1）
+  - file: /var/jenkins_home/casc/jobs/build-from-gerrit.groovy
 
 # M1 T7：全局默认深色主题；禁止用户改（JCasC 是唯一真源，UI 点的不算）。
 # ★ 顶层根节点，不能嵌进 unclassified（否则静默不生效）。

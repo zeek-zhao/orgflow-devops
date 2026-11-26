@@ -3,7 +3,7 @@
 # 与 tests/images.lock 的 contextSha256 前 12 位一致；切源只改 IMAGE_JENKINS_AGENT。
 services:
   jenkins-agent:
-    image: ${IMAGE_JENKINS_AGENT:-ghcr.io/zeek-zhao/orgflow-devops/m1-jenkins-agent:ctx-baefa430f50d}
+    image: ${IMAGE_JENKINS_AGENT:-ghcr.io/zeek-zhao/orgflow-devops/m1-jenkins-agent:ctx-951abc7a53fd}
     pull_policy: missing
     container_name: ${CONTAINER_PREFIX:-of}-jenkins-agent
     labels:

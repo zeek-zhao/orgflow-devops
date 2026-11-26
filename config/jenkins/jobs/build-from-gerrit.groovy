@@ -16,15 +16,32 @@ pipelineJob('build-from-gerrit') {
     properties {
         pipelineTriggers {
             triggers {
+                // ★ gerrit-trigger 3.x Job DSL：
+                //   1) 事件块是 triggerOnEvents{}（旧 events{} 已废弃）；
+                //   2) 必须显式 gerritProjects{}，空 <gerritProjects/> 时 Job 不响应任何事件
+                //      （判据 B 实测：patchset 推了但 0 构建）；
+                //   3) gerritProject 必须带 branches{} 或 disableStrictForbiddenFileVerification(false)，
+                //      否则报 "the following options are required: disableStrictForbiddenFileVerification"；
+                //   4) serverName=__ANY__ 走 gerrit-trigger.xml 中名为 "gerrit" 的 server。
                 gerrit {
-                    events {
+                    gerritProjects {
+                        gerritProject {
+                            compareType('PLAIN')
+                            pattern('orgflow-devops')
+                            disableStrictForbiddenFileVerification(false)
+                            branches {
+                                branch {
+                                    compareType('PLAIN')
+                                    pattern('main')
+                                }
+                            }
+                        }
+                    }
+                    triggerOnEvents {
                         patchsetCreated()
                     }
-                    project('orgflow-devops', 'plain')
-                    platform('git')
-                    gerritBuildStartedVerified(true)
-                    gerritBuildSuccessfulVerified(true)
-                    gerritBuildFailedVerified(false)
+                    // Verified 回写由 server 级 JCasC（jenkins.yaml gerrit-trigger.servers[].config）
+                    // 与 Pipeline 内 SSH review 统一负责，Job DSL 不重复声明布尔字段。
                 }
             }
         }

@@ -51,17 +51,11 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'registry-ci', usernameVariable: 'RU', passwordVariable: 'RP')]) {
                     sh '''
                         set -e
+                        # agent 镜像无 python3：用纯 shell + base64 生成 registry 的 docker config.json
                         export DOCKER_CONFIG="$(mktemp -d)"
                         trap 'rm -rf "$DOCKER_CONFIG"' EXIT
-                        python3 - "$RU" "$RP" <<'PY'
-import json,base64,os,sys
-u,p=sys.argv[1],sys.argv[2]
-auth=base64.b64encode(f"{u}:{p}".encode()).decode()
-cfg={"auths":{os.environ["REGISTRY"]:{"auth":auth}}}
-d=os.environ["DOCKER_CONFIG"]
-os.makedirs(d,exist_ok=True)
-open(os.path.join(d,"config.json"),"w").write(json.dumps(cfg))
-PY
+                        AUTH="$(printf '%s:%s' "$RU" "$RP" | base64 | tr -d '\n')"
+                        printf '{"auths":{"%s":{"auth":"%s"}}}' "$REGISTRY" "$AUTH" > "$DOCKER_CONFIG/config.json"
                         buildctl build \
                           --frontend dockerfile.v0 \
                           --local context="src/services/${SERVICE}" \

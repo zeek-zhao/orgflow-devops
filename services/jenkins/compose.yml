@@ -31,6 +31,9 @@ services:
       GERRIT_CI_SSH_KEY: ${GERRIT_CI_SSH_KEY:-}
       REGISTRY_CI_USER: ${REGISTRY_USER:-admin}
       REGISTRY_CI_PASSWORD: ${REGISTRY_PASSWORD:-}
+      # M2.3.2：Gerrit 前端 URL——gerrit-trigger 回写 Verified 时据此生成 review 链接。
+      # 域名/端口均从 defaults.env 派生（与 out/urls.env 的 URL_GERRIT 真源同口径），不硬编码。
+      GERRIT_FRONTEND_URL: https://${PUBLIC_HOST}:${FUNNEL_PORT_GERRIT:-8443}
       TZ: Asia/Shanghai
     volumes:
       - jenkins_home:/var/jenkins_home

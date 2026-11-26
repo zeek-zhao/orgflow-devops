@@ -2,6 +2,31 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m2.3-gerrit-ci] — 2026-11-26（Gerrit → Jenkins 触发链）
+
+> 分支 `feat/m2-gerrit-cgit-harbor`，基线 `8caf5bd`。依据《orgflow-M2.3-触发链施工文档-2026-11-26.md》。详见 `docs/records/执行日志/2026-11-26.md`。
+
+### Added
+- **rootless BuildKit builder（M2.3.1）**：独立 `of-builder` 容器，`BUILDKIT_HOST=tcp://builder:1234` 供 agent 提交构建；registry 明文 HTTP 口径（`buildkitd.toml` 声明 `192.168.90.20:5000 http=true`），不改 registry 为 HTTPS（否则 Funnel 回源 502）。镜像 `m2-builder:ctx-9e393f1c9787`，USER 1000（数字 UID）修上游 rootless 镜像无 buildkit 用户名问题。
+- **agent buildctl（M2.3.1）**：jenkins-agent 镜像多阶段 COPY buildctl v0.16.0，`ctx-951abc7a53fd`。
+- **gerrit-trigger JCasC server（M2.3.2）**：`unclassified.gerrit-trigger.servers[].config` 配 host=gerrit/29418、user=ci-bot、credentialsId=gerrit-ci-ssh、Verified 成功+1/失败-1/开始0；前端 URL 走 `GERRIT_FRONTEND_URL` env（由 PUBLIC_HOST/FUNNEL_PORT_GERRIT 派生，不硬编码）。
+- **build-from-gerrit Job/Pipeline（M2.3.3）**：Gerrit patchset-created（项目 orgflow-devops / 分支 main）触发 → checkout GERRIT_REFSPEC → buildkit build+push registry → REST 校验 manifest → SSH review 回写 Verified +1；失败不回写。
+
+### Fixed
+- **jenkins crash loop 根因1**：JCasC 符号名须 `gerrit-trigger`（连字符），写 `gerritTrigger` 报 UnknownAttributesException + BootFailure。
+- **jenkins crash loop 根因2**：gerrit-trigger 3.x Job DSL 用 `triggerOnEvents{}` + `gerritProjects{gerritProject{ compareType/pattern/disableStrictForbiddenFileVerification/branches }}`；空 `<gerritProjects/>` 导致 Job 不响应任何事件（判据 B 首轮 0 构建的根因）。
+- **Pipeline python3 依赖**：agent 无 python3，改用纯 shell base64 生成 registry docker config.json。
+- **CI locale 口径**：build-images.yml ctag step 加 `LC_ALL=en_US.UTF-8`，消除 image-hash sort 顺序漂移导致 tag 不一致。
+
+### Verified
+- 判据 A ✅：插件 active、JCasC export 含 gerrit-trigger、凭据加载、server `Ready to receive data from Gerrit`。
+- 判据 B ✅：推 patchset 后 40 秒内 build-from-gerrit #1 自动触发。
+- 判据 C（手工）✅：`gerrit review --verified +1` 回写 change #1 `Verified=1 by ci-bot`；自动端到端因沙箱无法访问 docker.io（拉 ubuntu:24.04 基础镜像 TLS timeout）阻塞，待有出网环境补验；失败不假绿由 `post.failure` 保证。
+- builder/agent 内网三条链路（builder:1234 / gerrit:29418 / registry:5000）全通；全栈 13 服务 healthy。
+
+### 边界
+- 自动 Verified 端到端（含 build+push）需 docker.io 出网，当前沙箱环境阻塞，非配置问题。Harbor 官方栈、registry 内网 HTTPS 仍按既定路线不做。
+
 ## [m2.2-registry-p0] — 2026-11-26（第六轮 P0：公网强口令 + 清测试仓）
 
 > 分支 `feat/m2-gerrit-cgit-harbor`，基线 `b92f285`。依据《orgflow-M2.2-第六轮收口复核-2026-11-26.md》，本轮只补 P0 安全项、不开 M2.3。详见 `docs/records/执行日志/2026-11-26.md`。
