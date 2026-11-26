@@ -1,4 +1,5 @@
 FROM gethomepage/homepage:v2.7.0@sha256:19c5c09184458a41b7b5915e71463a39f36cd33540f41bdbed008791b8182d5f
+LABEL org.opencontainers.image.source="https://github.com/zeek-zhao/orgflow-devops"
 LABEL org.opencontainers.image.title="orgflow-devops homepage (M0 thin wrapper)"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.licenses.note="Homepage is MIT; upstream digest is locked in docs/运维/镜像与供应链.md"

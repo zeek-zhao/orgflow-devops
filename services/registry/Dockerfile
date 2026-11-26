@@ -6,6 +6,7 @@
 ARG BASE_DIGEST=sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
 FROM registry:2@${BASE_DIGEST}
 
+LABEL org.opencontainers.image.source="https://github.com/zeek-zhao/orgflow-devops"
 RUN apk add --no-cache apache2-utils \
     && rm -rf /var/cache/apk/*
 

@@ -13,6 +13,7 @@ FROM moby/buildkit:v0.16.0-rootless@sha256:ae19c93689d1a9f510c656c83a68f41a9d97a
 
 FROM jenkins/ssh-agent:9.8.0-jdk21@sha256:8fbbc589fa4257287cb9903ed1e021b90db2be2827a80e86a433d9395ca7d019
 
+LABEL org.opencontainers.image.source="https://github.com/zeek-zhao/orgflow-devops"
 LABEL org.opencontainers.image.base.name="jenkins/ssh-agent:9.8.0-jdk21@sha256:8fbbc589fa4257287cb9903ed1e021b90db2be2827a80e86a433d9395ca7d019"
 LABEL org.opencontainers.image.title="orgflow-devops m1-jenkins-agent"
 LABEL org.opencontainers.image.licenses="MIT"

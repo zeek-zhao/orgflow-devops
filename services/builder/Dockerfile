@@ -8,6 +8,7 @@
 ARG BASE_DIGEST=sha256:ae19c93689d1a9f510c656c83a68f41a9d97a87dddbc285af078fc7522074111
 FROM moby/buildkit:v0.16.0-rootless@${BASE_DIGEST}
 
+LABEL org.opencontainers.image.source="https://github.com/zeek-zhao/orgflow-devops"
 LABEL org.opencontainers.image.base.name="moby/buildkit:v0.16.0-rootless@sha256:ae19c93689d1a9f510c656c83a68f41a9d97a87dddbc285af078fc7522074111"
 LABEL org.opencontainers.image.title="orgflow-devops m2-builder (rootless buildkitd)"
 LABEL org.opencontainers.image.licenses="Apache-2.0"

@@ -1,4 +1,5 @@
 FROM osixia/phpldapadmin:0.9.0@sha256:d112b82be1336f91e028b0348755133fda333992355b533419355a65c32ff9ad
+LABEL org.opencontainers.image.source="https://github.com/zeek-zhao/orgflow-devops"
 LABEL org.opencontainers.image.title="orgflow-devops ldapadmin (M0 thin wrapper)"
 LABEL org.opencontainers.image.licenses="GPL-2.0-only"
 LABEL org.opencontainers.image.licenses.note="phpLDAPadmin is GPL-2.0; upstream digest is locked in docs/运维/镜像与供应链.md"

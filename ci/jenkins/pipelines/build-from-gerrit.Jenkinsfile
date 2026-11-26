@@ -31,7 +31,8 @@ pipeline {
                         : "${GERRIT_REFSPEC:?GERRIT_REFSPEC 未注入（需 gerrit-trigger 事件参数）}"
                         rm -rf src && mkdir src && cd src
                         git init -q
-                        git -c core.sshCommand="ssh -i $GERRIT_KEY -o StrictHostKeyChecking=no" \
+                        # M2.4 Phase0-4：固定 known_hosts 校验 Gerrit host key，不再无条件信任。
+                        git -c core.sshCommand="ssh -i $GERRIT_KEY -o UserKnownHostsFile=/opt/orgflow/config/known_hosts -o StrictHostKeyChecking=yes" \
                             fetch -q --depth=1 ssh://ci-bot@gerrit:29418/orgflow-devops "$GERRIT_REFSPEC"
                         git checkout -q FETCH_HEAD
                     '''
@@ -94,7 +95,8 @@ pipeline {
                         # gerrit-trigger 注入 GERRIT_PATCHSET_NUMBER（1/2/...）；缺失时回退 1。
                         : "${GERRIT_PATCHSET_NUMBER:=1}"
                         REV8="$(printf '%s' "$GERRIT_PATCHSET_REVISION" | cut -c1-8)"
-                        ssh -i "$GERRIT_KEY" -o StrictHostKeyChecking=no -p 29418 ci-bot@gerrit \
+                        # M2.4 Phase0-4：固定 known_hosts 校验（同 checkout 段）。
+                        ssh -i "$GERRIT_KEY" -o UserKnownHostsFile=/opt/orgflow/config/known_hosts -o StrictHostKeyChecking=yes -p 29418 ci-bot@gerrit \
                           "gerrit review ${GERRIT_CHANGE_NUMBER},${GERRIT_PATCHSET_NUMBER} \
                            --verified +1 --message 'CI: image ${IMG} built & pushed (rev ${REV8})'"
                     '''

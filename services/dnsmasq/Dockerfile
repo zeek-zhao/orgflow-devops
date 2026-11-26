@@ -1,4 +1,5 @@
 FROM ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
+LABEL org.opencontainers.image.source="https://github.com/zeek-zhao/orgflow-devops"
 LABEL org.opencontainers.image.title="orgflow-devops dnsmasq"
 LABEL org.opencontainers.image.licenses="GPL-2.0-only"
 LABEL org.opencontainers.image.licenses.note="dnsmasq is GPL-2.0; license text is shipped in the repo at licenses/GPL-2.0.txt"

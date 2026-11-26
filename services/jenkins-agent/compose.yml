@@ -3,7 +3,7 @@
 # 与 tests/images.lock 的 contextSha256 前 12 位一致；切源只改 IMAGE_JENKINS_AGENT。
 services:
   jenkins-agent:
-    image: ${IMAGE_JENKINS_AGENT:-ghcr.io/zeek-zhao/orgflow-devops/m1-jenkins-agent:ctx-951abc7a53fd}
+    image: ${IMAGE_JENKINS_AGENT:-ghcr.io/zeek-zhao/orgflow-devops/m1-jenkins-agent:ctx-2bc09f334ae1}
     pull_policy: missing
     container_name: ${CONTAINER_PREFIX:-of}-jenkins-agent
     labels:
@@ -24,6 +24,9 @@ services:
       - ../../ci/shared-library:/opt/orgflow/shared:ro
       # 探针脚本 DOMAIN/IP_DNSMASQ 兜底真源（env 快路径缺失时只读回退）
       - ../../config/defaults.env:/opt/orgflow/config/defaults.env:ro
+      # M2.4 Phase0-4：Gerrit SSH host key 固定校验（ssh-keyscan -p 29418 gerrit 落卷），
+      # 替代 StrictHostKeyChecking=no，防中间人；host 公钥非敏感可入库。
+      - ../../config/jenkins/known_hosts:/opt/orgflow/config/known_hosts:ro
     expose:
       - "22"
     # 启动顺序（jenkins fully up → agent）由 manifest.tsv depends_on + up.sh 保证。

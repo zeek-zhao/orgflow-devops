@@ -1,4 +1,5 @@
 FROM osixia/openldap:1.5.0@sha256:18742e9c449c9c1afe129d3f2f3ee15fb34cc43e5f940a20f3399728f41d7c28
+LABEL org.opencontainers.image.source="https://github.com/zeek-zhao/orgflow-devops"
 LABEL org.opencontainers.image.title="orgflow-devops ldap (M0 thin wrapper)"
 LABEL org.opencontainers.image.licenses="OpenLDAP-2.8"
 LABEL org.opencontainers.image.licenses.note="OpenLDAP is OpenLDAP-2.8; upstream digest is locked in docs/运维/镜像与供应链.md"

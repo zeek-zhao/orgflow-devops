@@ -135,7 +135,7 @@ check_upstream() {
   while IFS=$'\t' read -r name ref digest; do
     [[ "$name" =~ ^[a-z] ]] || continue
     BY_NAME["$ref"]="$digest"
-  done < <(sed -n '/^```$/,/^```$/p' "$REG" | grep -E '^(ubuntu|caddy|ldap|ldapadmin|homepage|jenkins|registry|buildkit)[[:space:]]')
+  done < <(sed -n '/^```$/,/^```$/p' "$REG" | grep -E '^(ubuntu|caddy|ldap|ldapadmin|homepage|jenkins|registry|buildkit|gerritcodereview)[[:space:]]')
   for df in services/*/Dockerfile; do
     [[ "$df" == services/_*/Dockerfile ]] && continue  # 排除脚手架模板
     from="$(grep -m1 '^FROM ' "$df" 2>/dev/null || true)"

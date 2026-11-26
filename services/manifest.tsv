@@ -12,4 +12,4 @@ order	service	depends_on	health_url_doc	monitor_url_doc	ping_url_doc	public_path
 10	gerrit	ldap	http://127.0.0.1:8080/	http://gerrit:8080/	gerrit	/none	lan,domain	http
 11	cgit	gerrit	http://127.0.0.1:80/	http://cgit:80/	cgit	/cgit/	lan,domain	http
 12	registry		http://127.0.0.1:5000/v2/	http://registry:5000/v2/	registry	/none	lan	registry
-13	builder		tcp://builder:1234		tcp://builder:1234	builder	/none	lan	buildkit
+13	builder		tcp://builder:1234		tcp://builder:1234	/status	lan	buildkit

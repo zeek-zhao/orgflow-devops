@@ -1,4 +1,5 @@
 FROM caddy:2@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
+LABEL org.opencontainers.image.source="https://github.com/zeek-zhao/orgflow-devops"
 LABEL org.opencontainers.image.title="orgflow-devops caddy (M0 thin wrapper)"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 LABEL org.opencontainers.image.licenses.note="Caddy is Apache-2.0; upstream digest is locked in docs/运维/镜像与供应链.md"

@@ -4,7 +4,7 @@
 # 镜像由 GitHub CI（mirror-m2.yml）构建推 GHCR；国内经 ghcr.nju.edu.cn 代理拉同 tag。
 services:
   cgit:
-    image: ${IMAGE_CGIT:-ghcr.io/zeek-zhao/orgflow-devops/m2-cgit:ctx-e0643a8c475e}
+    image: ${IMAGE_CGIT:-ghcr.io/zeek-zhao/orgflow-devops/m2-cgit:ctx-de0c2431bdbb}
     pull_policy: missing
     container_name: ${CONTAINER_PREFIX:-of}-cgit
     labels:

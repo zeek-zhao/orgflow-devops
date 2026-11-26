@@ -1,4 +1,4 @@
-// Job DSL：生成 8 条 verify-<svc> 单服务探测 Job（M1）。
+// Job DSL：生成 12 条 verify-<svc> 单服务探测 Job（M1）；M2.4 Phase0：每日 02:00 cron 巡检。
 // 由 JCasC jobs: - file: 引用，随配置重载幂等重建；controller 已挂 /opt/orgflow/ci:ro。
 // 流水线逻辑读 ci/jenkins/pipelines/verify-service.Jenkinsfile（不内联进本文件，保持分离）。
 def pipelineText = new File('/opt/orgflow/ci/jenkins/pipelines/verify-service.Jenkinsfile').text
@@ -14,6 +14,10 @@ services.each { svc ->
         logRotator {
             daysToKeep(7)
             numToKeep(20)
+        }
+        // M2.4 Phase0-3：12 条单服务 Job 每日 02:00 自动巡检（H 分散负载，避开整点）。
+        triggers {
+            cron('H 2 * * *')
         }
         parameters {
             stringParam('SERVICE', svc, '要探测的服务名（一般保持默认）')

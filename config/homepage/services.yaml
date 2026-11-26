@@ -65,6 +65,11 @@
         icon: "mdi-package-variant"
         siteMonitor: "http://registry:5000/v2/"
         ping: "registry"
+    - builder:
+        href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/status"
+        description: "builder"
+        icon: "mdi-circle"
+        ping: "tcp://builder:1234"
 - 公网入口:
     - 统一入口:
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/"

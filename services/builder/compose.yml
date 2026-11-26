@@ -5,7 +5,7 @@
 # 健康：容器内 buildctl debug workers 返回非空 worker。
 services:
   builder:
-    image: ${IMAGE_BUILDER:-ghcr.io/zeek-zhao/orgflow-devops/m2-builder:ctx-5a83e63280f4}
+    image: ${IMAGE_BUILDER:-ghcr.io/zeek-zhao/orgflow-devops/m2-builder:ctx-504387b5f8b7}
     pull_policy: missing
     container_name: ${CONTAINER_PREFIX:-of}-builder
     labels:
@@ -20,6 +20,8 @@ services:
       # M2.3 收口 P1：rootlesskit 重执行 buildkitd 时不保证读默认路径，显式指定 config，
       # 否则 docker.io mirror / registry insecure 声明全部不生效（判据 C 卡点根因）。
       - --config=/etc/buildkit/buildkitd.toml
+      # M2.4 Phase0-6：限制 BuildKit 缓存上限 20GB（该参数单位是 MB，20480=20*1024），避免长期构建占满数据卷。
+      - --oci-worker-gc-keepstorage=20480
     volumes:
       - builder_cache:/var/lib/buildkit
       - ./buildkitd.toml:/etc/buildkit/buildkitd.toml:ro

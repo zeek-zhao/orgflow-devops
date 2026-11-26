@@ -30,5 +30,7 @@ run 域名配置 scripts/check-domain.sh
 run 端口配置 scripts/check-ports.sh
 run 测试覆盖 tests/check-v2.sh
 run 服务清单 scripts/check-service-list.sh
+run Dockerfile scripts/check-dockerfiles.sh
+run 自检清单 scripts/check-selfcheck.sh
 if [[ $rc -eq 0 ]]; then echo "✓ 快检查通过"; else echo "✗ 快检查未通过" >&2; fi
 exit $rc

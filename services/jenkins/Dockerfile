@@ -10,6 +10,7 @@
 #     运行时 compose 再注入 JENKINS_UC / JENKINS_UC_DOWNLOAD，避免镜像站点变更导致装不上。
 FROM jenkins/jenkins:lts-jdk21@sha256:74401de6a6f92e1afe1b02d1c8e3d0c33f263bfb5275dd8813f9150355f2367b
 
+LABEL org.opencontainers.image.source="https://github.com/zeek-zhao/orgflow-devops"
 LABEL org.opencontainers.image.base.name="jenkins/jenkins:lts-jdk21@sha256:74401de6a6f92e1afe1b02d1c8e3d0c33f263bfb5275dd8813f9150355f2367b"
 LABEL org.opencontainers.image.title="orgflow-devops m1-jenkins controller"
 LABEL org.opencontainers.image.licenses="MIT"
