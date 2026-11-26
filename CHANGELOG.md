@@ -2,6 +2,18 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m2.2-registry-p0] — 2026-11-26（第六轮 P0：公网强口令 + 清测试仓）
+
+> 分支 `feat/m2-gerrit-cgit-harbor`，基线 `b92f285`。依据《orgflow-M2.2-第六轮收口复核-2026-11-26.md》，本轮只补 P0 安全项、不开 M2.3。详见 `docs/records/执行日志/2026-11-26.md`。
+
+### Fixed（P0 安全）
+- **公网 registry 默认口令** → 强口令：`:10000` 曾以骨架默认 `admin/change-me` 暴露公网且残留测试仓 `demo`。改为 gitignore `.env` 注入强口令，`ENV_FILE=.env bash up.sh --recreate registry --no-pull` 重建，entrypoint 幂等重渲染 htpasswd。验证：新口令 `/v2/_catalog` 200、旧口令 401、匿名 401。
+- **测试仓 `demo` 清除**：删卷内 `repositories/demo`（含失败 push 残留），`_catalog` 现返回 `[]`。
+- **安全文档入库**：registry.md §4/§6.1/§7、安全基线.md §1/§3/§4 写明公网强口令基线、校验命令与测试仓清理要求；口令不入库/不进日志。
+
+### 边界
+- 不开 M2.3（触发链/单服务 Job cron/registry GC/内网 HTTPS 均未开始）。
+
 ## [m2.2-registry] — 2026-11-26（M2.2 registry 上线 + 第五轮收口）
 
 > 分支 `feat/m2-gerrit-cgit-harbor`，tag `m2.2-registry`。基线 `e3d3331`。详见 `docs/records/执行日志/2026-11-26.md`。本版只做 M2.2 收口，不开 M2.3。

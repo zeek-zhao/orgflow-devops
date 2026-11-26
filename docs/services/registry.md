@@ -1,6 +1,6 @@
 # registry 服务手册（M2.2 轻量镜像仓库）
 
-> 状态：骨架已落地，镜像待 CI 构建上线 | 最后核对：2026-11-26 | 对应分支：feat/m2-gerrit-cgit-harbor
+> 状态：已上线并收口（M2.2） | 最后核对：2026-11-26（第六轮：公网强口令已落地） | 对应分支：feat/m2-gerrit-cgit-harbor
 
 ## 1. 职责与边界
 
@@ -33,9 +33,10 @@ registry:2 轻量方案符合 `config/preflight.sh` 资源闸门「available < 8
 
 ## 4. 凭据与初始化
 
-- `REGISTRY_USER` / `REGISTRY_PASSWORD` 经 env 注入（默认 admin/change-me，生产须在 `.env` 改强口令）。
-- entrypoint 用 `htpasswd -B -b` 渲染到卷 `/auth/htpasswd`（600），幂等（同名用户先删后加），不入库/不进 git。
-- 客户端：`docker login orgflow-sandbox.tail0b7621.ts.net:10000` 后 push/pull。
+- `REGISTRY_USER` / `REGISTRY_PASSWORD` 经 env 注入。compose.yml 里的 `admin/change-me` 只是**本地骨架默认值**，**公网 :10000 严禁使用**；生产口令在 gitignore 的 `.env` 中设置（令牌不入库、不进文档、不进日志）。
+- entrypoint 用 `htpasswd -B -b` 渲染到卷 `/auth/htpasswd`（600），幂等（同名用户先删后加），不入库/不进 git。换口令：`.env` 改 `REGISTRY_PASSWORD` → `ENV_FILE=.env bash up.sh --recreate registry --no-pull`，entrypoint 会先删同名用户再重建（幂等）。
+- 客户端：`docker login orgflow-sandbox.tail0b7621.ts.net:10000` 后 push/pull，口令取自 `.env`（不外发）。
+- **已落地（2026-11-26 第六轮 P0）**：公网 `:10000` 已从默认口令切到强口令，旧口令 `change-me` 实测 401、匿名 401、新口令 200；测试仓 `demo` 已从卷内清除，`_catalog` 现为空。
 
 ## 5. 卷与固定 IP
 
@@ -51,6 +52,19 @@ registry:2 轻量方案符合 `config/preflight.sh` 资源闸门「available < 8
 ### 6.1 客户端接入：TLS / insecure-registries（M2.2 P1-4 入库）
 
 链路：`Funnel TLS :10000 → 127.0.0.1:${PUB_HTTP_HARBOR:-18086}（明文 HTTP）→ 容器 :5000`。
+
+**公网强口令基线（P0，2026-11-26 第六轮落地）**：`:10000` 是公网可写入口（push/pull/catalog 全开放），**必须强口令**。
+
+- 口令来源：gitignore 的 `.env`（`REGISTRY_PASSWORD`），compose.yml 的 `admin/change-me` 仅为本地骨架默认，**禁止在公网环境沿用**。
+- 强制校验（换口令后必做，三条同时成立才算收口）：
+  ```bash
+  PASS="$(grep '^REGISTRY_PASSWORD=' .env | cut -d= -f2-)"
+  curl -s -o /dev/null -w '%{http_code}\n' -u "admin:$PASS" https://HOST:10000/v2/_catalog   # 期望 200
+  curl -s -o /dev/null -w '%{http_code}\n' -u 'admin:change-me' https://HOST:10000/v2/_catalog # 期望 401
+  curl -s -o /dev/null -w '%{http_code}\n' https://HOST:10000/v2/_catalog                    # 期望 401
+  ```
+- 口令不得写入仓库、文档、CI 日志或提交信息；轮换时只改 `.env` 并 `--recreate registry`。
+- 测试仓不得留存：交付前 `_catalog` 应为空或仅含预期仓库；残留测试仓按 §3 清卷删除。
 
 - **公网入口（`HOST:10000`）**：Funnel 边缘已终止 TLS，客户端走标准 HTTPS，无需任何 insecure 配置；这是推荐的 pull/只读入口。
 - **本机回环（`127.0.0.1:18086`）**：Docker daemon 对 loopback 地址（`127.0.0.1`/`::1`/`localhost`）**内置信任明文 HTTP**，所以 `docker login/push` 不需要 `insecure-registries`。此前复核文档推测"daemon.json 配了 insecure"并不准确——仓库与宿主 `daemon.json` 均无该项，能登录是 loopback 的内置行为，不依赖某台机器的私有配置。
@@ -78,6 +92,7 @@ registry:2 轻量方案符合 `config/preflight.sh` 资源闸门「available < 8
 | 3 | `docker push 127.0.0.1:18086/demo:test001` 成功、`docker pull` 一致（digest `fd56a3be…d04be`）、`_catalog` 返回 `["demo"]` | ✅ 已验证（走本地回环，公网 push 见 §6） |
 | 4 | 匿名 pull 被拒（`no basic auth credentials`）；check-lan.sh registry case（内网 /v2/ 200/401） | ✅ 已验证 |
 | 5 | 门禁 make check / check-all 全绿（清单 11 服务 + registry HASHED） | ✅ 已验证 |
+| 6 | 公网强口令（第六轮 P0）：新口令 `/v2/_catalog` 200、`admin:change-me` 401、匿名 401；测试仓 `demo` 已清、`_catalog` 为空 | ✅ 已验证（2026-11-26） |
 
 ## 8. 上线记录（2026-11-26）
 
