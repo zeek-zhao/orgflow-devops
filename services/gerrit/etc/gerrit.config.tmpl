@@ -4,6 +4,10 @@
 [gerrit]
     canonicalWebUrl = ${GERRIT_PUBLIC_URL}
     basePath = git
+    # serverId 必须跨重启稳定：NoteDb 的 change meta 里固化了创建时的 server id，
+    # 若每次启动随机生成会导致写入（review/回写 Verified）报 InvalidServerIdException。
+    # 由 entrypoint 从卷内 server_id 文件读取并注入（见 services/gerrit/entrypoint.sh）。
+    serverId = ${GERRIT_SERVER_ID}
 
 [auth]
     type = LDAP

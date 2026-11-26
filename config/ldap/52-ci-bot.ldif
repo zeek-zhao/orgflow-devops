@@ -1,0 +1,23 @@
+# M2.3：Jenkins CI 服务账号 ci-bot（gerrit-trigger 收事件 + REST 回写 Verified 用）。
+# 以 51-jenkins.ldif 为模板；uidNumber 1011 顺延（1000/1008/1009/1010 已占用）。
+# 明文口令不入库：存 .env 的 CI_BOT_LDAP_PASSWORD（gitignore）；此处 userPassword 为
+# 由该口令经 slappasswd -s 实算的 {SSHA} 哈希（与 50/51 同模式，非明文）。
+# 轮换口令：改 .env → slappasswd -s 重算哈希 → 同步本文件与 Jenkins 凭据 gerrit-ci-http。
+# 已有卷不会因 LDIF 改动自动导入，在线补账号命令见 docs/records 执行日志（ldapadd）。
+# Gerrit 侧组（Service Users / ci-bots）在 Gerrit 自己的 schema 建，不在此 LDIF。
+
+dn: uid=ci-bot,ou=people,{{ LDAP_BASE_DN }}
+objectClass: top
+objectClass: inetOrgPerson
+objectClass: posixAccount
+cn: ci-bot
+sn: ci-bot
+displayName: CI Bot
+givenName: CI
+uid: ci-bot
+uidNumber: 1011
+gidNumber: 501
+homeDirectory: /home/users/ci-bot
+loginShell: /bin/bash
+mail: ci-bot@orgflow.local
+userPassword: {SSHA}oGA7sJuTFupxUyuKQCo6V5TnyQSTtjdu

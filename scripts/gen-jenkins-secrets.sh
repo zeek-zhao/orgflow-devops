@@ -40,6 +40,14 @@ gen_if_missing() {
 gen_if_missing "$PRIVATE_KEY" 'jenkins-agent@orgflow-devops' "$PUBLIC_KEY"
 gen_if_missing "$HOST_KEY" 'jenkins-agent-host@orgflow-devops' "$HOST_PUB"
 
+# M2.3：Gerrit CI 账号 ci-bot 的 SSH key（gerrit-trigger 收事件 + review 回写 Verified）。
+# 首次由本脚本生成后须把公钥 POST 到 Gerrit /a/accounts/ci-bot/sshkeys（text/plain raw），
+# 之后幂等复用——覆盖会让 Gerrit 侧公钥失配、CI 立刻无法推流/回写。
+CI_KEY="$KEY_DIR/gerrit_ci_ssh_key"
+CI_PUB="$CI_KEY.pub"
+gen_if_missing "$CI_KEY" 'ci-bot@orgflow-devops' "$CI_PUB"
+echo "注意：首次生成后须把 $CI_PUB 注册到 Gerrit 账号 ci-bot（见执行日志 M2.3.0）"
+
 # 共享库挂载目录：宿主属主挂进容器后 jenkins 只靠权限位读 → 755/644，不要求写权限。
 if [ -d ci/shared-library ]; then
     chmod -R a+rX ci/shared-library
