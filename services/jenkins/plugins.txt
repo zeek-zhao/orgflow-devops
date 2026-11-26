@@ -9,6 +9,9 @@ ldap:825.v2fca_37dd5b_cb_
 configuration-as-code:2147.v8a_8d38668c72
 matrix-auth:3.3
 job-dsl:3752.vb_199526b_20c3
+# M2.3：Gerrit patchset-created 事件触发（requiredCore 2.479.3，本机 core 2.580.2 满足）。
+# 传递依赖由 jenkins-plugin-cli 从 update-center 自动解析安装（含 jsch/caffeine-api 等）。
+gerrit-trigger:3.2004.v6dfb_e55425a_8
 timestamper:1.30
 ws-cleanup:0.49
 # M1：默认深色主题（版本由 update-center 解析确认，见 plugins.lock.md）
