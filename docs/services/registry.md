@@ -45,13 +45,20 @@ registry:2 轻量方案符合 `config/preflight.sh` 资源闸门「available < 8
 
 - 单用户 htpasswd，无项目隔离；如要多成员/robot，需官方 Harbor 或前置 auth 代理。
 - Funnel :10000 是公网入口，务必强口令；如收紧到 tailnet-only，关闭该 Funnel 端口改 tailnet 直连。
+- **公网 push 大 blob 不稳**：经 Funnel :10000 推 26MB 镜像实测 blob 上传多次重试后超时（Funnel 对大 payload 传输不稳）；`/v2/` 元数据/login 正常。推送构建产物建议在 tailnet 内走 `127.0.0.1:18086` 回环；公网入口适合 pull/只读与小层推送。
 
-## 7. 验收判据（标注已验证 / 待办）
+## 7. 验收判据（2026-11-26 实测）
 
 | # | 判据 | 状态 |
 |---|---|---|
-| 1 | 容器 healthy，`curl -k https://HOST:10000/v2/` 返回 401 + Docker-Distribution 头 | 待镜像上线 |
-| 2 | `docker login HOST:10000` 用 admin/口令成功 | 待镜像上线 |
-| 3 | `docker push HOST:10000/demo:v1` 成功、`docker pull` 一致 | 待镜像上线 |
-| 4 | check-lan.sh registry case 通过（内网 /v2/ 200/401） | 待镜像上线 |
-| 5 | 门禁 make check / check-all 全绿（清单 11 服务 + registry HASHED） | 骨架已过（见日志） |
+| 1 | 容器 healthy，`curl -k https://HOST:10000/v2/` 返回 401（本地 18086 亦 401，鉴权生效） | ✅ 已验证 |
+| 2 | `docker login HOST:10000` / `127.0.0.1:18086` 用 admin/口令成功 | ✅ 已验证 |
+| 3 | `docker push 127.0.0.1:18086/demo:test001` 成功、`docker pull` 一致（digest `fd56a3be…d04be`）、`_catalog` 返回 `["demo"]` | ✅ 已验证（走本地回环，公网 push 见 §6） |
+| 4 | 匿名 pull 被拒（`no basic auth credentials`）；check-lan.sh registry case（内网 /v2/ 200/401） | ✅ 已验证 |
+| 5 | 门禁 make check / check-all 全绿（清单 11 服务 + registry HASHED） | ✅ 已验证 |
+
+## 8. 上线记录（2026-11-26）
+
+- 镜像：CI run 45756551160 构建推 GHCR `m2-registry:ctx-04619a62a033`（上游 registry:2 digest `sha256:a3d8aaa6…15373`），经 `ghcr.nju.edu.cn` 拉取本地。
+- 踩坑：① entrypoint 首次建 htpasswd 缺 `-c` 致容器 Exit 1（已修，加 `-c`）；② `REGISTRY_LOG_LEVEL=warning` 非法（合法 `warn`，已修）；③ healthcheck 用 busybox wget `-S` 抓不到响应头，改用 stderr 的 `401` 判据（已修）。
+- 数据卷 registry_data / registry_auth 由 up.sh 幂等预建；容器固定 IP 192.168.90.20，回环 18086→5000。

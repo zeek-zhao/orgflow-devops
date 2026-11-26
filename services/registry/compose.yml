@@ -19,8 +19,9 @@ services:
       # 官方 registry:2 环境变量覆盖默认 config.yml，启用 htpasswd 基础鉴权。
       REGISTRY_AUTH_HTPASSWD_REALM: ${REGISTRY_AUTH_REALM:-orgflow-registry}
       REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
-      # 数据落在卷内（默认 /var/lib/registry），日志降到 warning 减少噪声。
-      REGISTRY_LOG_LEVEL: warning
+      # 数据落在卷内（默认 /var/lib/registry），日志降到 warn 减少噪声。
+      # 合法 loglevel = error|warn|info|debug（"warning" 非法，会致 registry 启动失败）。
+      REGISTRY_LOG_LEVEL: warn
     ports:
       # 回环口：Funnel :10000 的回源目标；只绑 127.0.0.1，公网经 Funnel 边缘 TLS 终止后到此。
       - "127.0.0.1:${PUB_HTTP_HARBOR:-18086}:5000"
@@ -33,9 +34,9 @@ services:
       orgflow:
         ipv4_address: ${IP_REGISTRY:-192.168.90.20}
     healthcheck:
-      # /v2/ 未鉴权返回 401 + Docker-Distribution-API-Version 头，属正常（鉴权已启用）。
-      # busybox wget 对 401 返回非 0，故用 -S 抓头判定：含docker-distribution头即视为存活。
-      test: ["CMD-SHELL", "wget -S -q -O /dev/null http://127.0.0.1:5000/v2/ 2>&1 | grep -qi 'docker-distribution' || exit 1"]
+      # /v2/ 未鉴权返回 401（鉴权已启用，守护进程存活）。busybox wget 对 401 返回非 0
+      # 且 -S 不打印响应头，故用其 stderr 的 "401" 作存活判据（含 401 即健康）。
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:5000/v2/ 2>&1 | grep -q '401' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
