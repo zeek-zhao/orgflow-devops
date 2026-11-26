@@ -7,7 +7,7 @@
 #   （600/属主 registry），不入库、不进文档、不经 git。
 services:
   registry:
-    image: ${IMAGE_REGISTRY:-ghcr.io/zeek-zhao/orgflow-devops/m2-registry:ctx-1cb303e1dbfa}
+    image: ${IMAGE_REGISTRY:-ghcr.io/zeek-zhao/orgflow-devops/m2-registry:ctx-c8466dabcacd}
     pull_policy: missing
     container_name: ${CONTAINER_PREFIX:-of}-registry
     labels:

@@ -22,6 +22,6 @@ jenkins-agent	orgflow/m1-jenkins-agent:ctx-951abc7a53fd	-	sha256:8fbbc589fa42572
 cgit	orgflow/m2-cgit:ctx-e0643a8c475e	-	sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852	e0643a8c475e24481f3efa3f182fb06d1a6290eec78d652eeb98f794ea73e241
 gerrit	ghcr.io/zeek-zhao/orgflow-devops/m2-gerrit:3.9.0	cb613d45e5986097736e272c262155a9189b3dc22bc8b88fce67141e5bea9481	sha256:25f02a983db5f2323fa2a4be7ea672a13dbe8a12cc0e0d31feaa5a348ad8df0f	-
 # M2.2：registry:2 薄封装（HASHED）；upstreamDigest = CI docker pull registry:2 真实 manifest digest。
-registry	orgflow/m2-registry:ctx-1cb303e1dbfa	-	sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373	1cb303e1dbfa6424e50bc5854563528b1638dbb993c92a57aeb9abfe6f4e17b3
+registry	orgflow/m2-registry:ctx-c8466dabcacd	-	sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373	c8466dabcacd5adc50633fc8a2dd55b7dbe22daa4b739fa0806c8200113209d6
 # M2.3：builder（HASHED）；upstreamDigest = moby/buildkit:v0.16.0-rootless amd64 manifest digest。
-builder	orgflow/m2-builder:ctx-9e393f1c9787	-	sha256:ae19c93689d1a9f510c656c83a68f41a9d97a87dddbc285af078fc7522074111	9e393f1c97878524bcfb58d4ce8aeac30f03e258d80899e08338b4439258b9f2
+builder	orgflow/m2-builder:ctx-5a83e63280f4	-	sha256:ae19c93689d1a9f510c656c83a68f41a9d97a87dddbc285af078fc7522074111	5a83e63280f4463e2a6880aec53ecdf0910913bcd98497d21f8c5f2951786b2e

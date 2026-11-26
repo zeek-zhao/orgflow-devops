@@ -5,7 +5,7 @@
 # 健康：容器内 buildctl debug workers 返回非空 worker。
 services:
   builder:
-    image: ${IMAGE_BUILDER:-ghcr.io/zeek-zhao/orgflow-devops/m2-builder:ctx-9e393f1c9787}
+    image: ${IMAGE_BUILDER:-ghcr.io/zeek-zhao/orgflow-devops/m2-builder:ctx-5a83e63280f4}
     pull_policy: missing
     container_name: ${CONTAINER_PREFIX:-of}-builder
     labels:
