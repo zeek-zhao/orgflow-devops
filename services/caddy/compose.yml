@@ -25,6 +25,10 @@ services:
     volumes:
       - ../../config/Caddyfile:/etc/caddy/Caddyfile:ro
       - ca-data:/ca:ro
+      # M2.4 Phase3：自检报告只读。卷内文件位于根（Jenkins 写 /reports/selfcheck/latest.html），
+      # Caddy 挂到 /srv/reports/selfcheck，使 handle_path /reports/* → selfcheck/latest.html →
+      # /srv/reports/selfcheck/latest.html 命中（root 仍为 /srv/reports）。
+      - selfcheck-reports:/srv/reports/selfcheck:ro
     networks:
       orgflow:
         ipv4_address: ${IP_CADDY:-192.168.90.10}
@@ -38,6 +42,9 @@ volumes:
   ca-data:
     external: true
     name: ${CA_DATA_VOLUME:-orgflow-minimal_ca-data}
+  selfcheck-reports:
+    external: true
+    name: ${SELFCHECK_REPORTS_VOLUME:-orgflow-minimal_selfcheck_reports}
 networks:
   orgflow:
     external: true

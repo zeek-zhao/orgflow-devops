@@ -35,6 +35,9 @@ services:
       # M2.3.2：Gerrit 前端 URL——gerrit-trigger 回写 Verified 时据此生成 review 链接。
       # 域名/端口均从 defaults.env 派生（与 out/urls.env 的 URL_GERRIT 真源同口径），不硬编码。
       GERRIT_FRONTEND_URL: https://${PUBLIC_HOST}:${FUNNEL_PORT_GERRIT:-8443}
+      # M2.4 Phase3：评审流自检 Job 的 HTTP Basic 凭据（LDAP 口令，不入库）。
+      GERRIT_HTTP_USER: ${GERRIT_HTTP_USER:-zeek.zhao}
+      GERRIT_HTTP_PASSWORD: ${GERRIT_HTTP_PASSWORD:-${LDAP_PASSWORD:-change-me}}
       TZ: Asia/Shanghai
     volumes:
       - jenkins_home:/var/jenkins_home
@@ -42,6 +45,8 @@ services:
       - ../../config/jenkins:/var/jenkins_home/casc:ro
       # 流水线逻辑挂载（Job DSL 内联 script(new File(...)) 方案需要）
       - ../../ci:/opt/orgflow/ci:ro
+      # M2.4 Phase3：自检报告共享卷（Jenkins 可写 /reports/selfcheck，Caddy 只读 /srv/reports）
+      - selfcheck-reports:/reports/selfcheck:rw
     expose:
       - "8080"
     # 启动顺序（ldap 就绪 → jenkins → agent）由 services/manifest.tsv 的 depends_on
@@ -63,6 +68,10 @@ volumes:
   jenkins_home:
     external: true
     name: ${JENKINS_HOME_VOLUME:-orgflow-minimal_jenkins_home}
+  # M2.4 Phase3：自检报告共享卷（external 由 up.sh 预建，与 network/其他卷同口径）
+  selfcheck-reports:
+    external: true
+    name: ${SELFCHECK_REPORTS_VOLUME:-orgflow-minimal_selfcheck_reports}
 
 networks:
   orgflow:

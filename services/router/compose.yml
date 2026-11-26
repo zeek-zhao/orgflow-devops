@@ -14,6 +14,8 @@ services:
       CADDY_ADMIN: http://${IP_CADDY:-192.168.90.10}:2019
       # 域名后缀唯一真源：routes.yaml 只写子域，render 时拼 ${GATEWAY_DOMAIN}
       GATEWAY_DOMAIN: ${DOMAIN:-org-devops.local}
+      # M2.4 Phase2：状态页 Gerrit 行链到 :8443 公网入口，域名/端口走配置项不写死
+      URL_GERRIT: https://${PUBLIC_HOST:-localhost}:${FUNNEL_PORT_GERRIT:-8443}/
     ports:
       - "${P_ROUTER:-8083}:8080"
     volumes:

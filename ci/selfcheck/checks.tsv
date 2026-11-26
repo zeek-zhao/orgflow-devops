@@ -1,0 +1,20 @@
+id	kind	target	title	what	expect	timeout
+svc-dnsmasq	job	verify-dnsmasq	DNS 解析	内网 DNS 能否解析 home 域名到 Caddy	SUCCESS	5
+svc-ldap	job	verify-ldap	LDAP 目录	389 绑定 + 基础查询返回 dn	SUCCESS	5
+svc-caddy	job	verify-caddy	Caddy 网关	admin :2019/config/ 探活 200	SUCCESS	5
+svc-homepage	job	verify-homepage	统一面板	根路径 / 返回 200（Host 白名单）	SUCCESS	5
+svc-ldapadmin	job	verify-ldapadmin	LDAP 管理页	/ldapadmin/ 返回 200	SUCCESS	5
+svc-router	job	verify-router	路由注册	/healthz 返回 ok	SUCCESS	5
+svc-jenkins	job	verify-jenkins	Jenkins 控制器	/jenkins/login 返回 200	SUCCESS	5
+svc-jenkins-agent	job	verify-jenkins-agent	构建节点	SSH agent uid=1000 + java/dig/dns 可用	SUCCESS	5
+svc-gerrit	job	verify-gerrit	Gerrit 评审	HTTP :8443 canonical 跳转可达	SUCCESS	5
+svc-cgit	job	verify-cgit	代码浏览	cgit 仓库列表非空	SUCCESS	5
+svc-registry	job	verify-registry	镜像仓库	/v2/ 鉴权生效（200/401）	SUCCESS	5
+svc-builder	job	verify-builder	构建器	buildkitd gRPC tcp:1234 可达	SUCCESS	5
+lan-all	job	verify-lan-all	全服务巡检	13 服务并行探测汇总	SUCCESS	10
+feat-urls	job	verify-public-urls	公网入口	6 个 Caddy 入口 2xx/3xx + 内网 registry 鉴权 401	SUCCESS	5
+feat-cgit	job	verify-cgit-smart-http	cgit smart-http	info/refs 的 Content-Type 为 git-upload-pack-advertisement	SUCCESS	5
+feat-registry-auth	job	verify-registry-auth	镜像仓库鉴权	匿名 401 / ci-push 可 pull manifest	SUCCESS	5
+feat-theme	job	verify-jenkins-theme	深色主题	登录页 CSS 含深色标记 + /theme 生效	SUCCESS	5
+feat-status	job	verify-status-page	状态页	行数等于 manifest 服务数，每行链接非 /none	SUCCESS	5
+feat-review-flow	job	verify-gerrit-review-flow	评审流（重）	建探针 change → 触发构建 → Verified +1 → abandon	SUCCESS	20

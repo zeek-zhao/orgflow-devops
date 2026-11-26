@@ -61,6 +61,8 @@ ENTRY_OVERRIDE = {
 
 # 固定追加的入口卡：代表状态页入口本身（与 R6 删除的三张假入口不同，它是唯一并名的 /status 卡）
 STATUS_CARD = ("状态总览", "mdi-chart-line", "全部服务入口与探测说明", "/status")
+# M2.4 Phase3：自检报告固定卡（指向 Caddy 静态托管的 latest.html）。
+REPORT_CARD = ("自检报告", "mdi-clipboard-check", "全量自检 HTML 报告（最新）", "/reports/selfcheck/latest.html")
 
 # 服务状态组统一落点：该组是「探测卡」（靠 siteMonitor/ping 展示健康），不是第二套入口。
 # 历史 bug：服务状态组直接用 public_href，导致 (a) public_path=/none 的服务渲染成
@@ -153,6 +155,9 @@ def render(rows):
         out += card_lines(name, icon, href, note)
     # 状态总览：代表 /status 页入口本身（唯一一张 /status 卡，不是重复假入口）
     name, icon, note, path = STATUS_CARD
+    out += card_lines(name, icon, "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}" + path, note)
+    # M2.4 Phase3：自检报告固定卡
+    name, icon, note, path = REPORT_CARD
     out += card_lines(name, icon, "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}" + path, note)
     return "\n".join(out) + "\n"
 

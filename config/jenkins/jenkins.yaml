@@ -4,8 +4,11 @@
 # 不写进仓库；私钥/host key 由 scripts/gen-jenkins-secrets.sh 生成、宿主 export 透传。
 jenkins:
   systemMessage: "OrgFlow M1 —— Jenkins controller + SSH agent（全服务局域网检测）"
-  # controller 不跑构建；所有 Job 都写 node('orgflow-agent')，避免凭据与构建同进程叠加权限。
-  numExecutors: 0
+  # controller 不跑构建；业务 Job 都写 node('orgflow-agent')，避免凭据与构建同进程叠加权限。
+  # 唯一例外：selfcheck 编排 Job（node('built-in')）——只读 /opt/orgflow/ci:ro 的 checks.tsv、
+  # 只写 /reports/selfcheck:rw 的报告卷，不接触任何凭据、无 docker.sock，故放 1 个 executor。
+  # 若不放开，selfcheck 会永远停在 "Waiting for next available executor on 'Jenkins'"（M2.4-P3 实测）。
+  numExecutors: 1
   # 安全域：唯一一道登录 = LDAP（M0 口径，无本地管理员账号）。
   # ★ 必须写成 configurations 列表（JCasC 的 LDAP realm 没有扁平写法）。
   # ★ groupSearchFilter 用 member={0}：{0} 是用户完整 DN，groupOfNames 的 member 存的是完整 DN；
@@ -124,8 +127,16 @@ credentials:
               username: "${REGISTRY_CI_USER}"
               password: "${REGISTRY_CI_PASSWORD}"
               description: "Internal registry push/verify credential (M2.3)"
+          # M2.4 Phase3：评审流自检 Job 推探针 change 用（LDAP 管理员 HTTP Basic）。
+          # 口令走 .env 注入，不入库；仅 selfcheck 的 verify-gerrit-review-flow 使用。
+          - usernamePassword:
+              scope: GLOBAL
+              id: "gerrit-http"
+              username: "${GERRIT_HTTP_USER:-zeek.zhao}"
+              password: "${GERRIT_HTTP_PASSWORD}"
+              description: "Gerrit HTTP Basic for selfcheck review-flow probe (M2.4)"
 
-# Job as Code：14 条 Job 由以下 4 个 Job DSL 幂等生成；- file: 必须是容器内绝对路径。
+# Job as Code：21 条 Job 由以下 11 个 Job DSL 幂等生成；- file: 必须是容器内绝对路径。
 # config/jenkins 是只读挂载，Job 不得往里写；不再有 globalLibraries（共享库走文件挂载）。
 jobs:
   - file: /var/jenkins_home/casc/jobs/verify-service.groovy
@@ -133,6 +144,14 @@ jobs:
   - file: /var/jenkins_home/casc/jobs/verify-jenkins-agent.groovy
   # M2.3：Gerrit patchset-created 触发的 CI Job（buildkit → registry → Verified+1）
   - file: /var/jenkins_home/casc/jobs/build-from-gerrit.groovy
+  # M2.4 Phase3：6 条功能级探测 Job + 自检编排 Job
+  - file: /var/jenkins_home/casc/jobs/verify-public-urls.groovy
+  - file: /var/jenkins_home/casc/jobs/verify-cgit-smart-http.groovy
+  - file: /var/jenkins_home/casc/jobs/verify-registry-auth.groovy
+  - file: /var/jenkins_home/casc/jobs/verify-jenkins-theme.groovy
+  - file: /var/jenkins_home/casc/jobs/verify-status-page.groovy
+  - file: /var/jenkins_home/casc/jobs/verify-gerrit-review-flow.groovy
+  - file: /var/jenkins_home/casc/jobs/selfcheck.groovy
 
 # M1 T7：全局默认深色主题；禁止用户改（JCasC 是唯一真源，UI 点的不算）。
 # ★ 顶层根节点，不能嵌进 unclassified（否则静默不生效）。

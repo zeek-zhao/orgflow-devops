@@ -58,6 +58,15 @@ _last_hash = None
 MANIFEST_PATH = os.environ.get("MANIFEST", "/etc/router/manifest.tsv")
 CONTAINER_PREFIX = os.environ.get("CONTAINER_PREFIX", "of")
 
+# M2.4 Phase2：Gerrit 公网入口（:8443）从 URL_GERRIT 环境变量读取，域名不写死；
+# 未注入时回退到首页卡文案（首页 Gerrit 卡本身链到 :8443），保证可达性。
+import html as _html
+_URL_GERRIT = os.environ.get("URL_GERRIT", "").strip()
+GERRIT_ENTRY_HTML = (
+    f'<a href="{_html.escape(_URL_GERRIT)}" rel="noopener">代码评审入口 (:8443)</a>'
+    if _URL_GERRIT else "见首页 Gerrit 入口卡（:8443）"
+)
+
 # 展示元数据（探测方式 / 公网入口 HTML）：服务清单来自 manifest，这里只给展示文案。
 # 新增服务若在表里没有条目，用通用回退文案，不会漏行。
 STATUS_META = {
@@ -70,7 +79,8 @@ STATUS_META = {
     "certs-init":     ("证书初始化", "一次性任务 exit 0", "不放假页面"),
     "jenkins":        ("持续集成 Jenkins", "HTTP /jenkins/login", '<a href="/jenkins/">/jenkins/</a>（需登录）'),
     "jenkins-agent":  ("构建节点 Jenkins Agent", "SSH 22 / Job 在线探测", "无 UI，见首页卡片"),
-    "gerrit":         ("代码评审 Gerrit", "HTTP :8443/ + LDAP 登录", "见首页 Gerrit 入口卡（:8443）"),
+    # M2.4 Phase2：Gerrit 行直接链到 URL_GERRIT（:8443），域名走配置项不写死；未注入时回退首页卡文案。
+    "gerrit":         ("代码评审 Gerrit", "HTTP :8443/ + LDAP 登录", GERRIT_ENTRY_HTML),
     "cgit":           ("代码浏览 cgit", "HTTP /cgit/", '<a href="/cgit/">/cgit/</a>'),
     "registry":       ("镜像仓库 registry", "HTTP :5000/v2/（401 鉴权生效）", "API only · 公网 :10000 / 内网 :18086"),
     # M2.3 收口 P2-2：builder 无 Web UI，也不在首页渲染卡片（manifest public_path=/none），
@@ -111,6 +121,8 @@ def build_status_html():
         'th{background:#f2f5f9}code{background:#eef2f7;padding:.1rem .35rem;border-radius:4px}'
         '.note{margin-top:1.2rem;color:#556}</style></head><body>'
         '<h1>OrgFlow 底座 · 服务状态</h1>'
+        '<p class="note"><a href="/reports/selfcheck/latest.html">自检报告（最新）</a> · '
+        '<a href="/">返回首页</a></p>'
         f'<p>本页是 {n} 个服务的状态说明（来源 <code>router</code>，清单取自 <code>manifest.tsv</code>）。'
         '各服务入口与探测方式如下（DNS / LDAP / Caddy / Jenkins Agent 无独立 Web UI，状态见<a href="/">首页卡片</a>）。</p>'
         '<table><thead><tr><th>服务</th><th>容器</th><th>探测方式</th><th>公网入口</th></tr></thead><tbody>\n'
@@ -142,6 +154,13 @@ def get_status_html():
 PUBLIC_FIXED = """    @status path /status
     handle @status {
         reverse_proxy router:8080
+    }
+
+    # M2.4 Phase3：自检报告（共享卷 ro /srv/reports），no-store + 静态文件服务。
+    handle_path /reports/* {
+        root * /srv/reports
+        header Cache-Control "no-store"
+        file_server
     }
 
     @rootHome path /home /home/*

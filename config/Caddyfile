@@ -44,6 +44,15 @@
         reverse_proxy router:8080
     }
 
+    # M2.4 Phase3：自检报告（共享卷 Caddy 只读 /srv/reports，Jenkins 写 /reports/selfcheck）。
+    # /reports/selfcheck/latest.html → strip /reports/ → selfcheck/latest.html → /srv/reports/selfcheck/latest.html。
+    # no-store 确保报告不缓存（每次看最新）；静态文件服务，无 CGI/无外链。
+    handle_path /reports/* {
+        root * /srv/reports
+        header Cache-Control "no-store"
+        file_server
+    }
+
     # T4 路径边界与跳转（308，精确匹配，必须在 handle_path / 兜底之前）
     @rootHome path /home /home/*
     handle @rootHome {

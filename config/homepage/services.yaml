@@ -99,3 +99,7 @@
         href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/status"
         description: "全部服务入口与探测说明"
         icon: "mdi-chart-line"
+    - 自检报告:
+        href: "https://{{HOMEPAGE_VAR_PUBLIC_HOST}}/reports/selfcheck/latest.html"
+        description: "全量自检 HTML 报告（最新）"
+        icon: "mdi-clipboard-check"

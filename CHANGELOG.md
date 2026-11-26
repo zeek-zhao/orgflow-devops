@@ -2,6 +2,46 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m2.4-selfcheck] — 2026-11-26（M2 增补：收口小项 + 每服务 Dockerfile + Gerrit 手册 + 自检框架）
+
+> 分支 `feat/m2-gerrit-cgit-harbor`，基线 `c0b58c3`（tag `m2.3-closeout`）。依据《OrgFlow M2.4 施工文档》。详见 `docs/records/执行日志/2026-11-26.md`。
+
+### Phase0（7 条小项）
+- verify-service.groovy 注释 8→12 + 12 条单服务 Job 加 `cron('H 2 * * *')`；reload JCasC 实证 `<spec>H 2 * * *</spec>`。
+- builder compose 加 `--oci-worker-gc-keepstorage=20480`（文档写"20GB"，该参数单位为 MB，20480=20×1024；直接写 `20GB` 会让 buildkitd 启动失败/容器 UNHEALTHY，已修正）。
+- manifest builder 行历史 10 列错位修正为 9 列，`public_path` /none→/status，首页 builder 卡指向 /status。
+- Gerrit SSH 固定校验：`ssh-keyscan -p 29418 gerrit` 落 `config/jenkins/known_hosts` 挂到 agent（`ro`），Jenkinsfile 两处去 `StrictHostKeyChecking=no` 改 `UserKnownHostsFile=... + StrictHostKeyChecking=yes`。
+- jenkins/agent/builder/registry 经 `up.sh --recreate --no-pull` 重建（沿用 M2.3 GHCR 不可达限制）。
+
+### Phase1（每服务 Dockerfile + 门禁）
+- 新增 `services/gerrit/Dockerfile`（官方镜像 @sha256 + OCI LABEL，不覆盖 entrypoint）、`services/certs-init/Dockerfile`（ubuntu:24.04@sha256 + openssl）。
+- 新增 `scripts/check-dockerfiles.sh`（存在性/FROM@sha256/source LABEL/UPSTREAM 一致）接入 `make check`；11 个现有 Dockerfile 补 source LABEL。
+- 同步 5 个 HASHED 服务内容哈希到 lock/images.env/compose（等价 tag）；供应链文档登记 gerrit 上游 digest。
+
+### Phase2（Gerrit 人工手册）
+- 新增 `docs/使用手册/Gerrit-人工使用指南.md`（LDAP 登录/SSH key/clone/hook/push/网页评审/cgit/故障）；README 索引 + 按角色阅读；状态页 gerrit 行链到 URL_GERRIT(:8443，域名走配置项)。
+
+### Phase3（自检框架 + HTML 报告）
+- 清单真源 `ci/selfcheck/checks.tsv`（19 项：13 服务 + lan-all + 6 功能级）；`scripts/check-selfcheck.sh` 双向门禁接入 make check。
+- `selfcheck` 编排 Job（agent none，build 子 Job，SKIPPED/PASS/FAIL/PARTIAL 语义）+ 自包含 HTML/JSON 报告（内联 CSS、无外链、环境快照/明细/失败展开/未覆盖提示）。
+- 共享卷 selfcheck-reports（Jenkins rw / Caddy ro）+ Caddy `handle_path /reports/*`（no-store）；首页/状态页加自检报告链接。
+- 6 条功能级 Job：public-urls/cgit-smart-http/registry-auth/jenkins-theme/status-page/gerrit-review-flow（heavy）。
+- 文档：`docs/运维/自检框架.md` + 新增服务 SOP 补 Dockerfile/checks.tsv 硬要求；新增 `gerrit-http` Jenkins 凭据（env 注入）。
+
+### Phase3 终验（build #8）
+- 全量 selfcheck 19/19 SUCCESS（含重项 feat-review-flow 19s），总判 PASS FAIL=0 SKIP=0；报告 latest.html/json + selfcheck-8.html/json，Caddy 三 URL 全 200 + `Cache-Control: no-store`，敏感词扫描为空。
+- 12/12 容器 healthy，`/status` 14 行（13 服务 + 表头）；Gerrit open change 归零；make check / check-all / test 全绿。
+
+### Phase3 验收修复（端到端实测发现）
+- **controller executor**：JCasC 原 `numExecutors: 0` 使 selfcheck 的 `node('built-in')` 永远停在 "Waiting for executor"；改为 `numExecutors: 1`（仅 selfcheck 用，不碰凭据/无 docker.sock）。子 Job 仍在 orgflow-agent。
+- **脚本沙箱**：Pipeline 用 `groovy.json.JsonOutput/JsonSlurper` 被 script-security 拒绝；改为脚本级变量传数据 + 手工 JSON/HTML 字符串拼接，无 groovy.json。
+- **结果口径归一**：子 Job 返回 `FAILURE`，报告计数只认 `FAIL` 导致总判假绿；记录时统一 `FAILURE→FAIL`。
+- **报告卷属主**：`docker volume create` 默认 root:root 755，jenkins(uid1000) 写 `writeFile` 抛 AccessDeniedException；`up.sh` 卷预建后用 Jenkins 镜像以 root `chown 1000:1000`（幂等）。
+- **Caddy 报告挂载**：卷挂 `/srv/reports` 使 `latest.html` 落在卷根，但 URL `/reports/selfcheck/latest.html` 映射到 `/srv/reports/selfcheck/latest.html` → 404；改挂 `/srv/reports/selfcheck`，URL 全 200 + `Cache-Control: no-store`。
+- **verify-feature.sh**：新增脚本缺可执行位（exit 126）；status-page 用未定义 `$msvc`（dash `set -u`）；urls 的 registry 公网 Funnel 链路在容器内不稳（000），改判内网 `registry:5000/v2/` 匿名 401（鉴权由 feat-registry-auth 全覆盖）。
+- **Gerrit 评审流探针**：canonicalWebUrl 指向公网 8443，容器内照直连会 301→GnuTLS 失败；HTTP 交互注入 `Host: <canonical>` + `X-Forwarded-Proto: https` 绕开重定向，push/clone/hook/REST 全走内网 :8080；commit 必须用已注册邮箱（ci-bot 无注册邮箱会被拒）。Verified 查询与 abandon 封装为共享库脚本 `gerrit-check-verified.sh` / `gerrit-abandon.sh`（避免 Groovy 三引号对 `$` 与 JSON 引号的转义坑）；凭据跨 stage 不继承，Wait 阶段单独 withCredentials；dash 禁 `[[ ]]`。终验：change #46 → build-from-gerrit #12 SUCCESS → Verified+1（第 2 次查询命中）→ post.always abandon HTTP 200 → open 列表归零。M2.3 遗留 #24/#25 + 探针 #41~#45 全部清理。
+- **环境恢复**：会话中 Docker daemon 被重置到空 data-root，靠 `/etc/docker/daemon.json` 的 `data-root=/ags/workbuddy-data/docker-main` 重启 daemon 找回 69 镜像/10 卷/全容器，按依赖顺序 start 恢复 12/12 healthy。
+
 ## [m2.3-closeout] — 2026-11-26（收口复核：判据 C 闭环 + P2 收口）
 
 > 分支 `feat/m2-gerrit-cgit-harbor`，基线 `730cdec`（tag `m2.3-gerrit-ci`）。依据《orgflow-M2.3-收口复核-2026-11-26.md》。详见 `docs/records/执行日志/2026-11-26.md`。

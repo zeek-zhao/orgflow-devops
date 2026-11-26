@@ -116,6 +116,8 @@ V_REG_DATA="$(grep -E '^REGISTRY_DATA_VOLUME=' "$ENVFILE" | cut -d= -f2-)"
 V_REG_AUTH="$(grep -E '^REGISTRY_AUTH_VOLUME=' "$ENVFILE" | cut -d= -f2-)"
 # M2.3：BuildKit 构建缓存卷
 V_BUILDER="$(grep -E '^BUILDER_CACHE_VOLUME=' "$ENVFILE" | cut -d= -f2-)"
+# M2.4：自检报告共享卷（Jenkins 写 / Caddy 只读）
+V_SELFCHECK="$(grep -E '^SELFCHECK_REPORTS_VOLUME=' "$ENVFILE" | cut -d= -f2-)"
 SUBNET="$(grep -E '^NET_SUBNET=' "$ENVFILE" | cut -d= -f2-)"
 
 # ---- 参数 ----
@@ -217,7 +219,7 @@ ensure_resources() {
     docker network create --driver bridge --subnet "$SUBNET" "$NET" >/dev/null
     res_note "✓ 建网络 $NET $SUBNET"
   fi
-  for v in "$V_CA" "$V_LDAPD" "$V_LDAPC" "$V_JENKINS" "$V_REG_DATA" "$V_REG_AUTH" "$V_BUILDER"; do
+  for v in "$V_CA" "$V_LDAPD" "$V_LDAPC" "$V_JENKINS" "$V_REG_DATA" "$V_REG_AUTH" "$V_BUILDER" "$V_SELFCHECK"; do
     [[ -z "$v" ]] && continue
     if docker volume inspect "$v" >/dev/null 2>&1; then
       res_note "卷 $v 已存在，跳过"
@@ -227,6 +229,16 @@ ensure_resources() {
       res_note "✓ 建卷 $v"
     fi
   done
+  # M2.4 Phase3：自检报告卷由 Jenkins（uid 1000）写、Caddy 只读挂；docker volume create 默认 root:root 755，
+  # jenkins 进程无权写 → Pipeline writeFile 抛 AccessDeniedException。用 Jenkins 镜像以 root 一次性 chown，幂等。
+  if [[ -n "$V_SELFCHECK" ]] && docker volume inspect "$V_SELFCHECK" >/dev/null 2>&1 && (( ! DRY )); then
+    local jimg; jimg="$(grep -E '^IMAGE_JENKINS=' "$ENVFILE" | cut -d= -f2-)"
+    if [[ -n "$jimg" ]]; then
+      docker run --rm --user root --entrypoint chown -v "$V_SELFCHECK:/_sc" "$jimg" -R 1000:1000 /_sc >/dev/null 2>&1 \
+        && res_note "✓ 报告卷属主修正为 1000:1000" \
+        || { (( JSON )) || echo "[res] 警告：报告卷属主修正失败（需人工 chown $V_SELFCHECK 为 1000:1000）" >&2; }
+    fi
+  fi
 }
 
 svc_cid() { docker ps -aq -f "name=^${PREFIX}-$1\$" 2>/dev/null | head -1; }

@@ -60,6 +60,7 @@ make verify                   # 全量验收矩阵 AC-1~22
 | 想了解整体 | [架构总览](架构.md) |
 | 想部署/运维 | [使用说明](使用说明.md) |
 | 想改某个服务 | `docs/services/` 下对应手册 |
+| 想提交代码评审 | [Gerrit 人工使用指南](使用手册/Gerrit-人工使用指南.md) |
 | 想知道治理规则 | `docs/records/M0-治理约定.md` |
 
 ## 目录索引
@@ -76,6 +77,8 @@ make verify                   # 全量验收矩阵 AC-1~22
 - 升级与回滚：[运维/升级与回滚.md](运维/升级与回滚.md)
 - 安全基线：[运维/安全基线.md](运维/安全基线.md)
 - 新增服务标准作业：[运维/新增服务标准作业.md](运维/新增服务标准作业.md)
+- Gerrit 人工使用指南：[使用手册/Gerrit-人工使用指南.md](使用手册/Gerrit-人工使用指南.md)（登录/SSH key/clone/push/评审）
+- 自检框架：[运维/自检框架.md](运维/自检框架.md)（checks.tsv / HTML 报告 / 加检查项）
 - 架构决策记录：[records/ADR-*.md](records/)
 - 服务手册：[services/](services/)
 
@@ -122,3 +125,5 @@ make verify                   # 全量验收矩阵 AC-1~22
 | DOC-P-006 | 升级与回滚 | docs/运维/升级与回滚.md | 规程 | review | zeek.zhao | 6 | R8 |
 | DOC-P-007 | 安全基线（公网暴露面） | docs/运维/安全基线.md | 规程 | review | zeek.zhao | 6 | R8 |
 | DOC-E-010 | 新增服务标准作业（SOP） | docs/运维/新增服务标准作业.md | 规程 | review | zeek.zhao | 6 | M2.0-P4 |
+| DOC-P-008 | Gerrit 人工使用指南（面向写代码的人） | docs/使用手册/Gerrit-人工使用指南.md | 规程 | review | zeek.zhao | 6 | M2.4-P2 |
+| DOC-P-009 | 自检框架（checks.tsv / 报告 / 加检查项） | docs/运维/自检框架.md | 规程 | review | zeek.zhao | 6 | M2.4-P3 |
