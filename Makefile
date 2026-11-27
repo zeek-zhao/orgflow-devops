@@ -8,6 +8,7 @@ SERVICES := dnsmasq certs-init caddy ldap ldapadmin homepage router
 
 .PHONY: help render up down status up-% down-% check check-all test verify doctor \
         routes hosts ca ca-rotate record images-hash images-guard quota-guard \
+        quota-cron-install quota-daemon-install quota-install quota-status \
         test-svc-% sync-context images-upstream e2e e2e-up e2e-down e2e-test
 
 # ---------- 帮助 ----------
@@ -95,12 +96,44 @@ quota-install: ## 安装并启用配额证据自动刷新 timer（systemd 主机
 	if [ ! -d /run/systemd/system ]; then echo "⚠ 当前 PID1 非 systemd，timer 不可用；请在真机执行 make quota-install" >&2; exit 3; fi; \
 	repo="$$(pwd)"; \
 	sed "s#__REPO__#$$repo#g" deploy/systemd/orgflow-quota.service > /etc/systemd/system/orgflow-quota.service; \
-	cp deploy/systemd/orgflow-quota.timer /etc/systemd/system/orgflow-quota.timer; \
+	sed "s#__REPO__#$$repo#g" deploy/systemd/orgflow-quota.timer > /etc/systemd/system/orgflow-quota.timer; \
 	systemctl daemon-reload; \
 	systemctl enable --now orgflow-quota.timer; \
 	systemctl status orgflow-quota.timer --no-pager -l | head -8
 
-quota-status: ## 查看 timer 状态 + 证据 ts/age（age>10min 非 0 退出）
+# m2.5.2：cron 兜底。优先当前用户 crontab（command -v crontab）；若无 crontab 命令但
+# cron daemon 在跑（如本沙箱 runit 管理的 /usr/sbin/cron），退而写入 /etc/cron.d/orgflow-quota。
+# 两种路径都先按标记 grep 去重，避免重复行；渲染 __REPO__ 为实际 pwd，不硬编码路径。
+quota-cron-install: ## 安装 cron 兜底（每5分钟刷新证据）：优先用户 crontab，缺失时写 /etc/cron.d
+	@set -e; \
+	repo="$$(pwd)"; \
+	line="$$(sed "s#__REPO__#$$repo#g" deploy/cron/orgflow-quota.cron)"; \
+	marker="quota-guard.sh --container of-builder"; \
+	if command -v crontab >/dev/null 2>&1; then \
+	  old="$$(crontab -l 2>/dev/null | grep -v -F "$$marker" || true)"; \
+	  { [ -n "$$old" ] && printf '%s\n' "$$old"; printf '%s\n' "$$line"; } | crontab -; \
+	  echo "✓ 已装入当前用户 crontab（去重后）:"; crontab -l | grep -F 'quota' || true; \
+	elif [ -d /etc/cron.d ]; then \
+	  printf '# OrgFlow 配额证据自动刷新（m2.5.2 cron 兜底；由 make quota-cron-install 生成）\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n%s\n' "$$line" > /etc/cron.d/orgflow-quota; \
+	  chmod 0644 /etc/cron.d/orgflow-quota; \
+	  echo "✓ crontab 命令不可用，已写入 /etc/cron.d/orgflow-quota:"; grep -F 'quota' /etc/cron.d/orgflow-quota || true; \
+	else \
+	  echo "✗ 无 crontab 命令且无 /etc/cron.d：请用 make quota-daemon-install" >&2; exit 3; \
+	fi
+
+# 最后兜底：连 cron 也没有时，用 nohup 循环每 5 分钟刷新（仅当 cron 不可用才用，需写执行日志说明）。
+quota-daemon-install: ## 最后兜底：nohup 守护循环每5分钟刷新（仅 cron/systemd 均不可用时用）
+	@set -e; \
+	repo="$$(pwd)"; \
+	pidfile="$$repo/artifacts/quota/daemon.pid"; \
+	if [ -f "$$pidfile" ] && kill -0 "$$(cat "$$pidfile" 2>/dev/null)" 2>/dev/null; then \
+	  echo "⚠ quota-daemon 已在运行（PID=$$(cat "$$pidfile")），拒绝重复安装（避免双写）" >&2; exit 4; \
+	fi; \
+	nohup bash -c 'while true; do bash "'"$$repo"'/scripts/quota-guard.sh" --container of-builder --out "'"$$repo"'/artifacts/quota" >> "'"$$repo"'/artifacts/quota/cron.log" 2>&1; sleep 300; done' >/dev/null 2>&1 & \
+	echo $$! > "$$pidfile"; \
+	echo "✓ quota-daemon 已启动（PID=$$!，pidfile=$$pidfile）；须在执行日志写明选择理由"
+
+quota-status: ## 查看 timer/cron 状态 + 证据 ts/age（age>10min 非 0 退出）
 	@bash scripts/quota-status.sh
 
 # ---------- 镜像 ----------

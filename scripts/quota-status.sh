@@ -14,7 +14,22 @@ if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
   systemctl status orgflow-quota.timer --no-pager -l 2>/dev/null | head -6 || echo "  (timer 未安装：make quota-install)"
   echo "  next: $(systemctl show orgflow-quota.timer -p NextElapseUSecRealtime --value 2>/dev/null || echo n/a)"
 else
-  echo "  ⚠ 当前 PID1 非 systemd：timer 不可用；真机请 make quota-install，或手动 make quota-guard 刷新"
+  echo "  ⚠ 当前 PID1 非 systemd：timer 不可用（m2.5.2 走 cron 兜底）"
+  # m2.5.2：非 systemd 主机不只看 timer，还需识别 cron 是否已装（用户 crontab 或 /etc/cron.d）
+  cron_line=""
+  if command -v crontab >/dev/null 2>&1; then
+    cron_line="$(crontab -l 2>/dev/null | grep -F 'quota-guard.sh' | head -1 || true)"
+  fi
+  if [ -z "$cron_line" ] && [ -f /etc/cron.d/orgflow-quota ]; then
+    cron_line="$(grep -F 'quota-guard.sh' /etc/cron.d/orgflow-quota 2>/dev/null | head -1 || true)"
+  fi
+  if [ -n "$cron_line" ]; then
+    echo "  cron: $(printf '%s' "$cron_line" | sed 's/>>.*/>> .../')  (installed)"
+  elif [ -f "$ROOT/artifacts/quota/daemon.pid" ] && kill -0 "$(cat "$ROOT/artifacts/quota/daemon.pid" 2>/dev/null)" 2>/dev/null; then
+    echo "  daemon: nohup quota-guard loop, PID=$(cat "$ROOT/artifacts/quota/daemon.pid")  (running)"
+  else
+    echo "  ✗ 无任何自动刷新机制（timer/cron/daemon 均不可用）：请 make quota-cron-install（或最后兜底 make quota-daemon-install）"
+  fi
 fi
 
 echo "  证据文件: $Q"

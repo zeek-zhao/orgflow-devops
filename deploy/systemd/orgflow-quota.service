@@ -1,6 +1,6 @@
 [Unit]
 Description=OrgFlow 构建资源四项铁律证据刷新（quota-guard of-builder）
-Documentation=file:/opt/orgflow/repo/docs/运维/构建资源配额.md
+Documentation=file:__REPO__/docs/运维/构建资源配额.md
 After=docker.service
 Requires=docker.service
 

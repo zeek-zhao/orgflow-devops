@@ -2,6 +2,16 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m2.5.2-quota-refresh] — 2026-11-27（配额证据自动刷新修复）
+
+> 分支 `feat/m2-gerrit-cgit-harbor`，基线 `c3a7dc6`（tag `m2.5.1-quota-lifecycle`）。依据《OrgFlow M2.5.2 配额证据自动刷新修复 · AI 提示词》。只让刷新真正跑起来并留证，不碰判定逻辑/阈值。详见 `docs/records/执行日志/2026-11-27.md` 的 `### m2.5.2` 小节。
+
+- **根因**：PID1=supervisord，`/run/systemd/system` 不存在 → systemd timer 物理不可用；证据 ts 停在 `06:41:53Z`，推任何 change 必被 Quota gate 以 stale 拦下。非判定逻辑缺陷，是刷新机制未运行。
+- **双路径刷新**：新增 `deploy/cron/orgflow-quota.cron` + `make quota-cron-install`（优先用户 crontab，无 crontab 命令则写 `/etc/cron.d/orgflow-quota`，先去重）；`make quota-daemon-install` 作最后兜底（nohup while 循环，pidfile 防双写）。`scripts/quota-status.sh` 增强识别 cron/daemon 行，三路径均无则明确提示"无任何自动刷新机制"。
+- **本沙箱实测**：cron daemon 进程在但不扫描 `/etc/cron.d`（探针经 SIGHUP 重载仍未命中）→ 启用 daemon 兜底，PID 写 `artifacts/quota/daemon.pid`，首刷验证 ts 前进 + 四行 `[quota]`+ verdict=PASS，选择理由写执行日志。
+- **小账**：① `deploy/systemd/orgflow-quota.{service,timer}` 的 `Documentation=file:` 由写死 `/opt/orgflow/repo` 改 `__REPO__` 占位符，Makefile `quota-install` 的 sed 一并渲染 timer；② abandoned change 18 条，保留最近样本 #48~#52 + 历史证据链 #24/#25，清理策略写执行日志（不删历史链）。
+- **验收**：15 分钟观察 ts 前进 ≥2 次、age≤6min；反证篡 ts 2h→verify FAILURE→等自动刷新→SUCCESS；真实 change 端到端 SUCCESS + Verified +1（age 来自自动刷新、非手动）；门禁全绿；tag `m2.5.2-quota-refresh` 推送可见。
+
 ## [m2.5.1-quota-lifecycle] — 2026-11-27（M2.5 复核收口：配额证据生命周期）
 
 > 分支 `feat/m2-gerrit-cgit-harbor`，基线 `4004f02`（tag `m2.5-quota-guard`）。依据《OrgFlow M2.5 复核与下一轮 AI 提示文档》。只修复与验证，不开新功能。详见 `docs/records/执行日志/2026-11-27.md`。
