@@ -40,8 +40,44 @@ rotate_log() {
 }
 
 # 宿主侧自证：ps -p $$ -o args= 比对命令行含 quota-guard-loop.sh，避免只 kill -0 的 PID 复用误判。
+# m2.5.4 P0-2：新增 instances（全场 loop 实例数）与 pidfile_pid，让"双实例"在自检里可见。
+#   instances    = 全场 loop 实例数，用 ps 命令行精确锚定 'bash .../quota-guard-loop.sh'
+#                  （等价 pgrep -fc '[q]uota-guard-loop.sh'，但排除 nohup/watchdog 启动 wrapper
+#                  的瞬时命令行，避免把 wrapper 误计为第二个实例造成假红）；
+#   pidfile_pid  = daemon.pid 当前内容（正常应等于 $$；
+#                  不等说明有旧 loop 晚退出覆盖了 pidfile，或出现双实例）。
+count_instances() {
+  # 逐 /proc/PID/cmdline 精确比对参数数组 [bash, <abs>/scripts/quota-guard-loop.sh]。
+  # 排除命令替换 $(count_instances) fork 的子 shell（其 cmdline 继承 loop、PPID=本 loop），
+  # 否则会把子 shell 误计为第二实例。QUOTA_SELF_PID=$$ 为本 loop PID，只过滤其直接子进程，
+  # 不排除本 loop 自身，也不影响 watchdog 另起的其他 loop（双实例）。
+  QUOTA_SELF_PID="$$" python3 - 2>/dev/null <<'PY' || echo 0
+import os, glob
+self_pid = int(os.environ.get('QUOTA_SELF_PID', '0'))
+def ppid(pid):
+    try:
+        for line in open('/proc/%d/status' % pid):
+            if line.startswith('PPid:'):
+                return int(line.split()[1])
+    except Exception:
+        pass
+    return -1
+n = 0
+for d in glob.glob('/proc/[0-9]*/cmdline'):
+    try:
+        pid = int(d.split('/')[2])
+        argv = [a.decode(errors='replace') for a in open(d, 'rb').read().split(b'\0') if a]
+    except Exception:
+        continue
+    if len(argv) == 2 and os.path.basename(argv[0]) == 'bash' and (argv[1].endswith('/scripts/quota-guard-loop.sh') or argv[1] == 'scripts/quota-guard-loop.sh' or argv[1].endswith('/quota-guard-loop.sh') and '/scripts/' in argv[1]):
+        if ppid(pid) == self_pid:  # 命令替换 fork 的子 shell（cmdline 继承父），非独立 loop
+            continue
+        n += 1
+print(n)
+PY
+}
 write_alive() {
-  local ts pid args alive logts esc
+  local ts pid args alive logts esc instances pidfile_pid
   ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   pid="$$"
   args="$(ps -p "$pid" -o args= 2>/dev/null | tr -d '\n' | tr -d '\r')"
@@ -49,9 +85,12 @@ write_alive() {
   printf '%s' "$args" | grep -q 'quota-guard-loop.sh' && alive=true
   logts=""
   [ -f "$LOG" ] && logts="$(date -u -r "$LOG" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null)"
+  instances="$(count_instances)"
+  pidfile_pid="$(cat "$OUT/daemon.pid" 2>/dev/null | tr -d '\r\n')"
+  [ -n "$pidfile_pid" ] || pidfile_pid=0
   esc="$(printf '%s' "$args" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
-  printf '{"ts":"%s","pid":%s,"args":"%s","alive":%s,"mechanism":"%s","log_last_ts":"%s"}\n' \
-    "$ts" "$pid" "$esc" "$alive" "$MECH" "$logts" > "$OUT/alive.json"
+  printf '{"ts":"%s","pid":%s,"args":"%s","alive":%s,"mechanism":"%s","log_last_ts":"%s","instances":%s,"pidfile_pid":%s}\n' \
+    "$ts" "$pid" "$esc" "$alive" "$MECH" "$logts" "$instances" "$pidfile_pid" > "$OUT/alive.json"
 }
 
 do_guard() { bash "$ROOT/scripts/quota-guard.sh" --container "$CONTAINER" --out "$OUT"; }
@@ -79,7 +118,12 @@ echo "[quota-loop] 启动：mechanism=$MECH interval=${INTERVAL}s container=$CON
 # 常驻模式写 daemon.pid（自报 PID）；supervisor/runit/nohup 统一据此判活，
 # 重启后新进程会覆盖旧 PID。--once 模式（cron）不写 pidfile。
 echo "$$" > "$OUT/daemon.pid"
-trap 'rm -f "$OUT/daemon.pid"' EXIT INT TERM
+# m2.5.4 P0-1：只删"自己的" pidfile。旧 loop 晚退出时若无条件 rm，会把新 loop 的 pidfile
+# 删掉，watchdog 看到"无 pidfile"再拉一个 → 三实例双写。先比对 pidfile 内容 == 自身 PID 才删。
+trap 'if [ "$(cat "$OUT/daemon.pid" 2>/dev/null | tr -d "\r\n")" = "$$" ]; then rm -f "$OUT/daemon.pid"; fi' EXIT INT TERM
+# m2.5.4 P0-2：启动瞬间 nohup/setsid wrapper 的 cmdline 可能短暂与 loop 完全相同，
+# 延后 5s 再首次刷新，确保 wrapper 已 exec/退出，避免首次 alive.instances 误计为 2（假红）。
+sleep 5
 while true; do
   refresh_loop
   sleep "$INTERVAL"

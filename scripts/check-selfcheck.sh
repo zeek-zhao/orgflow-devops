@@ -76,8 +76,19 @@ fi
 # 5c. guard-quota-alive 行必须登记（防假绿机制无自检项）。
 awk -F'\t' 'NR>1 && ($1=="guard-quota-alive"){f=1} END{exit f?0:1}' "$TSV" \
   || { echo "✗ checks.tsv 缺 guard-quota-alive 行（m2.5.3 P0-2）" >&2; rc=1; }
+# 5d. m2.5.4 P2-1：报告 buildJson 必须同时输出 result 与 overall（同值），
+#     机器消费方按 result 读；缺一即 fail（运行时"两者相等"在验收用 jq 实测）。
+if ! grep -q '"result":"' ci/jenkins/pipelines/selfcheck.Jenkinsfile \
+   || ! grep -q '"overall":"' ci/jenkins/pipelines/selfcheck.Jenkinsfile; then
+  echo "✗ selfcheck.Jenkinsfile buildJson 未同时输出 result/overall 字段（m2.5.4 P2-1）" >&2; rc=1
+fi
+# 5e. m2.5.4 P0-2：verify-quota-refresh 必须含 instances 判据，否则双实例不可观测。
+if ! grep -q 'instances' ci/jenkins/pipelines/verify-quota-refresh.Jenkinsfile \
+   || ! grep -q 'pidfile_pid' ci/jenkins/pipelines/verify-quota-refresh.Jenkinsfile; then
+  echo "✗ verify-quota-refresh.Jenkinsfile 缺 instances/pidfile_pid 判据（m2.5.4 P0-2）" >&2; rc=1
+fi
 
 if [[ $rc -eq 0 ]]; then
-  echo "✓ 自检清单门禁：${n} 项（表头/列/id 唯一/target 存在/verify-* 全覆盖/result+mechanism+alive 字段）"
+  echo "✓ 自检清单门禁：${n} 项（表头/列/id 唯一/target 存在/verify-* 全覆盖/result+overall+mechanism+alive+instances 字段）"
 fi
 exit $rc

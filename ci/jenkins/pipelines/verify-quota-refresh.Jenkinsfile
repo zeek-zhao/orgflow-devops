@@ -5,7 +5,11 @@
 //   1) 机制声明/进程存活：artifacts/quota/alive.json 与 daemon.pid 的 pid 命令行匹配 quota-guard-loop.sh
 //      （ps -p PID -o args= 比对，不只 kill -0，避免 PID 复用误判）；
 //   2) 日志新鲜：cron.log（或 supervisor.log）最后一行时间距今 ≤8 分钟；
-//   3) 证据新鲜：latest-of-builder.json 的 age ≤10 分钟。
+//   3) 证据新鲜：latest-of-builder.json 的 age ≤10 分钟；
+//   4) m2.5.4 P0-2 单实例：alive.instances == 1 且 alive.pidfile_pid == alive.pid，
+//      否则 FAILURE 并打印实际值 + ps -eo pid,args（双写会让两份证据互相覆盖，必须判红）。
+//      注：cron/systemd --once 是瞬时模式，不写 pidfile；本 Job 面向常驻 loop 机制
+//      （supervisor/runit/nohup），这些机制下 loop 必写 alive.json 的 instances/pidfile_pid。
 //
 // 只读消费：证据经 artifacts/quota 只读挂到 /opt/orgflow/quota；agent 无 docker.sock、无法跨
 // PID namespace 看宿主进程，故存活信号由宿主侧 quota-guard-loop.sh 写 alive.json 自证。
@@ -59,6 +63,23 @@ pipeline {
                       [ "$amech" = "$MECH" ] || { echo "✗ mechanism 声明($MECH)≠alive($amech)"; rc=1; }
                     fi
 
+                    # ---- 判据1c（m2.5.4 P0-2）：单实例 instances==1 且 pidfile_pid==pid ----
+                    if [ -f "$ALIVE" ]; then
+                      inst="$(jq -r '.instances // empty' "$ALIVE")"
+                      pfpid="$(jq -r '.pidfile_pid // empty' "$ALIVE")"
+                      echo "[refresh] instances=${inst:-缺失} pidfile_pid=${pfpid:-缺失} pid=$apid"
+                      if [ "$inst" != "1" ]; then
+                        echo "✗ instances=${inst:-缺失} ≠ 1（检测到双实例/无实例，证据会双写）"
+                        echo "  ps -eo pid,args | grep '[q]uota-guard-loop.sh':"
+                        ps -eo pid,args 2>/dev/null | grep '[q]uota-guard-loop.sh' || echo "  (容器内看不到宿主进程，以宿主 alive.instances 为准)"
+                        rc=1
+                      fi
+                      if [ "$pfpid" != "$apid" ]; then
+                        echo "✗ pidfile_pid=${pfpid:-缺失} ≠ pid=$apid（pidfile 与存活 PID 不一致，可能旧进程晚退出覆盖）"
+                        rc=1
+                      fi
+                    fi
+
                     # ---- 判据2：日志新鲜（cron.log / supervisor.log 最后写入 ≤8min）----
                     logf=""
                     for f in "$QDIR/cron.log" "$QDIR/supervisor.log"; do
@@ -99,10 +120,10 @@ pipeline {
                     fi
 
                     if [ "$rc" -eq 0 ]; then
-                      printf 'REFRESH_ALIVE mechanism=%s alive_age<=8min log<=8min evidence<=10min' "$MECH" > /tmp/refresh_desc.txt
-                      echo "✓ 刷新机制存活三项判据全过（mechanism=$MECH）"
+                      printf 'REFRESH_ALIVE mechanism=%s instances=1 alive_age<=8min log<=8min evidence<=10min' "$MECH" > /tmp/refresh_desc.txt
+                      echo "✓ 刷新机制存活判据全过（mechanism=$MECH instances=1）"
                     else
-                      printf 'REFRESH_DEAD mechanism=%s 存在失败判据（见 console）' "$MECH" > /tmp/refresh_desc.txt
+                      printf 'REFRESH_DEAD mechanism=%s instances=%s 存在失败判据（见 console）' "$MECH" "${inst:-?}" > /tmp/refresh_desc.txt
                     fi
                     exit "$rc"
                 '''

@@ -1,13 +1,17 @@
-#!/usr/bin/env python3.11
-# supervisor-rpc.py —— 无 supervisorctl CLI 时，用 XML-RPC 管理 supervisord（m2.5.3 P0-1）
-# 本沙箱 PID1=supervisord 但未安装 supervisorctl CLI，unix socket 可用，故用标准库 XML-RPC 调用。
-# 用法：python3 scripts/supervisor-rpc.py <status|reload|start|stop|restart|pid> [program]
+#!/usr/bin/env python3
+# supervisor-rpc.py —— 沙箱/无 supervisorctl CLI 场景用 XML-RPC 管理 supervisord（m2.5.3 P0-1 / m2.5.4 P1-1）
+# 真机优先 supervisorctl；本脚本仅在无 CLI 时兜底。socket 必须经 SUPERVISOR_SOCKET 显式传入，
+# 不再内置沙箱默认路径（m2.5.4 P1-1：避免把沙箱 socket 当默认值在真机落错地方）。
+# 用法：SUPERVISOR_SOCKET=/path/to/supervisor.sock python3 scripts/supervisor-rpc.py <status|reload|start|stop|restart|pid|list> [program]
 import socket
 import sys
 import xmlrpc.client
 import os
 
-SOCK = os.environ.get('SUPERVISOR_SOCKET', '/.PlnPyKFp4CRfFtgC1_run/cs-supervisor.sock')
+SOCK = os.environ.get('SUPERVISOR_SOCKET', '')
+if not SOCK:
+    sys.stderr.write('✗ supervisor-rpc.py: 未设置 SUPERVISOR_SOCKET；请显式指定 supervisor unix socket（真机请用 supervisorctl）\n')
+    sys.exit(2)
 
 
 class UnixTransport(xmlrpc.client.Transport):

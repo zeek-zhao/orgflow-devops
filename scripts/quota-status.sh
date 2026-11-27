@@ -58,7 +58,20 @@ else
     process_alive "$cand" && dpid="$cand"
   fi
   if [ "$declared" = "supervisor" ] && [ -n "$dpid" ]; then
-    mech="supervisor"; mech_detail="PID=$dpid（supervisord 托管，无 supervisorctl CLI，按声明+进程判活）"
+    mech="supervisor"
+    # m2.5.4 P0-2：声明 supervisor 但服务非 RUNNING 时，把真实 state 显示出来
+    # （supervisorctl 可用读之；否则 socket 可用时经 rpc 读），避免笼统显示 supervisor 掩盖 FATAL/BACKOFF。
+    svc_state=""
+    if command -v supervisorctl >/dev/null 2>&1; then
+      svc_state="$(supervisorctl status orgflow-quota 2>/dev/null | awk '{print $2}')"
+    elif [ -n "${SUPERVISOR_SOCKET:-}" ] && [ -f "$ROOT/scripts/supervisor-rpc.py" ]; then
+      svc_state="$(SUPERVISOR_SOCKET="$SUPERVISOR_SOCKET" python3 "$ROOT/scripts/supervisor-rpc.py" status orgflow-quota 2>/dev/null | awk '{print $2}')"
+    fi
+    case "$svc_state" in
+      RUNNING|STARTING) mech_detail="PID=$dpid（supervisord 托管，state=$svc_state）" ;;
+      FATAL|BACKOFF|STOPPED|UNKNOWN|SHUTDOWN) mech_detail="PID=$dpid（⚠ supervisor state=$svc_state，服务非 RUNNING）" ;;
+      *) mech_detail="PID=$dpid（supervisord 托管，无 supervisorctl CLI，按声明+进程判活）" ;;
+    esac
   elif [ -n "$cron_line" ]; then
     mech="cron"; mech_detail="$(printf '%s' "$cron_line" | sed 's/>>.*/>> .../')"
   elif [ "$declared" = "runit" ] && [ -n "$dpid" ]; then

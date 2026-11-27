@@ -144,19 +144,37 @@ quota-cron-install: ## [优先2] 安装 cron 刷新（用户 crontab 5 字段 / 
 	  echo "✗ 无 crontab 命令且无 /etc/cron.d：请用 quota-supervisor/quota-runit/quota-daemon" >&2; exit 3; \
 	fi
 
-# m2.5.3 P0-1：PID1=supervisord 主机，注册 [program:orgflow-quota]，autorestart=true。
-quota-supervisor-install: ## [优先3] 注册为 supervisor 服务（PID1=supervisord 主机，自动拉起）
+# m2.5.3 P0-1 / m2.5.4 P1-1：PID1=supervisord 主机注册 [program:orgflow-quota]。
+# m2.5.4 P1-1 修安装可移植性：
+#   - conf 目录由 scripts/supervisor-conf-dir.sh 严格探测（显式 SUPERVISOR_CONF_DIR →
+#     supervisorctl 默认 /etc/supervisor/conf.d → 读 supervisord.conf include → 报错 exit 2），
+#     绝不静默落到 /usr/local/share/supervisor（那是沙箱 include，真机写进去=假绿）。
+#   - WATCHDOG=1/0 渲染 conf 的 __WATCHDOG_AUTOSTART__：真机默认 0（supervisor 原生 autorestart
+#     足够，watchdog 同开会双实例），仅本沙箱 autorestart 失效时显式 WATCHDOG=1。
+#   - 装后必须断言服务真的 RUNNING（supervisorctl 或 rpc 的 getAllProcessInfo），失败 exit 2，
+#     不许"写了配置就算装好"。
+quota-supervisor-install: ## [优先3] 注册 supervisor 服务（SUPERVISOR_CONF_DIR=/WATCHDOG= 可覆盖，装后断言 RUNNING）
 	@set -e; \
 	repo="$$(pwd)"; \
 	$(MAKE) -s quota-cleanup-nohup; \
-	conf_dir="$$(supervisorctl status >/dev/null 2>&1 && echo /etc/supervisor/conf.d || echo /usr/local/share/supervisor)"; \
-	mkdir -p "$$conf_dir"; \
-	sed "s#__REPO__#$$repo#g" deploy/supervisor/orgflow-quota.conf > "$$conf_dir/orgflow-quota.conf"; \
+	watchdog="$${WATCHDOG:-0}"; \
+	case "$$watchdog" in 1|true|yes) wd=true ;; *) wd=false ;; esac; \
+	conf_dir="$$(bash scripts/supervisor-conf-dir.sh)"; \
+	sed -e "s#__REPO__#$$repo#g" -e "s#__WATCHDOG_AUTOSTART__#$$wd#g" deploy/supervisor/orgflow-quota.conf > "$$conf_dir/orgflow-quota.conf"; \
 	printf 'supervisor\n' > artifacts/quota/mechanism.txt; \
+	echo "✓ 配置已写入 $$conf_dir/orgflow-quota.conf（watchdog autostart=$$wd）"; \
 	if command -v supervisorctl >/dev/null 2>&1; then \
-	  supervisorctl reread; supervisorctl update; supervisorctl status orgflow-quota; \
+	  supervisorctl reread; supervisorctl update; \
+	  supervisorctl status orgflow-quota | grep -qE 'RUNNING|STARTING' \
+	    || { echo "✗ 装后断言失败：orgflow-quota 非 RUNNING（exit 2）" >&2; exit 2; }; \
+	  supervisorctl status orgflow-quota; \
+	elif [ -n "$${SUPERVISOR_SOCKET:-}" ]; then \
+	  python3 scripts/supervisor-rpc.py reload; \
+	  state="$$(SUPERVISOR_SOCKET="$$SUPERVISOR_SOCKET" python3 scripts/supervisor-rpc.py status orgflow-quota | awk '{print $$2}')"; \
+	  case "$$state" in RUNNING|STARTING) echo "✓ orgflow-quota state=$$state（rpc RUNNING 断言通过）" ;; \
+	    *) echo "✗ 装后断言失败：orgflow-quota state=$${state:-unknown}（exit 2）" >&2; exit 2 ;; esac; \
 	else \
-	  echo "⚠ 无 supervisorctl CLI：配置已写入 $$conf_dir/orgflow-quota.conf，请在该机执行 supervisorctl reread && supervisorctl update（或由 PID1 重新启动加载 include）"; \
+	  echo "✗ 无 supervisorctl CLI 且未设 SUPERVISOR_SOCKET，无法做 RUNNING 断言（exit 2）；请在真机执行 supervisorctl reread && supervisorctl update" >&2; exit 2; \
 	fi
 
 # m2.5.3 P0-1：其他 PID1（runit）主机，软链 service 目录并 sv up。

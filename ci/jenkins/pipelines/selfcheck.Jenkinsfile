@@ -158,7 +158,9 @@ def buildJson(build, now, overall, commit, jver, imageKeys, images, heavyNote, q
         '","target":"' + esc(r.target) + '","result":"' + esc(r.result) + '","duration":"' + esc(r.duration) +
         '","evidence":"' + esc(r.evidence) + '","consoleUrl":"' + esc(r.consoleUrl) + '"}'
     }.join(',')
+    // m2.5.4 P2-1：overall 与 result 并存且同值——机器消费方按 result 读，HTML 仍用 overall。
     return '{' + '"build":"' + esc(build) + '","time":"' + esc(now) + '","overall":"' + esc(overall) +
+        '","result":"' + esc(overall) +
         '","commit":"' + esc(commit) + '","jenkinsVersion":"' + esc(jver) + '","imageKeys":"' + esc(imageKeys) +
         '","images":"' + esc(images) + '","heavyNote":"' + esc(heavyNote) + '","quotaWarnNote":"' + esc(quotaWarnNote) +
         '","mechanism":"' + esc(mechanism) + '"' +

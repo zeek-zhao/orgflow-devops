@@ -2,6 +2,15 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m2.5.4-quota-single-instance] — 2026-11-27（刷新单实例保证与安装可移植性）
+
+> 分支 `feat/m2-gerrit-cgit-harbor`，基线 `6a39aed`（tag `m2.5.3-quota-supervision`）。依据《OrgFlow M2.5.4 刷新单实例保证与安装可移植性 · AI 提示词》。不改动 M2.5.3 已验证的刷新/判定主链路与阈值，只补三类"换机或重启会炸"的问题。详见 `docs/records/执行日志/2026-11-27.md` 的 `### m2.5.4` 小节。
+- **P0-1 单实例保证**：loop EXIT trap 只删自己的 pidfile（比对 `$$`）；watchdog 拉起前全局实例判断（`/proc` 精确计数，>0 跳过）；conf 中 watchdog 改 `autostart=__WATCHDOG_AUTOSTART__`，`make quota-supervisor-install WATCHDOG=0`（默认/真机，原生 autorestart 不双实例）/ `WATCHDOG=1`（沙箱）渲染。实测 kill -9 后 15s 只拉起 1 个新 PID。
+- **P0-2 双实例可观测**：`write_alive` 增 `instances`/`pidfile_pid`；`verify-quota-refresh` 增判据 `instances==1 && pidfile_pid==pid`（否则 FAILURE + ps 列表）；报告 evidence 含 `instances=1`；`quota-status` 的 supervisor state 可见。反证 verify #9 SUCCESS → #10 FAILURE(instances=2) → #11 SUCCESS。
+- **P1-1 安装可移植性**：新增 `scripts/supervisor-conf-dir.sh`（显式参数 → supervisorctl 默认 → 读 include → exit 2，禁止静默落 `/usr/local/share/supervisor`）；装后强制 RUNNING 断言（失败 exit 2）；`supervisor-rpc.py` socket 必填 + shebang 改 `#!/usr/bin/env python3`。
+- **P2-1 报告口径**：`buildJson` 同时输出 `result`/`overall`（同值），HTML 仍用 overall；门禁断言字段齐全。
+- 全量门禁全绿；自检 20 项全 SUCCESS；端到端 change→build SUCCESS、Verified +1、open=0；tag `m2.5.4-quota-single-instance`。
+
 ## [m2.5.3-quota-supervision] — 2026-11-27（刷新机制服务化与收尾一致性）
 
 > 分支 `feat/m2-gerrit-cgit-harbor`，基线 `65a7639`（tag `m2.5.2-quota-refresh`）。依据《OrgFlow M2.5.3 刷新机制服务化与收尾一致性 · AI 提示词》。不重做 M2.5.2 已验证的刷新/反证/端到端，只补三类随时间劣化的问题。详见 `docs/records/执行日志/2026-11-27.md` 的 `### m2.5.3` 小节。
