@@ -1,0 +1,13 @@
+[Unit]
+Description=OrgFlow 构建资源四项铁律证据刷新（quota-guard of-builder）
+Documentation=file:/opt/orgflow/repo/docs/运维/构建资源配额.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# __REPO__ 由 make quota-install 用 sed 替换为仓库绝对路径（不硬编码部署机路径）。
+WorkingDirectory=__REPO__
+ExecStart=/bin/bash __REPO__/scripts/quota-guard.sh --container of-builder --out __REPO__/artifacts/quota
+# 证据写宿主任意用户可读即可（消费端只读）；docker 权限由 root 提供。
+User=root

@@ -2,6 +2,26 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m2.5.1-quota-lifecycle] — 2026-11-27（M2.5 复核收口：配额证据生命周期）
+
+> 分支 `feat/m2-gerrit-cgit-harbor`，基线 `4004f02`（tag `m2.5-quota-guard`）。依据《OrgFlow M2.5 复核与下一轮 AI 提示文档》。只修复与验证，不开新功能。详见 `docs/records/执行日志/2026-11-27.md`。
+
+### P0 配额证据生命周期
+- **P0-1 自动刷新**：新增 `deploy/systemd/orgflow-quota.service` + `.timer`（`OnBootSec=2min`/`OnUnitActiveSec=5min`/`Persistent=true`）；`make quota-install`（sed 替换 `__REPO__` → 安装 `/etc/systemd/system` → daemon-reload → enable --now，非 systemd 主机优雅提示）；`make quota-status` → `scripts/quota-status.sh`（timer 状态 + `latest-of-builder.json` 的 ts/age，age>10min 非 0）。证据生命周期 10 分钟、timer 每 5 分钟刷新、部署后先 quota-status 再推代码、agent 绝不挂 docker.sock 写入文档。
+- **P0-2 端到端验证**（真实 Gerrit change + build-from-gerrit）：正例 #48→build#14 SUCCESS+Verified+1；负例 CPU `docker update --cpus 2` #49→#15 BLOCKED+Verified 空；负例内存 `--memory 4g` #50→#16 BLOCKED+Verified 空；恢复（重建 of-builder 清限制）#51→#17 SUCCESS+Verified+1；负例证据过期（ts 改 1h 前）#52→#18 `stale=60min` BLOCKED+Verified 空。五条 change 全部 abandon，open 归零。
+
+### P1 证据隔离与空参数
+- **P1-1 latest 覆盖**：`quota-guard.sh` 每次写 `latest-<container>.json`（门禁固定读 `latest-of-builder.json`）+ `latest.json`（仅人类查看副本）+ `<UTC>-<container>.json`；build-from-gerrit 与 verify-quota-guard 均改读 `latest-of-builder.json`。反证：`up.sh --only jenkins-agent` 不再覆盖 builder 证据。
+- **P1-2 空参数**：删除 `--max-age-min`（脚本从不使用，新鲜度属消费端职责）；`--help` 与文档写明，不留半成品。
+
+### P2 启动顺序 / 自检口径 / 部署顺序
+- **P2-1 两段式**：`up.sh` 对 builder/jenkins-agent 启动**前**跑 `quota-guard.sh --preflight`（宿主三项 + docker 未限权，落 `host-preflight.json`），启动后跑 `--compare-preflight` 完整取证并比对启动前后宿主值，不一致即 BLOCKED。实测重建 of-builder 全程 PASS。
+- **P2-2 自检口径**：`verify-quota-guard` 输出 `age` 字段，age>10min 时本 Job 仍 SUCCESS 但在 description 写 `QUOTA_WARN ...`（不判 FAIL）；selfcheck 报告据此把该行标 WARN（橙色）并在顶部注明"真实构建将被 Quota gate 拦"。实测 FRESH→`QUOTA_FRESH age=0min`、过期→`QUOTA_WARN age=60min`、报告新增 `warn`/`quotaWarnNote` 字段。
+- **P2-3 部署顺序**：升级与回滚.md 与构建资源配额.md 写明 `git pull → make check → up.sh --recreate/--pull → make quota-guard → 再推代码`，报告 commit 必须等于部署 commit。
+
+### 门禁与终验
+- `make check` / `check-all` / `test` 全绿；22 Job（JCasC reload 生效）；selfcheck 报告 commit=新头、含 WARN 口径字段；证据 zh-new PASS 新鲜；12/12 容器 healthy；open change=0。
+
 ## [m2.5-quota-guard] — 2026-11-27（M2 封版：构建资源铁律 + M2.4 复核缺陷收口）
 
 > 分支 `feat/m2-gerrit-cgit-harbor`，基线 `f0084b2`（tag `m2.4-selfcheck`）。依据《OrgFlow M2.5 施工文档》。本轮只做修复与加固，不开新功能。详见 `docs/records/执行日志/2026-11-27.md` 与 `docs/运维/构建资源配额.md`。

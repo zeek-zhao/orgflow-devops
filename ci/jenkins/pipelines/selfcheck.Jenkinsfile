@@ -63,6 +63,12 @@ pipeline {
                         if (params.NEGATIVE && results.isEmpty()) {
                             row.result = 'FAIL'; row.evidence = 'NEGATIVE=true 演示失败态（未改真实子 Job）'
                         }
+                        // m2.5.1 P2-2：verify-quota-guard 在 evidence(description) 写 QUOTA_WARN 时，
+                        // 该行由 SUCCESS 降级为 WARN（不算 FAIL，overall 不受影响），报告顶部注明
+                        // "真实构建将被 Quota gate 拦"，避免误判"自检全绿=能构建"。
+                        if (row.result == 'SUCCESS' && (row.evidence ?: '').contains('QUOTA_WARN')) {
+                            row.result = 'WARN'
+                        }
                         results << row
                         echo "  [${row.result}] ${c.id} ${c.title} ${row.duration}"
                     }
@@ -79,6 +85,7 @@ pipeline {
                     script {
                         def nFail = results.count{it.result in ['FAIL','UNKNOWN','ABORTED']}
                         def nSkip = results.count{it.result == 'SKIPPED'}
+                        def nWarn = results.count{it.result == 'WARN'}
                         // M2.5 P1-3：环境快照三项修复（不含口令/私钥/IP）。
                         // 1) commit：repo 根只读挂到 /opt/orgflow/repo（见 jenkins compose）；取不到写 unknown + warning，不写 n/a。
                         // repo 只读挂载属主 root、jenkins 进程 uid1000 → git 报 dubious ownership；
@@ -107,8 +114,13 @@ pipeline {
                         def heavyNote = (excl.contains('feat-review-flow'))
                             ? 'heavy 评审流（feat-review-flow）未纳入本轮：默认跳过，改由单独定时任务执行。'
                             : ''
-                        def json = buildJson(env.BUILD_NUMBER, now, overall, commit, jver, imageKeys, images, heavyNote, results, nFail, nSkip)
-                        def html = renderHtml(env.BUILD_NUMBER, now, overall, commit, jver, imageKeys, images, heavyNote, results, nFail, nSkip)
+                        // m2.5.1 P2-2：配额证据过期只标 WARN（不判 FAIL），但报告顶部显式提示
+                        // 真实构建将被 Quota gate 拦，避免误读"自检全绿=能构建"。
+                        def quotaWarnNote = (nWarn > 0)
+                            ? '⚠ 有 ' + nWarn + ' 项配额证据过期/异常（WARN，不计 FAIL），但真实构建将被 Quota gate 拦；请先在宿主刷新证据（make quota-guard / 等待 timer 自动刷新）。'
+                            : ''
+                        def json = buildJson(env.BUILD_NUMBER, now, overall, commit, jver, imageKeys, images, heavyNote, quotaWarnNote, results, nFail, nSkip, nWarn)
+                        def html = renderHtml(env.BUILD_NUMBER, now, overall, commit, jver, imageKeys, images, heavyNote, quotaWarnNote, results, nFail, nSkip, nWarn)
                         def reportDir = '/reports/selfcheck'
                         def base = "${reportDir}/selfcheck-${env.BUILD_NUMBER}"
                         writeFile file: "${base}.json", text: json
@@ -126,7 +138,7 @@ pipeline {
 }
 
 // 手工 JSON 序列化（沙箱无 groovy.json.JsonOutput）：字符串转义 + 拼接。
-def buildJson(build, now, overall, commit, jver, imageKeys, images, heavyNote, results, nFail, nSkip) {
+def buildJson(build, now, overall, commit, jver, imageKeys, images, heavyNote, quotaWarnNote, results, nFail, nSkip, nWarn) {
     def esc = { s -> (s ?: '').toString()
         .replace('\\', '\\\\').replace('"', '\\"')
         .replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t') }
@@ -137,13 +149,13 @@ def buildJson(build, now, overall, commit, jver, imageKeys, images, heavyNote, r
     }.join(',')
     return '{' + '"build":"' + esc(build) + '","time":"' + esc(now) + '","overall":"' + esc(overall) +
         '","commit":"' + esc(commit) + '","jenkinsVersion":"' + esc(jver) + '","imageKeys":"' + esc(imageKeys) +
-        '","images":"' + esc(images) + '","heavyNote":"' + esc(heavyNote) +
-        '","fail":' + nFail + ',"skipped":' + nSkip + ',"total":' + results.size() +
+        '","images":"' + esc(images) + '","heavyNote":"' + esc(heavyNote) + '","quotaWarnNote":"' + esc(quotaWarnNote) +
+        '","fail":' + nFail + ',"skipped":' + nSkip + ',"warn":' + nWarn + ',"total":' + results.size() +
         ',"results":[' + rows + ']}'
 }
 
 // 自包含 HTML：内联 CSS、无外链、无 JS；表格 + 状态色块 + 总判 + 环境快照 + 未覆盖提示。
-def renderHtml(build, now, overall, commit, jver, imageKeys, images, heavyNote, results, nFail, nSkip) {
+def renderHtml(build, now, overall, commit, jver, imageKeys, images, heavyNote, quotaWarnNote, results, nFail, nSkip, nWarn) {
     def esc = { s -> (s ?: '').toString().replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;') }
     def color = overall=='PASS' ? '#2e7d32' : (overall=='FAIL' ? '#c62828' : '#ef6c00')
     def sb = ''
@@ -158,8 +170,10 @@ def renderHtml(build, now, overall, commit, jver, imageKeys, images, heavyNote, 
     sb = sb + '<h1>OrgFlow 自检报告 <span class="meta">#' + build + '</span></h1>'
     sb = sb + '<p>生成时间：' + esc(now) + '　总判：<span class="verdict">' + overall + '</span></p>'
     if (heavyNote) sb = sb + '<p class="note" style="color:#ef6c00">⚠ ' + esc(heavyNote) + '</p>'
+    // m2.5.1 P2-2：配额证据过期告警（WARN 不判 FAIL），顶部显式提示构建将被拦。
+    if (quotaWarnNote) sb = sb + '<p class="note" style="color:#ef6c00">⚠ ' + esc(quotaWarnNote) + '</p>'
     sb = sb + '<p class="meta">commit=' + esc(commit) + '　Jenkins=' + esc(jver)
-    sb = sb + '　检查=' + results.size() + '　FAIL=' + nFail + '　SKIPPED=' + nSkip + '</p>'
+    sb = sb + '　检查=' + results.size() + '　FAIL=' + nFail + '　WARN=' + nWarn + '　SKIPPED=' + nSkip + '</p>'
     // M2.5 P1-3：镜像段输出 键=值（仅名与 tag），单独列一栏"镜像 tag"，不再只列键名。
     if (images) {
         sb = sb + '<h2 style="font-size:1.05rem;margin-top:1.2rem">镜像 tag（环境快照）</h2>'
@@ -172,7 +186,7 @@ def renderHtml(build, now, overall, commit, jver, imageKeys, images, heavyNote, 
     }
     sb = sb + '<table><thead><tr><th>检查项</th><th>测什么</th><th>结果</th><th>耗时</th><th>证据</th><th>Console</th></tr></thead><tbody>'
     results.each { r ->
-        def cls = r.result=='SUCCESS' ? 'ok' : (r.result=='FAIL' ? 'fail' : 'skip')
+        def cls = (r.result=='SUCCESS') ? 'ok' : (r.result=='FAIL' ? 'fail' : 'skip')  // WARN/SKIPPED 同用橙色
         sb = sb + '<tr><td>' + esc(r.id) + ' ' + esc(r.title) + '</td>'
         sb = sb + '<td>' + esc(r.what) + '</td>'
         sb = sb + '<td class="' + cls + '">' + esc(r.result) + '</td>'

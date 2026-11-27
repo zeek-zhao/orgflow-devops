@@ -1,0 +1,13 @@
+[Unit]
+Description=每 5 分钟刷新 OrgFlow 构建资源配额证据（保证 Quota gate 新鲜度 ≤10min）
+Documentation=file:/opt/orgflow/repo/docs/运维/构建资源配额.md
+
+[Timer]
+# 开机 2 分钟后首刷；之后每 5 分钟一次；Persistent=true 补偿休眠期间的漏刷。
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+Unit=orgflow-quota.service
+
+[Install]
+WantedBy=timers.target

@@ -29,7 +29,9 @@ pipeline {
                 withEnv(["MAX_AGE_MIN=${env.MAX_AGE_MIN ?: '10'}"]) {
                     sh '''
                         set -e
-                        Q=/opt/orgflow/quota/latest.json
+                        # m2.5.1 P1-1：门禁固定读 latest-of-builder.json（按容器名隔离，不受
+                        # 单服务重建 --only jenkins-agent 覆盖）；latest.json 仅人类查看，不参与门禁。
+                        Q=/opt/orgflow/quota/latest-of-builder.json
                         [ -f "$Q" ] || { echo "BUILD BLOCKED: quota evidence missing ($Q)"; exit 1; }
                         jq -e . "$Q" >/dev/null 2>&1 || { echo "BUILD BLOCKED: quota evidence invalid JSON"; exit 1; }
 

@@ -84,9 +84,24 @@ ca-rotate: ## 轮换内部 CA（FORCE 重签）
 record: ## 记录一条操作（见 scripts/record.sh --help）
 	@bash scripts/record.sh $(ARGS)
 
-# ---------- 构建资源配额（M2.5 P0）----------
+# ---------- 构建资源配额（M2.5 P0 / m2.5.1 生命周期）----------
 quota-guard: ## 四项资源铁律：采集宿主全资源 + 容器零限制证据（需 docker，默认 of-builder）
-	@bash scripts/quota-guard.sh --container ${CONTAINER:-of-builder} --out artifacts/quota
+	@bash scripts/quota-guard.sh --container $${CONTAINER:-of-builder} --out artifacts/quota
+
+# 真机部署：安装 systemd timer 每 5 分钟自动刷新证据（沙箱 PID1=supervisord，无 systemd 时给出提示）。
+# __REPO__ 占位符替换为仓库绝对路径，不硬编码部署机路径。
+quota-install: ## 安装并启用配额证据自动刷新 timer（systemd 主机）
+	@set -e; \
+	if [ ! -d /run/systemd/system ]; then echo "⚠ 当前 PID1 非 systemd，timer 不可用；请在真机执行 make quota-install" >&2; exit 3; fi; \
+	repo="$$(pwd)"; \
+	sed "s#__REPO__#$$repo#g" deploy/systemd/orgflow-quota.service > /etc/systemd/system/orgflow-quota.service; \
+	cp deploy/systemd/orgflow-quota.timer /etc/systemd/system/orgflow-quota.timer; \
+	systemctl daemon-reload; \
+	systemctl enable --now orgflow-quota.timer; \
+	systemctl status orgflow-quota.timer --no-pager -l | head -8
+
+quota-status: ## 查看 timer 状态 + 证据 ts/age（age>10min 非 0 退出）
+	@bash scripts/quota-status.sh
 
 # ---------- 镜像 ----------
 images-guard: ## 镜像标识闸门：内容哈希与 lock/compose tag 漂移则拒绝部署（r5）

@@ -383,16 +383,33 @@ fi
 (( ! JSON )) && echo "== up.sh 逐服务顺序启动（顺序: ${SEQ[*]}）=="
 ensure_resources
 
-# M2.5 P0：构建相关容器启动后落四项资源证据（宿主 docker 权限，脚本内置全部判据）。
+# M2.5 P0 / m2.5.1 P2-1：构建相关容器「启动前预检 + 启动后取证」两段式（宿主 docker 权限）。
+# 启动前：只采集宿主三项并校验 docker 未被限权（判据 1/2），落 host-preflight.json；
+#         宿主已被限权立即 BLOCKED 退出，绝不带病启动构建容器。
+# 启动后：完整采集四项并与前置快照比对，落 latest-of-builder.json（门禁消费）+ latest.json（副本）。
 # 只记录实际值、不满足即 BLOCKED 非 0 退出，绝不写 full-quota PASS。
-# builder(order 13) 在 jenkins-agent(order 9) 之后写，latest.json 最终指向 builder（与 Quota gate 断言一致）。
+QUOTA_OUT="$ROOT/artifacts/quota"
+
+quota_preflight() {
+  local svc="$1" qrc=0
+  (( DRY )) && { (( JSON )) || echo "[quota] [dry] 跳过 $svc 宿主预检"; return 0; }
+  mkdir -p "$QUOTA_OUT"
+  (( JSON )) || echo "[quota] 启动前宿主预检 $svc（${PREFIX}-${svc}）：nproc/MemTotal/docker info…"
+  bash "$ROOT/scripts/quota-guard.sh" --container "${PREFIX}-${svc}" --out "$QUOTA_OUT" --preflight
+  qrc=$?
+  if (( qrc != 0 )); then
+    echo "✗ [$svc] 启动前宿主资源预检 BLOCKED（quota-guard --preflight exit $qrc），docker 疑似被限权，停止启动" >&2
+    return 1
+  fi
+  return 0
+}
+
 quota_record() {
   local svc="$1" qrc=0
   (( DRY )) && { (( JSON )) || echo "[quota] [dry] 跳过 $svc 证据采集"; return 0; }
-  local out="$ROOT/artifacts/quota"
-  mkdir -p "$out"
-  (( JSON )) || echo "[quota] 采集 $svc（${PREFIX}-${svc}）四项资源…"
-  bash "$ROOT/scripts/quota-guard.sh" --container "${PREFIX}-${svc}" --out "$out"
+  mkdir -p "$QUOTA_OUT"
+  (( JSON )) || echo "[quota] 启动后采集 $svc（${PREFIX}-${svc}）四项资源并与预检比对…"
+  bash "$ROOT/scripts/quota-guard.sh" --container "${PREFIX}-${svc}" --out "$QUOTA_OUT" --compare-preflight "$QUOTA_OUT/host-preflight.json"
   qrc=$?
   if (( qrc != 0 )); then
     echo "✗ [$svc] 构建资源铁律 BLOCKED（quota-guard exit $qrc），停止启动后续服务" >&2
@@ -403,7 +420,14 @@ quota_record() {
 
 failed=0; failed_at=""
 for s in "${SEQ[@]}"; do
+  # 启动前先做宿主预检（仅 builder / jenkins-agent），docker 被限权立即中止，不带病启动
+  case "$s" in
+    builder|jenkins-agent)
+      if ! quota_preflight "$s"; then failed=1; failed_at="$s"; break; fi
+      ;;
+  esac
   if ! run_one "$s"; then failed=1; failed_at="$s"; break; fi
+  # 启动后取证并与预检比对，落 latest-of-builder.json（门禁消费）
   case "$s" in
     builder|jenkins-agent)
       if ! quota_record "$s"; then failed=1; failed_at="$s"; break; fi
