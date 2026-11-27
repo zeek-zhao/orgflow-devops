@@ -103,9 +103,15 @@ quota-cleanup-nohup: ## 清理旧 nohup 刷新进程（装服务前必做，避�
 	  else \
 	    echo "  (daemon.pid 中的 PID=$${pid:-空} 非本刷新循环，未杀，避免误杀)"; \
 	  fi; \
-	  rm -f "$$pidfile"; \
 	fi; \
-	echo "✓ 旧 pidfile 已清理；可安全安装新服务"
+	# m2.5.5 P0-1：仅在确认全场无存活 loop（instances==0）时才删 pidfile；\
+	# 有存活 loop 时保留，避免 cleanup 误删正在心跳续约的 PID 导致自检红。\
+	inst="$$(bash "$$repo/scripts/quota-guard-loop.sh" --count-instances 2>/dev/null || echo 0)"; \
+	if [ "$$inst" = "0" ]; then \
+	  rm -f "$$pidfile"; echo "✓ instances=0，旧 pidfile 已清理；可安全安装新服务"; \
+	else \
+	  echo "⚠ 仍有 $$inst 个存活 loop，保留 pidfile 不删（避免误删续约中的新 PID）"; \
+	fi
 
 # 真机 PID1=systemd：timer 每 5 分钟刷新（loop 由 unit 单次调用，无需常驻）。
 quota-install: ## [优先1] 安装 systemd timer 自动刷新（systemd 主机）

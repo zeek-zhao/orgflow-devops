@@ -119,17 +119,25 @@ pipeline {
                         def quotaWarnNote = (nWarn > 0)
                             ? '⚠ 有 ' + nWarn + ' 项配额证据过期/异常（WARN，不计 FAIL），但真实构建将被 Quota gate 拦；请先在宿主刷新证据（make quota-guard / 等待 timer 自动刷新）。'
                             : ''
-                        // m2.5.3 P0-2：从 guard-quota-alive 行的 description 提取 mechanism，写进报告 meta。
-                        def mechanism = 'unknown'
-                        def aliveRow = results.find { it.id == 'guard-quota-alive' }
-                        def aliveEv = aliveRow != null ? (aliveRow.evidence ?: '') : ''
-                        def mpos = aliveEv.indexOf('mechanism=')
-                        if (mpos >= 0) {
-                            def tail = aliveEv.substring(mpos + 'mechanism='.length())
-                            def mend = tail.indexOf(' ')
-                            mechanism = (mend > 0 ? tail.substring(0, mend) : tail).trim()
-                            if (!mechanism) mechanism = 'unknown'
-                        }
+                        // m2.5.5 P2-1：mechanism 来源独立化——不再从 guard-quota-alive 行 description 提取
+                        // （行红了就没有 mechanism= 前缀，导致报告 mechanism=unknown 被 FAIL 行带崩）。
+                        // 优先级：/opt/orgflow/quota/mechanism.txt → alive.json.mechanism → unknown。
+                        // 与存活校验结果解耦：即便 guard-quota-alive 红，机制声明仍可读。
+                        def mechanism = sh(script: '''
+                            QDIR=/opt/orgflow/quota
+                            mech="unknown"
+                            if [ -f "$QDIR/mechanism.txt" ]; then
+                              m="$(cat "$QDIR/mechanism.txt" 2>/dev/null | tr -d '\\r\\n')"
+                              [ -n "$m" ] && mech="$m"
+                            fi
+                            if [ "$mech" = "unknown" ] && [ -f "$QDIR/alive.json" ]; then
+                              m="$(jq -r '.mechanism // empty' "$QDIR/alive.json" 2>/dev/null)"
+                              [ -n "$m" ] && mech="$m"
+                            fi
+                            echo "$mech"
+                        ''', returnStdout: true).trim()
+                        if (!mechanism) mechanism = 'unknown'
+                        echo "报告 mechanism 来源独立化：mechanism=${mechanism}"
                         def json = buildJson(env.BUILD_NUMBER, now, overall, commit, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn)
                         def html = renderHtml(env.BUILD_NUMBER, now, overall, commit, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn)
                         def reportDir = '/reports/selfcheck'
@@ -140,6 +148,12 @@ pipeline {
                         writeFile file: "${reportDir}/latest.json", text: json
                         echo "报告已生成: ${base}.html / latest.html"
                         currentBuild.description = "SELFCHECK ${overall} (FAIL=${nFail} SKIP=${nSkip})"
+                        // m2.5.5 P0-2：把总判回写到构建结果，消除"报告红、构建绿"的假绿。
+                        // FAIL（有 FAIL/UNKNOWN/ABORTED）→ FAILURE；PARTIAL/PASS → SUCCESS。
+                        // 与 description 的 SELFCHECK ${overall} 口径一致；通知/看板/API 据此可见红。
+                        // 注意：currentBuild.result 只能在 pipeline 内设置，且只可写 SUCCESS/FAILURE/UNSTABLE/ABORTED/NOT_BUILT。
+                        currentBuild.result = (overall == 'FAIL') ? 'FAILURE' : 'SUCCESS'
+                        echo "构建结果已回写: currentBuild.result=${currentBuild.result} (overall=${overall})"
                     }
                 }
             }

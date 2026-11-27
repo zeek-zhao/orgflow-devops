@@ -97,6 +97,10 @@ do_guard() { bash "$ROOT/scripts/quota-guard.sh" --container "$CONTAINER" --out 
 
 refresh_loop() {
   rotate_log
+  # m2.5.5 P0-1：心跳即续约——每轮开头重写自己的 pidfile。
+  # 旧实现只在启动时写一次，pidfile 被 cleanup/误删后永不重建，导致 alive.pidfile_pid=0、
+  # 单实例判据永远对不上（自检红）。每轮 echo 保证删后 ≤INTERVAL（默认 5min）自愈。
+  echo "$$" > "$OUT/daemon.pid"
   do_guard >> "$LOG" 2>&1
   write_alive
 }
@@ -109,12 +113,24 @@ refresh_once() {
 
 case "${1:-}" in
   --once)  refresh_once; exit $? ;;
+  # m2.5.5 P0-1：给 cleanup 守卫复用同一套精确计数（避免两处规则漂移）。
+  # 本进程 argv=[bash,script,--count-instances] 长度≠2，不会把自己计入；其 python 子进程同理。
+  --count-instances) count_instances; exit 0 ;;
   -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
   "") ;;
   *) echo "[quota-loop] ✗ 未知参数: $1" >&2; exit 3 ;;
 esac
 
 echo "[quota-loop] 启动：mechanism=$MECH interval=${INTERVAL}s container=$CONTAINER log=$LOG"
+# m2.5.5 P0-1：启动守卫——若 pidfile 已指向另一个"存活且确为 loop"的进程，拒绝启动并 exit 4，
+# 防止 supervisor 的 autorestart 与 watchdog 在同一时刻各自拉起、形成双实例双写。
+# 判定三条同时成立才算"别人持有"：pidfile 非空、PID≠自身、kill -0 存活、cmdline 含 quota-guard-loop.sh。
+oldpid="$(cat "$OUT/daemon.pid" 2>/dev/null | tr -d '\r\n')"
+if [ -n "$oldpid" ] && [ "$oldpid" != "$$" ] && kill -0 "$oldpid" 2>/dev/null \
+   && ps -p "$oldpid" -o args= 2>/dev/null | grep -qF 'quota-guard-loop.sh'; then
+  echo "[quota-loop] ✗ pidfile 指向存活 loop PID=$oldpid（≠自身 $$），拒绝启动避免双实例（exit 4）" >&2
+  exit 4
+fi
 # 常驻模式写 daemon.pid（自报 PID）；supervisor/runit/nohup 统一据此判活，
 # 重启后新进程会覆盖旧 PID。--once 模式（cron）不写 pidfile。
 echo "$$" > "$OUT/daemon.pid"

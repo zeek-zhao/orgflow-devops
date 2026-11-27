@@ -100,6 +100,7 @@ make verify                   # 全量验收矩阵 AC-1~22
 | DOC-P-002 | M0 治理约定（分支/PR/记录留存） | docs/records/M0-治理约定.md | 规程 | review | zeek.zhao | 6 | T0 |
 | DOC-P-003 | 公网访问（Tailscale Funnel + Caddy 唯一入口） | docs/运维/公网访问.md | 规程 | review | zeek.zhao | 6 | Funnel |
 | DOC-R-001 | 问题解决方案记录 | docs/records/问题解决方案记录.md | 参考 | review | zeek.zhao | 6 | 真机 |
+| DOC-R-002 | M2 封版记录（终验 7 条 + 一句话结论） | docs/records/M2-封版记录.md | 参考 | review | zeek.zhao | 6 | M2 封版 |
 | DOC-E-003 | 镜像与供应链（双层 digest） | docs/运维/镜像与供应链.md | 参考 | review | zeek.zhao | 6 | T2 |
 | DOC-E-005 | 启动顺序 | docs/运维/启动顺序.md | 规程 | review | zeek.zhao | 6 | T8 |
 | DOC-E-006 | 证书与 CA | docs/运维/证书与CA.md | 规程 | review | zeek.zhao | 6 | T4 |

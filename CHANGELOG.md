@@ -2,6 +2,34 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m2-v1.0] — 2026-11-27（M2 封版：自检可信度 + 全量终验通过）
+
+> 分支 `feat/m2-gerrit-cgit-harbor`，annotated tag `m2-v1.0` 指向封版提交（含 M2.5.5 自检可信度修复）。**分支保持不合并 main**。依据《OrgFlow M2.5.5 自检可信度修复与 M2 封版收口 · AI 提示词》。本段汇总 M2.1~M2.5.5 全量条目；每步实测见 `docs/records/` 执行日志与封版记录 `docs/records/M2-封版记录.md`。
+>
+> **M2 全量条目（按里程碑）**：
+> - **M2.1 `m2.1-v1.0`**：Gerrit + cgit 上线，评审流 4/4 通过（change→build→Verified→push）。
+> - **M2.2 `m2.2-registry` / `m2.2-registry-p0`**：registry 上线 + 公网强口令、清测试仓。
+> - **M2.3 `m2.3-gerrit-ci` / `m2.3-closeout`**：Gerrit→Jenkins 触发链（patchset-created → build-from-gerrit）、判据 C 闭环、失败不回写 Verified、P2 收口。
+> - **M2.4 `m2.4-selfcheck` / `m2.4-phase3`**：自检框架（20 项清单 + HTML/JSON 报告）、Gerrit 人工手册、每服务 Dockerfile、Phase0/1 门禁。
+> - **M2.5 `m2.5-quota-guard`**：构建资源四项铁律（宿主全资源 + 容器零限制证据）+ M2.4 复核缺陷收口。
+> - **M2.5.1 `m2.5.1-quota-lifecycle`**：配额证据生命周期加固（preflight/compare + age 校验）+ 端到端验证。
+> - **M2.5.2 `m2.5.2-quota-refresh`**：自动刷新修复（cron/systemd/supervisor/runit/nohup 多路径 + 反证）。
+> - **M2.5.3 `m2.5.3-quota-supervision`**：刷新机制服务化（supervisor + watchdog）+ 存活校验 + 收尾一致性。
+> - **M2.5.4 `m2.5.4-quota-single-instance`**：刷新单实例保证（trap 只删自己 pidfile + 全局计数 + 条件 watchdog）+ 安装可移植性（supervisor-conf-dir.sh）+ 报告口径统一（result/overall）。
+> - **M2.5.5 `m2.5.5-selfcheck-trust`**：自检可信度修复（pidfile 心跳续约、构建结果回写、机制分支判据、heavy 定时、mechanism 独立来源）——见下段。
+>
+> **封版终验（7 条全过）**：① 两次全量自检连续全绿、commit 相同；② 反证三连（证据过期 BLOCKED/Verified 空、机制死亡红、双实例红）恢复后各自转绿；③ 端到端 change→40s 触发→BUILD QUOTA OK→push→Verified+1→abandon→open=0；④ 入口矩阵 7 路径符合预期；⑤ 三份文档与现状一致；⑥ tag `m2-v1.0` annotated 指向封版提交并 ls-remote 核验；⑦ 分支不合并 main。可选的全量拆除重建未做，在封版记录显式标注"基于增量验证"。
+
+## [m2.5.5-selfcheck-trust] — 2026-11-27（自检可信度修复）
+
+> 分支 `feat/m2-gerrit-cgit-harbor`，基线 `2b841ae`（tag `m2.5.4-quota-single-instance`）。依据《OrgFlow M2.5.5 自检可信度与 M2 封版 · AI 提示词》。修三处自检可信度问题 + 补一个被文档声称存在但没落地的定时任务。详见 `docs/records/执行日志/2026-11-27.md` 的 `### m2.5.5` 小节。
+- **P0-1 pidfile 心跳续约**：`refresh_loop()` 每轮 `echo $$ > daemon.pid`（删后 ≤5min 自愈）；`make quota-cleanup-nohup` 仅 `instances==0` 才删 pidfile；启动时 pidfile 指向别的存活 loop → `exit 4` 拒绝双实例。实测 kill -9 后新 PID 29224 + pidfile 重建 + `pidfile_pid==pid`。
+- **P0-2 构建结果回写**：`selfcheck` 总判 FAIL → `currentBuild.result=FAILURE`，PASS → SUCCESS，与 description 同口径。反证 `NEGATIVE=true` → `Finished: FAILURE`，恢复 → SUCCESS（#18 PASS / #19 FAILURE / #20 PASS）。
+- **P1-1 机制分支判据**：`verify-quota-refresh` 按 mechanism 分支——常驻（supervisor/runit/nohup）校 `instances==1 && pidfile_pid==pid && alive≤8min`；瞬时（cron/systemd-timer）跳过 pidfile、改心跳≤10min；none/unknown FAIL。反证 pidfile_pid=0 / instances=2 均红、恢复绿。
+- **P1-2 heavy 定时**：`verify-gerrit-review-flow.groovy` 加 `cron('H 3 * * *')`（logRotator 原有）；config.xml 含 TimerTrigger spec；手动 #10 SUCCESS（change #57 → Verified +1 → abandon → open=0）。
+- **P2-1 mechanism 独立来源**：报告 mechanism 优先读 `mechanism.txt` → `alive.json.mechanism` → unknown，不再从 FAIL 行 description 提取。
+- 封版终验全过；tag `m2.5.5-selfcheck-trust` 与封版 `m2-v1.0` 均推送。
+
 ## [m2.5.4-quota-single-instance] — 2026-11-27（刷新单实例保证与安装可移植性）
 
 > 分支 `feat/m2-gerrit-cgit-harbor`，基线 `6a39aed`（tag `m2.5.3-quota-supervision`）。依据《OrgFlow M2.5.4 刷新单实例保证与安装可移植性 · AI 提示词》。不改动 M2.5.3 已验证的刷新/判定主链路与阈值，只补三类"换机或重启会炸"的问题。详见 `docs/records/执行日志/2026-11-27.md` 的 `### m2.5.4` 小节。
