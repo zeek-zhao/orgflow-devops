@@ -1,0 +1,12 @@
+# OrgFlow 配额证据刷新日志轮转（m2.5.3 P1-2，真机可选路径）
+# 本仓库默认采用 scripts/quota-guard-loop.sh 内置「>1MB 即 mv cron.log.1」自轮转，不依赖 logrotate。
+# 若宿主机已启用 logrotate，可用本配置替代自轮转（二选一，不要同时开启，否则双份 .1）。
+# __REPO__ 由 make quota-logrotate-install 用 sed 渲染为仓库绝对路径。
+__REPO__/artifacts/quota/cron.log {
+    size 1M
+    rotate 3
+    compress
+    missingok
+    notifempty
+    copytruncate
+}

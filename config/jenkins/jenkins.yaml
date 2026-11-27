@@ -136,7 +136,7 @@ credentials:
               password: "${GERRIT_HTTP_PASSWORD}"
               description: "Gerrit HTTP Basic for selfcheck review-flow probe (M2.4)"
 
-# Job as Code：22 条 Job 由以下 12 个 Job DSL 幂等生成；- file: 必须是容器内绝对路径。
+# Job as Code：23 条 Job 由以下 13 个 Job DSL 幂等生成；- file: 必须是容器内绝对路径。
 # config/jenkins 是只读挂载，Job 不得往里写；不再有 globalLibraries（共享库走文件挂载）。
 jobs:
   - file: /var/jenkins_home/casc/jobs/verify-service.groovy
@@ -153,6 +153,8 @@ jobs:
   - file: /var/jenkins_home/casc/jobs/verify-gerrit-review-flow.groovy
   # M2.5 P0：构建资源配额证据只读探测 Job
   - file: /var/jenkins_home/casc/jobs/verify-quota-guard.groovy
+  # M2.5.3 P0-2：刷新机制存活校验 Job（防假绿）
+  - file: /var/jenkins_home/casc/jobs/verify-quota-refresh.groovy
   - file: /var/jenkins_home/casc/jobs/selfcheck.groovy
 
 # M1 T7：全局默认深色主题；禁止用户改（JCasC 是唯一真源，UI 点的不算）。

@@ -119,8 +119,19 @@ pipeline {
                         def quotaWarnNote = (nWarn > 0)
                             ? '⚠ 有 ' + nWarn + ' 项配额证据过期/异常（WARN，不计 FAIL），但真实构建将被 Quota gate 拦；请先在宿主刷新证据（make quota-guard / 等待 timer 自动刷新）。'
                             : ''
-                        def json = buildJson(env.BUILD_NUMBER, now, overall, commit, jver, imageKeys, images, heavyNote, quotaWarnNote, results, nFail, nSkip, nWarn)
-                        def html = renderHtml(env.BUILD_NUMBER, now, overall, commit, jver, imageKeys, images, heavyNote, quotaWarnNote, results, nFail, nSkip, nWarn)
+                        // m2.5.3 P0-2：从 guard-quota-alive 行的 description 提取 mechanism，写进报告 meta。
+                        def mechanism = 'unknown'
+                        def aliveRow = results.find { it.id == 'guard-quota-alive' }
+                        def aliveEv = aliveRow != null ? (aliveRow.evidence ?: '') : ''
+                        def mpos = aliveEv.indexOf('mechanism=')
+                        if (mpos >= 0) {
+                            def tail = aliveEv.substring(mpos + 'mechanism='.length())
+                            def mend = tail.indexOf(' ')
+                            mechanism = (mend > 0 ? tail.substring(0, mend) : tail).trim()
+                            if (!mechanism) mechanism = 'unknown'
+                        }
+                        def json = buildJson(env.BUILD_NUMBER, now, overall, commit, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn)
+                        def html = renderHtml(env.BUILD_NUMBER, now, overall, commit, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn)
                         def reportDir = '/reports/selfcheck'
                         def base = "${reportDir}/selfcheck-${env.BUILD_NUMBER}"
                         writeFile file: "${base}.json", text: json
@@ -138,7 +149,7 @@ pipeline {
 }
 
 // 手工 JSON 序列化（沙箱无 groovy.json.JsonOutput）：字符串转义 + 拼接。
-def buildJson(build, now, overall, commit, jver, imageKeys, images, heavyNote, quotaWarnNote, results, nFail, nSkip, nWarn) {
+def buildJson(build, now, overall, commit, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn) {
     def esc = { s -> (s ?: '').toString()
         .replace('\\', '\\\\').replace('"', '\\"')
         .replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t') }
@@ -150,12 +161,13 @@ def buildJson(build, now, overall, commit, jver, imageKeys, images, heavyNote, q
     return '{' + '"build":"' + esc(build) + '","time":"' + esc(now) + '","overall":"' + esc(overall) +
         '","commit":"' + esc(commit) + '","jenkinsVersion":"' + esc(jver) + '","imageKeys":"' + esc(imageKeys) +
         '","images":"' + esc(images) + '","heavyNote":"' + esc(heavyNote) + '","quotaWarnNote":"' + esc(quotaWarnNote) +
-        '","fail":' + nFail + ',"skipped":' + nSkip + ',"warn":' + nWarn + ',"total":' + results.size() +
+        '","mechanism":"' + esc(mechanism) + '"' +
+        ',"fail":' + nFail + ',"skipped":' + nSkip + ',"warn":' + nWarn + ',"total":' + results.size() +
         ',"results":[' + rows + ']}'
 }
 
 // 自包含 HTML：内联 CSS、无外链、无 JS；表格 + 状态色块 + 总判 + 环境快照 + 未覆盖提示。
-def renderHtml(build, now, overall, commit, jver, imageKeys, images, heavyNote, quotaWarnNote, results, nFail, nSkip, nWarn) {
+def renderHtml(build, now, overall, commit, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn) {
     def esc = { s -> (s ?: '').toString().replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;') }
     def color = overall=='PASS' ? '#2e7d32' : (overall=='FAIL' ? '#c62828' : '#ef6c00')
     def sb = ''
@@ -172,7 +184,7 @@ def renderHtml(build, now, overall, commit, jver, imageKeys, images, heavyNote, 
     if (heavyNote) sb = sb + '<p class="note" style="color:#ef6c00">⚠ ' + esc(heavyNote) + '</p>'
     // m2.5.1 P2-2：配额证据过期告警（WARN 不判 FAIL），顶部显式提示构建将被拦。
     if (quotaWarnNote) sb = sb + '<p class="note" style="color:#ef6c00">⚠ ' + esc(quotaWarnNote) + '</p>'
-    sb = sb + '<p class="meta">commit=' + esc(commit) + '　Jenkins=' + esc(jver)
+    sb = sb + '<p class="meta">commit=' + esc(commit) + '　Jenkins=' + esc(jver) + '　mechanism=' + esc(mechanism)
     sb = sb + '　检查=' + results.size() + '　FAIL=' + nFail + '　WARN=' + nWarn + '　SKIPPED=' + nSkip + '</p>'
     // M2.5 P1-3：镜像段输出 键=值（仅名与 tag），单独列一栏"镜像 tag"，不再只列键名。
     if (images) {

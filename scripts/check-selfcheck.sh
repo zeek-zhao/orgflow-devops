@@ -63,7 +63,21 @@ while read -r job; do
 done < "$jobs_file"
 
 rm -f "$jobs_file"
+
+# ---- 5. m2.5.3 P2-2：报告/证据的 result 字段非空门禁 ----
+# 5a. quota-guard.sh 必须写总体 result 字段（PASS/FAIL/WARN），否则机器消费者读到 null。
+if ! grep -q 'result=' scripts/quota-guard.sh || ! grep -q 'result\\"' scripts/quota-guard.sh; then
+  echo "✗ scripts/quota-guard.sh 未写 result 字段（m2.5.3 P2-2）" >&2; rc=1
+fi
+# 5b. selfcheck 报告生成脚本必须把 result/mechanism 写进 JSON（页面总判同口径 + 机制可见）。
+if ! grep -q '"mechanism"' ci/jenkins/pipelines/selfcheck.Jenkinsfile; then
+  echo "✗ selfcheck.Jenkinsfile 未写 mechanism 字段（m2.5.3 P0-2）" >&2; rc=1
+fi
+# 5c. guard-quota-alive 行必须登记（防假绿机制无自检项）。
+awk -F'\t' 'NR>1 && ($1=="guard-quota-alive"){f=1} END{exit f?0:1}' "$TSV" \
+  || { echo "✗ checks.tsv 缺 guard-quota-alive 行（m2.5.3 P0-2）" >&2; rc=1; }
+
 if [[ $rc -eq 0 ]]; then
-  echo "✓ 自检清单门禁：${n} 项（表头/列/id 唯一/target 存在/verify-* 全覆盖）"
+  echo "✓ 自检清单门禁：${n} 项（表头/列/id 唯一/target 存在/verify-* 全覆盖/result+mechanism+alive 字段）"
 fi
 exit $rc

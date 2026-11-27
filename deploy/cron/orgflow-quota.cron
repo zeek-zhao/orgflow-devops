@@ -1,1 +1,1 @@
-*/5 * * * * cd __REPO__ && /bin/bash __REPO__/scripts/quota-guard.sh --container of-builder --out __REPO__/artifacts/quota >> __REPO__/artifacts/quota/cron.log 2>&1
+*/5 * * * * cd __REPO__ && /bin/bash __REPO__/scripts/quota-guard-loop.sh --once >> __REPO__/artifacts/quota/cron.log 2>&1

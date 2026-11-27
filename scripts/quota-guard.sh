@@ -178,7 +178,14 @@ json+=",\"nano_cpus_zero\":$(tb "$nano_zero")"
 json+=",\"memory_zero\":$(tb "$memory_zero")"
 json+=",\"cpu_quota_zero\":$(tb "$cpu_quota_zero")"
 json+=",\"preflight_match\":$(tb "$pre_cmp_ok")}"
-json+=",\"verdict\":\"$verdict\",\"reason\":\"$REASON_ESC\"}"
+json+=",\"verdict\":\"$verdict\",\"reason\":\"$REASON_ESC\""
+# m2.5.3 P2-2：总体 result 字段（PASS/FAIL/WARN），与 verdict 同一口径，供机器消费者读取。
+case "$verdict" in
+  PASS)    result="PASS" ;;
+  BLOCKED) result="FAIL" ;;
+  *)       result="WARN" ;;
+esac
+json+=",\"result\":\"$result\"}"
 # 门禁固定读 latest-<container>.json；latest.json 仅为人类查看副本，不参与门禁。
 echo "$json" > "$OUT/latest-${CONTAINER}.json"
 echo "$json" > "$OUT/latest.json"

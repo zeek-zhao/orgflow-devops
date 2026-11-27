@@ -2,6 +2,26 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m2.5.3-quota-supervision] — 2026-11-27（刷新机制服务化与收尾一致性）
+
+> 分支 `feat/m2-gerrit-cgit-harbor`，基线 `65a7639`（tag `m2.5.2-quota-refresh`）。依据《OrgFlow M2.5.3 刷新机制服务化与收尾一致性 · AI 提示词》。不重做 M2.5.2 已验证的刷新/反证/端到端，只补三类随时间劣化的问题。详见 `docs/records/执行日志/2026-11-27.md` 的 `### m2.5.3` 小节。
+
+### P0 服务化与存活可观测
+- **P0-1 服务化**：新增 `scripts/quota-guard-loop.sh`（统一循环：每 300s 刷新 + 日志 >1MB 自轮转 + 写 `alive.json`），三种管理器与 nohup 统一调用，刷新命令不再散落 Makefile。新增 `deploy/supervisor/orgflow-quota.conf`（`[program:orgflow-quota]` autorestart + `[program:orgflow-quota-watchdog]` 10s 巡检兜底）、`deploy/runit/orgflow-quota/run`；Makefile 增 `quota-supervisor-install`/`quota-runit-install`/`quota-cleanup-nohup`，`quota-daemon-install` 降为最后兜底并标明优先级 timer→cron→supervisor/runit→nohup。无 supervisorctl CLI 时用 `scripts/supervisor-rpc.py`（XML-RPC）管理。装服务前按 daemon.pid + 命令行精确清旧进程，禁止双写。实测 kill -9 loop 后 15s 内 watchdog 拉起新 PID。
+- **P0-2 存活校验**：`ci/selfcheck/checks.tsv` 增 `guard-quota-alive`（自检 20→21 项），新增 `verify-quota-refresh` Job + Jenkinsfile，校验三判据（进程命令行匹配 + 日志新鲜≤8min + 证据 age≤10min），任一失败 FAILURE 红行。selfcheck 报告 meta 增 `mechanism=` 字段（取自 alive Job description）。`quota-status.sh` 输出 `mechanism=` 并校验声明与进程一致。
+
+### P1 真机坑与长期运行
+- **P1-1 cron 语法**：新增 `deploy/cron/orgflow-quota.cron.d`（6 字段含 root），`quota-cron-install` 按分支选模板（用户 crontab 5 字段 / cron.d 6 字段），安装后 `awk 'NF>=6 && $1!="#"'` 校验，文档明确两者不可混用。
+- **P1-2 日志轮转**：`quota-guard-loop.sh` 内置 >1MB 自轮转（保留 1 份 `.1`），另附 `deploy/logrotate/orgflow-quota` 供真机二选一；实测造 >1MB 假日志被切分且新日志继续写入 6 行。
+
+### P2 一致性收尾
+- **P2-1 tag 口径**：执行日志加注——tag `m2.5.2-quota-refresh` 覆盖含证据文档的 `65a7639`（功能提交 `9173783`），`git rev-list -n1` 对得上，消除"日志说 A 仓库是 B"。
+- **P2-2 result 字段**：`quota-guard.sh` 写总体 `result`（PASS/FAIL/WARN，与 verdict 同口径），`check-selfcheck.sh` 增静态断言，`make quota-status` 展示 result；机器消费者 `curl latest.json | jq .result` 不再得到 null。
+- **P2-3 abandoned 策略**：`docs/运维/自检框架.md` 写明"保留最近 5 条含成功+负例样本、其余按季度清理"，列出 Gerrit 查询/清理命令，历史证据链锚点不清理。
+
+### 门禁与终验
+- `make check`/`check-all`/`test` 全绿；自检 21 项全 SUCCESS 含 `guard-quota-alive` 且报告 meta 含 mechanism；反证（篡 ts 2h→FAILURE→自动刷新→SUCCESS）与端到端（真 change→SUCCESS+Verified +1→abandon、open=0）各重跑一次；线上入口 5 路径 200 / 8443 200 / 10000/v2 401；annotated tag `m2.5.3-quota-supervision` 推送可见。
+
 ## [m2.5.2-quota-refresh] — 2026-11-27（配额证据自动刷新修复）
 
 > 分支 `feat/m2-gerrit-cgit-harbor`，基线 `c3a7dc6`（tag `m2.5.1-quota-lifecycle`）。依据《OrgFlow M2.5.2 配额证据自动刷新修复 · AI 提示词》。只让刷新真正跑起来并留证，不碰判定逻辑/阈值。详见 `docs/records/执行日志/2026-11-27.md` 的 `### m2.5.2` 小节。

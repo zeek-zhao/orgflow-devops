@@ -1,0 +1,5 @@
+#!/bin/sh
+# OrgFlow 配额证据刷新服务（m2.5.3 P0-1；runit 主机）
+# __REPO__ 由 make quota-runit-install 用 sed 渲染为仓库绝对路径。
+export QUOTA_MECHANISM=runit
+exec /bin/bash __REPO__/scripts/quota-guard-loop.sh

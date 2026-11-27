@@ -19,3 +19,4 @@ feat-theme	job	verify-jenkins-theme	深色主题	登录页 CSS 含深色标记 +
 feat-status	job	verify-status-page	状态页	行数等于 manifest 服务数，每行链接非 /none	SUCCESS	5
 feat-review-flow	job	verify-gerrit-review-flow	评审流（重）	建探针 change → 触发构建 → Verified +1 → abandon	SUCCESS	20
 guard-quota	job	verify-quota-guard	构建资源配额	只读证据 verdict=PASS/of-builder/三项配额 0（无 docker.sock）	SUCCESS	3
+guard-quota-alive	job	verify-quota-refresh	刷新机制存活	进程命令行匹配+日志新鲜≤8min+证据 age≤10min（防假绿）	SUCCESS	3
