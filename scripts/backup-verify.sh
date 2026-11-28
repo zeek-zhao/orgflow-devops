@@ -24,11 +24,13 @@ failures=()
 ( cd "$DEST" && sha256sum -c sha256sum.txt ) || { rc=1; failures+=("sha256sum"); }
 
 # 2) manifest 逐卷：解包可读 + 条目数一致
-python3 - "$DEST" <<'PY' || { rc=1; failures+=("manifest-entries"); }
+# D2（M3.0.2）：changed_during_backup 阈值——单卷 >20 记 WARN，>200 判本轮失败。
+python3 - "$DEST" <<'PY'
 import os, sys, json, tarfile
 dest=sys.argv[1]
 m=json.load(open(os.path.join(dest,'manifest.json'),encoding='utf-8'))
 bad=0
+changed_bad=0
 for e in m['volumes']:
     p=os.path.join(dest,e['archive'])
     try:
@@ -41,16 +43,27 @@ for e in m['volumes']:
         if not ok: bad+=1
     except Exception as ex:
         print("  %-34s UNREADABLE: %s" % (e['volume'], ex)); bad+=1
-print("[verify] manifest 卷数=%d 条目总数=%d" % (m['total_volumes'], sum(e['entries'] for e in m['volumes'])))
-sys.exit(1 if bad else 0)
+    ch=int(e.get('changed_during_backup',0) or 0)
+    if ch>200:
+        print("  [verify] %s changed_during_backup=%d >200：判失败" % (e['volume'],ch))
+        changed_bad+=1
+    elif ch>20:
+        print("  [verify] %s changed_during_backup=%d >20：WARN" % (e['volume'],ch))
+print("[verify] manifest 卷数=%d 条目总数=%d changed_fail=%d" % (
+    m['total_volumes'], sum(e['entries'] for e in m['volumes']), changed_bad))
+# 用退出码 2 区分 changed 超阈值（外层据此把 failure 记为 changed-during-backup）
+sys.exit(2 if changed_bad else (1 if bad else 0))
 PY
+mrc=$?
+if [ "$mrc" -eq 2 ]; then rc=1; failures+=("changed-during-backup");
+elif [ "$mrc" -eq 1 ]; then rc=1; failures+=("manifest-entries"); fi
 
 # 3) T5-a: gerrit_git 逐仓库 git fsck --no-dangling
 TMP="$(mktemp -d /tmp/bkverify.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
-mkdir -p "$TMP/gerrit_git" "$TMP/jenkins_home"
+mkdir -p "$TMP/gerrit_git"
+# gerrit_git 需真实目录跑 git fsck，仍解包；jenkins_home 改为流式读取（见第4步），不再全量落 /tmp，降低磁盘峰值。
 tar -xzf "$DEST/orgflow-minimal_gerrit_git.tar.gz" -C "$TMP/gerrit_git" 2>/dev/null || { rc=1; failures+=("gerrit-untar"); }
-tar -xzf "$DEST/orgflow-minimal_jenkins_home.tar.gz" -C "$TMP/jenkins_home" 2>/dev/null || { rc=1; failures+=("jenkins-untar"); }
 
 git_count=0; git_bad=0
 # Gerrit 系统仓库 All-Projects.git / All-Users.git 的 HEAD 设计上指向 refs/meta/config，
@@ -71,22 +84,26 @@ echo "[verify] git fsck: 仓库=$git_count 异常=$git_bad"
 [ "$git_bad" -eq 0 ] || { rc=1; failures+=("git-fsck"); }
 
 # 4) T5-b: Jenkins XML 解析（config.xml + jobs/*/config.xml）
-python3 - "$TMP/jenkins_home" <<'PY' || { rc=1; failures+=("jenkins-xml"); }
-import os, sys, xml.etree.ElementTree as ET
-root=sys.argv[1]
-files=[os.path.join(root,'config.xml')]
-jobs=os.path.join(root,'jobs')
-if os.path.isdir(jobs):
-    for dp,_,fs in os.walk(jobs):
-        for f in fs:
-            if f=='config.xml': files.append(os.path.join(dp,f))
-bad=0
-for p in files:
-    try: ET.parse(p)
-    except Exception as ex:
-        print("  [xml] %s PARSE FAIL: %s" % (os.path.relpath(p,root), ex)); bad+=1
-print("[verify] jenkins xml: 文件=%d 解析失败=%d" % (len(files),bad))
-sys.exit(1 if bad else 0)
+# D2 优化（M3.0.2）：从 tar.gz 流式读取 XML 成员并解析，不落 /tmp 全量，降低磁盘峰值。
+python3 - "$DEST/orgflow-minimal_jenkins_home.tar.gz" <<'PY' || { rc=1; failures+=("jenkins-xml"); }
+import sys, tarfile, io, xml.etree.ElementTree as ET
+tgz=sys.argv[1]
+bad=0; nfiles=0
+with tarfile.open(tgz,'r:gz') as tf:
+    for m in tf:
+        if not m.isfile(): continue
+        name=m.name.lstrip('./')
+        # 匹配根 config.xml 或 jobs/**/config.xml
+        if not (name=='config.xml' or (name.startswith('jobs/') and name.endswith('/config.xml'))):
+            continue
+        nfiles+=1
+        try:
+            data=tf.extractfile(m).read()
+            ET.fromstring(data)
+        except Exception as ex:
+            print("  [xml] %s PARSE FAIL: %s" % (name,ex)); bad+=1
+print("[verify] jenkins xml(stream): 文件=%d 解析失败=%d" % (nfiles,bad))
+sys.exit(1 if bad or nfiles==0 else 0)
 PY
 
 # 5) T5-c: 写 status.json 的 verify 字段（ok/checked_at/failures）

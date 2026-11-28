@@ -295,3 +295,40 @@ backup-daemon-status: ## 查看备份守护状态与 status.json
 
 backup-daemon-once: ## 手动触发一轮备份（补跑/测试，支持 BACKUP_FAKE_NOW）
 	@bash scripts/backup-daemon.sh once
+
+drill-now: ## 手动立即跑一轮隔离恢复演练（D4，验证 drill.result 新鲜度）
+	@bash scripts/drill-up.sh
+
+drill-daemon-install: ## [PID1=supervisord] 注册 drill 每周守护服务（装后断言实际存活）
+	@set -e; \
+	repo="$$(pwd)"; \
+	conf_dir="$$(bash scripts/supervisor-conf-dir.sh)"; \
+	wd="$${DRILL_WATCHDOG_AUTOSTART:-true}"; \
+	sed -e "s#__REPO__#$$repo#g" -e "s#__DRILL_WATCHDOG_AUTOSTART__#$$wd#g" deploy/supervisor/orgflow-drill.conf > "$$conf_dir/orgflow-drill.conf"; \
+	echo "✓ 配置已写入 $$conf_dir/orgflow-drill.conf（watchdog autostart=$$wd）"; \
+	if command -v supervisorctl >/dev/null 2>&1; then \
+	  supervisorctl reread; supervisorctl update; \
+	  supervisorctl status orgflow-drill | grep -qE 'RUNNING|STARTING' \
+	    || { echo "✗ 装后断言失败：orgflow-drill 非 RUNNING" >&2; exit 2; }; \
+	  supervisorctl status orgflow-drill; \
+	elif [ -n "$${SUPERVISOR_SOCKET:-}" ]; then \
+	  python3 scripts/supervisor-rpc.py reload; \
+	  echo "✓ supervisor RPC reload 完成（状态以实际存活断言为准）"; \
+	else \
+	  echo "⚠ 无 supervisorctl CLI 且未设 SUPERVISOR_SOCKET，依赖 watchdog 实际存活断言"; \
+	fi; \
+	# 云 IDE supervisor RPC 状态可能陈旧；以 pidfile 指向的存活 daemon 为准。
+	for i in $$(seq 1 20); do \
+	  p="$$(cat /run/orgflow-drill.pid 2>/dev/null)"; \
+	  [ -n "$$p" ] && kill -0 "$$p" 2>/dev/null \
+	    && tr '\0' ' ' < /proc/$$p/cmdline 2>/dev/null | grep -q drill-daemon.sh && break; \
+	  sleep 1; \
+	done; \
+	p="$$(cat /run/orgflow-drill.pid 2>/dev/null || echo none)"; \
+	{ kill -0 "$$p" 2>/dev/null && tr '\0' ' ' < /proc/$$p/cmdline 2>/dev/null | grep -q drill-daemon.sh; } \
+	  || { echo "✗ 装后断言失败：/run/orgflow-drill.pid=$$p 非存活 daemon" >&2; exit 2; }; \
+	echo "✓ 实际存活断言：drill-daemon pid=$$p 命令行匹配"
+
+drill-daemon-status: ## 查看 drill 守护状态与 drill.result
+	@echo "pidfile=$$(cat /run/orgflow-drill.pid 2>/dev/null || echo none)"
+	@cat /data/drill/drill.result 2>/dev/null || echo "无 drill.result"

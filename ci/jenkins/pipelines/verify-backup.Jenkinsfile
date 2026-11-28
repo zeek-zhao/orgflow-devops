@@ -5,11 +5,12 @@
 //   a) latest 存在且解析出的目录存在，备份年龄 ≤26h（用目录名 UTC 时间戳判定）；
 //   b) sha256sum -c sha256sum.txt 全部 OK；
 //   c) manifest.json 可解析且 total_volumes=9，每卷 entries>0；
-//   d) status.json 的 exit_code=0。
+//   d) status.json 的 exit_code=0；
+//   e) （M3.0.2 T2）status.json 的 verify.ok=true 且 verify.failures 为空 —— 校验失败必须判红。
 // 失败写 /tmp/backup_desc.txt，由 script 块回写 currentBuild.description 供 selfcheck 取 evidence。
 pipeline {
     agent { label 'orgflow-agent' }
-    options { timestamps(); timeout(time: 3, unit: 'MINUTES'); skipDefaultCheckout(true) }
+    options { timestamps(); timeout(time: 8, unit: 'MINUTES'); skipDefaultCheckout(true) }
     stages {
         stage('Verify backup trust') {
             steps {
@@ -77,11 +78,22 @@ pipeline {
                       fail "status.json 缺失"
                     fi
 
-                    if [ "$rc" -eq 0 ]; then
-                      echo "✓ 备份四项断言全过（age=${age_h:-?}h sha256=OK manifest=9 status=0）"
-                      printf 'BACKUP_OK age=%sh volumes=9 exit=0' "${age_h:-?}" > /tmp/backup_desc.txt
+                    # ---- 断言 e: status.verify.ok=true 且 failures 为空（M3.0.2 T2）----
+                    if [ -f "$B/status.json" ]; then
+                      vok="$(jq -r 'if .verify|type=="object" then (.verify.ok|tostring) else "missing" end' "$B/status.json" 2>/dev/null || echo missing)"
+                      vfails="$(jq -r '.verify.failures // [] | join(",")' "$B/status.json" 2>/dev/null || echo unreadable)"
+                      echo "[backup] status.verify.ok=$vok failures=[$vfails]"
+                      [ "$vok" = "true" ] || fail "status.verify.ok=$vok != true（校验失败被吞）"
+                      [ -z "$vfails" ] || fail "status.verify.failures=[$vfails] 非空"
                     else
-                      printf 'BACKUP_FAIL 见 console（断言 a/b/c/d 有失败）' > /tmp/backup_desc.txt
+                      fail "status.json 缺失（无法校验 verify）"
+                    fi
+
+                    if [ "$rc" -eq 0 ]; then
+                      echo "✓ 备份五项断言全过（age=${age_h:-?}h sha256=OK manifest=9 status=0 verify=ok）"
+                      printf 'BACKUP_OK age=%sh volumes=9 exit=0 verify=ok' "${age_h:-?}" > /tmp/backup_desc.txt
+                    else
+                      printf 'BACKUP_FAIL 见 console（断言 a/b/c/d/e 有失败）' > /tmp/backup_desc.txt
                     fi
                     exit "$rc"
                 '''

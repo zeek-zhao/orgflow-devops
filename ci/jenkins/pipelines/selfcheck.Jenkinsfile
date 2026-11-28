@@ -92,11 +92,20 @@ pipeline {
                         // 取全 SHA（不再 --short），取不到写 unknown + warning。
                         def commit = sh(script: "git -c safe.directory='*' -C /opt/orgflow/repo rev-parse HEAD 2>/dev/null || echo unknown", returnStdout: true).trim()
                         if (commit == 'unknown') { echo "⚠ 报告 commit=unknown：/opt/orgflow/repo 不可读或非 git 仓库" }
-                        // T4：deployedHead = 工作区实际头（同一 git rev-parse，独立取一次便于将来替换来源）；
-                        // consistent = 二者是否一致（YES/NO）。报告顶部显示两行。
+                        // M3.0.2 T6（D6）：deployedHead 保留为历史字段（工作区实际头），但 consistent 不再与它同源比对——
+                        // 否则 commit 与 deployedHead 都取同一条 git rev-parse HEAD，旧 checkout 也恒 YES（同源自证缺陷）。
+                        // 改引入独立真源 deployTag/tagCommit 做交叉校验。
                         def deployedHead = sh(script: "git -c safe.directory='*' -C /opt/orgflow/repo rev-parse HEAD 2>/dev/null || echo unknown", returnStdout: true).trim()
-                        def consistent = (commit != 'unknown' && commit == deployedHead) ? 'YES' : 'NO'
-                        echo "报告同源: report_commit=${commit} deployed_head=${deployedHead} consistent=${consistent}"
+                        // deployTag = HEAD 上精确匹配的 tag（annotated/lightweight 均可）；取不到写 none。
+                        def deployTag = sh(script: "git -c safe.directory='*' -C /opt/orgflow/repo describe --tags --exact-match HEAD 2>/dev/null || echo none", returnStdout: true).trim()
+                        // tagCommit = deployTag 指向的 commit SHA（rev-list 对 annotated/lightweight 都解引用到 commit）；无 tag 则 unknown。
+                        def tagCommit = 'unknown'
+                        if (deployTag != 'none') {
+                          tagCommit = sh(script: "git -c safe.directory='*' -C /opt/orgflow/repo rev-list -n 1 '${deployTag}' 2>/dev/null || echo unknown", returnStdout: true).trim()
+                        }
+                        // consistent = commit == tagCommit && tagCommit != 'unknown'（真同源：旧 checkout 无匹配 tag → NO）。
+                        def consistent = (commit == tagCommit && tagCommit != 'unknown') ? 'YES' : 'NO'
+                        echo "报告同源: report_commit=${commit} deployed_head=${deployedHead} deploy_tag=${deployTag} tag_commit=${tagCommit} consistent=${consistent}"
                         // 2) Jenkins 版本：jenkins.version → war MANIFEST Implementation-Version → unknown。
                         def jver = sh(script: '''
                             v="$(cat /var/jenkins_home/jenkins.version 2>/dev/null | tr -d '\\r\\n' || true)"
@@ -143,8 +152,8 @@ pipeline {
                         ''', returnStdout: true).trim()
                         if (!mechanism) mechanism = 'unknown'
                         echo "报告 mechanism 来源独立化：mechanism=${mechanism}"
-                        def json = buildJson(env.BUILD_NUMBER, now, overall, commit, deployedHead, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn)
-                        def html = renderHtml(env.BUILD_NUMBER, now, overall, commit, deployedHead, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn)
+                        def json = buildJson(env.BUILD_NUMBER, now, overall, commit, deployedHead, deployTag, tagCommit, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn)
+                        def html = renderHtml(env.BUILD_NUMBER, now, overall, commit, deployedHead, deployTag, tagCommit, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn)
                         def reportDir = '/reports/selfcheck'
                         def base = "${reportDir}/selfcheck-${env.BUILD_NUMBER}"
                         writeFile file: "${base}.json", text: json
@@ -168,7 +177,7 @@ pipeline {
 }
 
 // 手工 JSON 序列化（沙箱无 groovy.json.JsonOutput）：字符串转义 + 拼接。
-def buildJson(build, now, overall, commit, deployedHead, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn) {
+def buildJson(build, now, overall, commit, deployedHead, deployTag, tagCommit, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn) {
     def esc = { s -> (s ?: '').toString()
         .replace('\\', '\\\\').replace('"', '\\"')
         .replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t') }
@@ -178,10 +187,11 @@ def buildJson(build, now, overall, commit, deployedHead, consistent, jver, image
         '","evidence":"' + esc(r.evidence) + '","consoleUrl":"' + esc(r.consoleUrl) + '"}'
     }.join(',')
     // m2.5.4 P2-1：overall 与 result 并存且同值——机器消费方按 result 读，HTML 仍用 overall。
-    // m3.0.1 T4：deployedHead/consistent 同源字段——报告顶部两行，机器可直接校验同源性。
+    // m3.0.1 T4：deployedHead/consistent 同源字段；m3.0.2 T6：加 deployTag/tagCommit，consistent 改真校验。
     return '{' + '"build":"' + esc(build) + '","time":"' + esc(now) + '","overall":"' + esc(overall) +
         '","result":"' + esc(overall) +
-        '","commit":"' + esc(commit) + '","deployedHead":"' + esc(deployedHead) + '","consistent":"' + esc(consistent) +
+        '","commit":"' + esc(commit) + '","deployedHead":"' + esc(deployedHead) +
+        '","deployTag":"' + esc(deployTag) + '","tagCommit":"' + esc(tagCommit) + '","consistent":"' + esc(consistent) +
         '","jenkinsVersion":"' + esc(jver) + '","imageKeys":"' + esc(imageKeys) +
         '","images":"' + esc(images) + '","heavyNote":"' + esc(heavyNote) + '","quotaWarnNote":"' + esc(quotaWarnNote) +
         '","mechanism":"' + esc(mechanism) + '"' +
@@ -190,7 +200,7 @@ def buildJson(build, now, overall, commit, deployedHead, consistent, jver, image
 }
 
 // 自包含 HTML：内联 CSS、无外链、无 JS；表格 + 状态色块 + 总判 + 环境快照 + 未覆盖提示。
-def renderHtml(build, now, overall, commit, deployedHead, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn) {
+def renderHtml(build, now, overall, commit, deployedHead, deployTag, tagCommit, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn) {
     def esc = { s -> (s ?: '').toString().replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;') }
     def color = overall=='PASS' ? '#2e7d32' : (overall=='FAIL' ? '#c62828' : '#ef6c00')
     def sb = ''
@@ -204,11 +214,12 @@ def renderHtml(build, now, overall, commit, deployedHead, consistent, jver, imag
     sb = sb + '.meta{color:#556;font-size:.85rem}.ev{font-family:monospace;font-size:.8rem;color:#444}.note{margin-top:1rem;color:#556}</style></head><body>'
     sb = sb + '<h1>OrgFlow 自检报告 <span class="meta">#' + build + '</span></h1>'
     sb = sb + '<p>生成时间：' + esc(now) + '　总判：<span class="verdict">' + overall + '</span></p>'
-    // m3.0.1 T4：报告顶部两行——工作区实际头 / 报告 commit，并给一致性结论。
+    // m3.0.1 T4：报告顶部工作区实际头 / 报告 commit；m3.0.2 T6：顶部显示 commit/tag/consistent 三行真同源。
     def consColor = (consistent=='YES') ? '#2e7d32' : '#c62828'
-    sb = sb + '<p class="meta">deployed_head（工作区实际头）：<span class="ev">' + esc(deployedHead) + '</span></p>'
-    sb = sb + '<p class="meta">report_commit（报告采集头）：<span class="ev">' + esc(commit) +
-        '</span>　同源：<span style="color:' + consColor + ';font-weight:700">' + esc(consistent) + '</span></p>'
+    sb = sb + '<p class="meta">report_commit（报告采集头）：<span class="ev">' + esc(commit) + '</span></p>'
+    sb = sb + '<p class="meta">deploy_tag（tag 指向 SHA）：' + esc(deployTag) + '　<span class="ev">' + esc(tagCommit) + '</span></p>'
+    sb = sb + '<p class="meta">deployed_head（工作区实际头）：<span class="ev">' + esc(deployedHead) +
+        '</span>　同源（commit==tagCommit）：<span style="color:' + consColor + ';font-weight:700">' + esc(consistent) + '</span></p>'
     if (heavyNote) sb = sb + '<p class="note" style="color:#ef6c00">⚠ ' + esc(heavyNote) + '</p>'
     // m2.5.1 P2-2：配额证据过期告警（WARN 不判 FAIL），顶部显式提示构建将被拦。
     if (quotaWarnNote) sb = sb + '<p class="note" style="color:#ef6c00">⚠ ' + esc(quotaWarnNote) + '</p>'

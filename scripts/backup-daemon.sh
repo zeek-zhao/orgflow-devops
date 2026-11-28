@@ -49,6 +49,20 @@ disk_used_pct() {
   df -P "$ROOT" 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5);print $5+0}'
 }
 
+# D3（M3.0.2）：把 UTC 目录名时间戳转成 Asia/Shanghai 的本地日期与星期。
+# 输出 "YYYY-MM-DD HH" 两字段（HH=1..7，7=周日）；Asia/Shanghai 无 DST，固定 UTC+8。
+# 用 python 一次性算好，避免 date -u/+%u 混用导致的跨日错位。
+local_day() {
+  local dname="$1"
+  python3 - "$dname" <<'PY' 2>/dev/null
+import sys
+from datetime import datetime, timedelta, timezone
+d=datetime.strptime(sys.argv[1],'%Y%m%dT%H%M%SZ').replace(tzinfo=timezone.utc)
+l=d.astimezone(timezone(timedelta(hours=8)))
+print(l.strftime('%Y-%m-%d'), int(l.strftime('%u')))
+PY
+}
+
 # 精确判断 pid 是否为存活的 backup-daemon 进程（避免 PID 复用误判）
 pid_is_live_daemon() {
   local p="$1"
@@ -141,7 +155,23 @@ days=[]; weeks=[]
 for n in os.listdir(root):
     p=os.path.join(root,n)
     if not os.path.isdir(p) or not pat.match(n): continue
-    weekly=os.path.exists(os.path.join(p,'weekly.flag'))
+    wf=os.path.join(p,'weekly.flag')
+    weekly=False
+    if os.path.exists(wf):
+        # D3（M3.0.2）：校验 marker 合法性——必须含 weekday=7、local_date、backup_ts。
+        # 坏 marker（如手工写坏 weekday=0）不得当作周备，且保护其不被轮转删除（skip invalid marker）。
+        try:
+            kv=dict(line.strip().split('=',1) for line in open(wf,encoding='utf-8') if '=' in line)
+        except Exception:
+            kv={}
+        valid=(kv.get('weekday')=='7' and bool(kv.get('local_date')) and bool(kv.get('backup_ts')))
+        if valid:
+            weekly=True
+        else:
+            print("[rotate] skip invalid marker %s（weekday=%s local_date=%s backup_ts=%s，不删不归类）" % (
+                n, kv.get('weekday'), kv.get('local_date','-'), kv.get('backup_ts','-')))
+            # 坏 marker 目录视为受保护，既不进 days 也不进 weeks，避免被任何池删除
+            continue
     (weeks if weekly else days).append((ts_of(n),n))
 
 def protected(n):
@@ -210,13 +240,16 @@ PY
 )" 2>/dev/null || true
   fi
 
-  # 周日备份打 weekly.flag（用备份目录名里的 UTC 日期判定，而非当前时间）
+  # D3（M3.0.2）：周备判定改用备份的本地日期（Asia/Shanghai）算星期，而非 UTC；
+  # marker 写入 local_date/weekday/backup_ts 便于审计；轮转据此校验（坏 marker 跳过不删）。
   if [ -n "$dest" ]; then
     local dname; dname="$(basename "$dest")"
-    local dow; dow="$(date -u -d "$(python3 -c "import sys,datetime;print(datetime.datetime.strptime(sys.argv[1],'%Y%m%dT%H%M%SZ').strftime('%Y-%m-%d'))" "$dname" 2>/dev/null)" +%u 2>/dev/null || echo 0)"
+    local ld; ld="$(local_day "$dname")"
+    local local_date; local_date="$(echo "$ld" | awk '{print $1}')"
+    local dow; dow="$(echo "$ld" | awk '{print $2}')"
     if [ "$dow" = "7" ]; then
-      : > "$dest/weekly.flag"
-      log "[backup] 周日备份：写入 weekly.flag ($dname)"
+      printf 'local_date=%s\nweekday=%s\nbackup_ts=%s\n' "$local_date" "$dow" "$dname" > "$dest/weekly.flag"
+      log "[backup] 周日备份（本地 $local_date）：写入 weekly.flag ($dname)"
     fi
   fi
 
@@ -226,19 +259,54 @@ PY
 
   # 下一次运行时间（本地 03:30）
   local nextrun; nextrun="$(next_0330 "$end_epoch")"
+
+  # D2（M3.0.2）：校验失败必须判红。顺序：
+  #   1) 先写 status 初值（exit_code=备份 rc），保证任何时候状态文件存在且字段齐全；
+  #   2) 备份成功则跑 backup-verify.sh（它自己写 status.verify 字段），捕获其返回码；
+  #   3) verify 非 0 → 把本轮 exit_code 改为专用码 7，连带 verify 字段一起回写，
+  #      日志写 "verify failed" 且保留现场，**绝不打印"一轮备份完成"成功行**。
+  #      这样 status.exit_code 与 status.verify.ok 永不一致的情况消失（两者同源）。
   write_status "$start" "$end" "$rc" "$dur" "$bytes" "$volumes" "$commit" "$nextrun" "$diskpct" ""
 
-  # T5：备份成功后自动跑一致性校验，verify 字段写入 status.json（在 write_status 之后，不被覆盖）。
-  if [ "$rc" -eq 0 ]; then
-    bash "$REPO/scripts/backup-verify.sh" "$dest" 2>&1 || true
+  local final_rc="$rc"
+  local verify_field=""
+  if [ "$rc" -eq 0 ] && [ -n "$dest" ] && [ -f "$dest/manifest.json" ]; then
+    local vrc=0
+    bash "$REPO/scripts/backup-verify.sh" "$dest" 2>&1 || vrc=$?
+    # 读回 backup-verify 刚写入的 verify 字段（JSON 字符串），供回写时带上，避免被 write_status 覆盖丢失。
+    verify_field="$(python3 - "$STATUS" <<'PY' 2>/dev/null
+import json,sys
+try: d=json.load(open(sys.argv[1],encoding='utf-8'))
+except Exception: d={}
+print(json.dumps(d.get('verify', {"ok": False, "failures": ["verify-field-missing"]}), ensure_ascii=False))
+PY
+)"
+    [ -n "$verify_field" ] || verify_field='{"ok":false,"failures":["verify-field-unreadable"]}'
+    if [ "$vrc" -ne 0 ]; then
+      # verify 失败：把 verify.ok 强制置 false（保险），exit_code 改专用码 7
+      verify_field="$(python3 - "$verify_field" <<'PY' 2>/dev/null
+import json,sys
+v=json.loads(sys.argv[1]); v['ok']=False
+fl=v.get('failures') or []
+if not any('verify-rc' in str(f) for f in fl): fl.append('verify-rc-nonzero')
+v['failures']=fl
+print(json.dumps(v,ensure_ascii=False))
+PY
+)"
+      final_rc=7
+    fi
+    # 回写：exit_code 与 verify 字段同源落盘（一次原子替换）
+    write_status "$start" "$end" "$final_rc" "$dur" "$bytes" "$volumes" "$commit" "$nextrun" "$diskpct" "$verify_field"
   fi
 
-  if [ "$rc" -eq 0 ]; then
+  if [ "$final_rc" -eq 7 ]; then
+    log "✗ verify failed（backup-verify 返回非 0）：本轮 exit_code=7，verify 判红，保留现场 $dest"
+  elif [ "$final_rc" -eq 0 ]; then
     log "✓ 一轮备份完成 rc=0 dest=$dest bytes=$bytes volumes=$volumes next_run=$nextrun"
   else
-    log "✗ 一轮备份失败 rc=$rc（保留现场 $dest）"
+    log "✗ 一轮备份失败 rc=$final_rc（保留现场 $dest）"
   fi
-  return "$rc"
+  return "$final_rc"
 }
 
 # 计算下一个本地 03:30（从 from_epoch 之后），输出 ISO8601 字符串
@@ -310,8 +378,12 @@ PY
 )" || exit 2
       local dest="$ROOT/$ts"; mkdir -p "$dest"
       printf '{"total_volumes":9,"volumes":[],"simulated":true}' > "$dest/manifest.json"
-      if [ "${DISABLE_WEEKLY:-0}" != "1" ] && [ "$(date -u -d "$(python3 -c "import sys,datetime;print(datetime.datetime.strptime(sys.argv[1],'%Y%m%dT%H%M%SZ').strftime('%Y-%m-%d'))" "$ts")" +%u 2>/dev/null)" = "7" ]; then
-        : > "$dest/weekly.flag"
+      # D3：simulate 同样按本地日期判定周备并写带内容的 marker
+      local ld; ld="$(local_day "$ts")"
+      local local_date; local_date="$(echo "$ld" | awk '{print $1}')"
+      local dow; dow="$(echo "$ld" | awk '{print $2}')"
+      if [ "${DISABLE_WEEKLY:-0}" != "1" ] && [ "$dow" = "7" ]; then
+        printf 'local_date=%s\nweekday=%s\nbackup_ts=%s\n' "$local_date" "$dow" "$ts" > "$dest/weekly.flag"
       fi
       printf '%s' "$dest" > "$ROOT/latest"
       log "[simulate] 造备份目录 $dest（fake_now=$fake）"

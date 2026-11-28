@@ -97,16 +97,27 @@ fi
 awk -F'\t' 'NR>1 && ($1=="data-backup"){f=1} END{exit f?0:1}' "$TSV" \
   || { echo "✗ checks.tsv 缺 data-backup 行（m3.0.1 T2）" >&2; rc=1; }
 if ! grep -q 'drill.result' ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile \
-   || ! grep -q 'open changes=0' ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile; then
-  echo "✗ verify-restore-drill.Jenkinsfile 缺 drill.result/changes 断言（m3.0.1 T3）" >&2; rc=1
+   || ! grep -q 'changes 对齐 P=' ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile \
+   || ! grep -q 'healthy 数=3' ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile; then
+  echo "✗ verify-restore-drill.Jenkinsfile 缺 drill.result/changes 对齐/healthy=3 断言（m3.0.2 T5）" >&2; rc=1
 fi
 awk -F'\t' 'NR>1 && ($1=="data-drill"){f=1} END{exit f?0:1}' "$TSV" \
   || { echo "✗ checks.tsv 缺 data-drill 行（m3.0.1 T3）" >&2; rc=1; }
-# 5g. m3.0.1 T4：报告与代码同源字段门禁。
+# 5g. m3.0.1 T4：报告与代码同源字段门禁；m3.0.2 T6：真校验 deployTag/tagCommit + consistent 口径。
 if ! grep -q 'deployedHead' ci/jenkins/pipelines/selfcheck.Jenkinsfile \
    || ! grep -q 'consistent' ci/jenkins/pipelines/selfcheck.Jenkinsfile \
    || ! grep -q 'report-consistency' ci/jenkins/pipelines/verify-status-page.Jenkinsfile; then
   echo "✗ 缺报告同源字段（deployedHead/consistent/report-consistency，m3.0.1 T4）" >&2; rc=1
+fi
+if ! grep -q 'deployTag' ci/jenkins/pipelines/selfcheck.Jenkinsfile \
+   || ! grep -q 'tagCommit' ci/jenkins/pipelines/selfcheck.Jenkinsfile \
+   || ! grep -q 'describe --tags --exact-match HEAD' ci/jenkins/pipelines/selfcheck.Jenkinsfile \
+   || ! grep -q 'tagCommit != ' ci/jenkins/pipelines/selfcheck.Jenkinsfile; then
+  echo "✗ 缺报告同源真校验字段（deployTag/tagCommit/describe --tags --exact-match，m3.0.2 T6）" >&2; rc=1
+fi
+if ! grep -q 'deployTag' ci/jenkins/pipelines/verify-status-page.Jenkinsfile \
+   || ! grep -q 'tagCommit' ci/jenkins/pipelines/verify-status-page.Jenkinsfile; then
+  echo "✗ verify-status-page 缺 deployTag/tagCommit 断言（m3.0.2 T6）" >&2; rc=1
 fi
 
 if [[ $rc -eq 0 ]]; then

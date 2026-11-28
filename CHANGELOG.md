@@ -2,6 +2,20 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m3.0.2-backup-truth] — 2026-11-28（把备份可信做实）
+
+> 基线 `m3.0.1-backup-trust`（tag 指 `e82dab0`），分支 `feat/m2-gerrit-cgit-harbor`，**不合并 main**，旧 tag（`m2-v1.0`/`m3.0-reliability`/`m3.0.1-backup-trust`）不移动。依据《OrgFlow M3.0.2 施工提示词：把备份可信做实》。逐条实测见 `docs/records/执行日志/2026-11-28.md` 的 M3.0.2 小节。本轮只修缺陷与补强，不扩范围、不引入新组件、不改端口/Funnel/域名/routes。
+>
+> - **T1 修 tar 重试（D1）**：`scripts/backup.sh` 每次 tar 尝试前显式 `rc=0`，两次都非 0 才失败；attempts + 两次退出码写入 `.tar-warnings.log`（保留审计）；注入 `BACKUP_TAR_FAIL_ONCE=1`（第一次 rc=1、第二次 rc=0）、`BACKUP_TAR_ALWAYS_FAIL=1`（两次都失败）。验收：FAIL_ONCE 整轮 `exit_code=0` 且日志含 `attempt=1 rc=1`/`attempt=2 rc=0`；ALWAYS_FAIL 整轮失败、latest 不指向残缺目录。
+> - **T2 校验判红（D2）**：`backup-daemon.sh` 顺序改为"写 status 初值 → 跑 verify → 按结果回写"，捕获 `backup-verify.sh` 返回码，非 0 记 `exit_code=7` + `status.verify.ok=false`/`failures`，日志 `verify failed` 保留现场、不打印"一轮备份完成"；`backup.sh` 保持单一真源；`verify-backup.Jenkinsfile` 增断言 e（`verify.ok=true` 且 `failures` 为空）。反证：截断 gerrit pack → verify FAIL（含 git-fsck）；status 污染 → verify-backup FAILURE + selfcheck data-backup 红。恢复后 verify-backup #15 SUCCESS（五项断言全过）。
+> - **T3 周备本地时区（D3）**：`backup-daemon.sh` 的 `local_day()` 把备份 UTC 时间戳转 Asia/Shanghai 取本地日期与 `%u`；`weekly.flag` 写 `local_date`/`weekday`/`backup_ts`；`manifest.json` 增 `local_date`/`weekday`；轮转校验 marker，`weekday=7` 且字段齐全才归周备，坏 marker `skip invalid marker` 不删不归类。验收：UTC `20261129T163000Z`→本地周一、`20261129T153000Z`→本地周日；5 周日留 4、日备仍 7。
+> - **T4 drill 每周自动跑（D4）**：新增 `scripts/drill-daemon.sh`（常驻，下个本地周日 04:00 执行 drill-up，启动补跑 >26h；pidfile+flock，sleep 关锁 fd）、`scripts/drill-watchdog.sh`（云 IDE supervisor 不自愈兜底，每 10s 巡检拉起）、`deploy/supervisor/orgflow-drill.conf`（`orgflow-drill` + watchdog）、Makefile `drill-now`/`drill-daemon-install`/`drill-daemon-status`；`drill.result` 改 JSON；`verify-restore-drill` 新鲜度 8d→26h + result.ts/日志同源≤10min + JSON 可解析。反证 #15（ts 改坏不同源）/ #16（30h 过期）FAILURE；正向 #14/#17 SUCCESS。
+> - **T5 drill 断言补强（D5）**：`drill-up.sh` 强制 healthy=3；changes 与生产实时对比 P==D（P 取不到直接 FAIL、不默认 0）；LDAP 口令从 `LDAP_PASSWORD` 环境或 `/opt/orgflow/secrets/ldap_admin_password` 读（禁硬编码，创建 600 权限口令文件）；Gerrit 镜像 tag 从 `config/images.env` 的 `IMAGE_GERRIT` 解析（禁硬编码）；cgit HTTP 200 重试 5 次；起栈前只 `docker compose down -v` 清残留（不调 `drill-down.sh`，否则删解包数据致 server_id 丢失）；server_id 从生产 etc 卷复制到解包 etc。`verify-restore-drill` 增日志断言行解析（P==D + healthy=3）。正向 DRILL PASS（healthy=3、cgit 200、gerrit 3.9.0、P=0 D=0、ldap rc=0、174s）。
+> - **T6 报告同源真校验（D6）**：`selfcheck` 新增 `deployTag`（`git describe --tags --exact-match HEAD`，无则 `none`）与 `tagCommit`（tag 指向 SHA，无则 `unknown`），`consistent=commit==tagCommit && tagCommit!='unknown'`；报告顶部显示 commit/tag/consistent 三行；`verify-status-page` 断言三字段齐全 + consistent=YES + commit==tagCommit；`check-selfcheck.sh` 5g 门禁。反证：旧 checkout（HEAD 无 tag）→ `consistent=NO`；正向：tag `m3.0.2-backup-truth` 提交上 → `consistent=YES`、`deployTag` 正确。
+> - **T7 清理与收口（D7）**：清理执行日志"index 匿名卷每次必须 reindex"旧结论（改为"named volume 根治、仅卷丢失才需 reindex"）；更新备份与恢复/自检框架文档口径；`checks.tsv` 描述更新（data-backup 加 verify.ok、data-drill 加 JSON/同源/26h）。
+>
+> **门禁**：`make check`/`make test` 全绿；真校验在旧 checkout 判 NO、在 tag 提交判 YES。
+
 ## [m3.0.1-backup-trust] — 2026-11-28（让备份变成可信灾备）
 
 > 基线 `m3.0-reliability`（tag 指 `46665af`），分支 `feat/m2-gerrit-cgit-harbor`，**不合并 main**，旧 tag（`m2-v1.0`/`m3.0-reliability`）不移动。依据《OrgFlow M3.0.1 施工提示词：让备份变成"可信灾备"》。依据文档口径实测见 `docs/records/执行日志/2026-11-28.md` 的 M3.0.1 小节与三份运维文档。

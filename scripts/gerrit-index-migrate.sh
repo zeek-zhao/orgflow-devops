@@ -16,9 +16,12 @@ cd "$REPO"
 ENVFILE="config/defaults.env"
 NEWVOL="$(grep '^GERRIT_INDEX_VOLUME=' "$ENVFILE" | cut -d= -f2-)"
 NEWVOL="${NEWVOL:-orgflow-minimal_gerrit_index}"
-GIMG="$(grep '^IMAGE_GERRIT=' config/images.env | cut -d= -f2-)"
-# images.env 用 orgflow/* 本地名，可能触发 docker.io 拉取；用 compose 期望的 ghcr ctx tag（本地已就绪）。
-GIMG="ghcr.io/zeek-zhao/orgflow-devops/m2-gerrit:ctx-547cec6a8cd0"
+# D5（M3.0.2）：tag 从 config/images.env 的 IMAGE_GERRIT 解析，禁止硬编码。
+# images.env 是本地构建名 orgflow/m2-gerrit:<tag>；拼 ghcr.io 路径用本地已备的同 tag 镜像，避免 docker.io 拉取。
+GERRIT_TAG="$(grep '^IMAGE_GERRIT=' config/images.env | cut -d= -f2- | awk -F: '{print $NF}')"
+[ -n "$GERRIT_TAG" ] || { echo "✗ 无法从 config/images.env 解析 IMAGE_GERRIT tag"; exit 2; }
+GIMG="ghcr.io/zeek-zhao/orgflow-devops/m2-gerrit:$GERRIT_TAG"
+echo "[migrate] gerrit 镜像 tag=$GERRIT_TAG（来自 config/images.env）"
 
 echo "=== T6 Gerrit index 迁移开始 $(date -u +%FT%TZ) ==="
 T0=$(date +%s)

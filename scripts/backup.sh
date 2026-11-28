@@ -44,17 +44,34 @@ for vol in "${VOLS[@]}"; do
   tfile="$(mktemp)"
   : > "$tfile"
   changed=0
-  # tar 加 --warning=no-file-changed；退出码 1（文件在打包期间变化）时对该卷重试一次，
-  # 仍失败则整轮失败。重试前刷新时间戳标记。
-  rc=0
-  tar --warning=no-file-changed -czf "$DEST/$vol.tar.gz" -C "$mp" . 2>>"$LOG_TAR" || rc=$?
-  if [ "$rc" -eq 1 ]; then
-    echo "[backup] ⚠ $vol tar 退出码=1（文件变化），重试一次" >&2
-    : > "$tfile"
-    tar --warning=no-file-changed -czf "$DEST/$vol.tar.gz" -C "$mp" . 2>>"$LOG_TAR" || rc=$?
-  fi
+  # D1 修复（M3.0.2）：每次 tar 尝试前显式 rc=0。根因是旧逻辑用 `tar || rc=$?`，
+  # 第二次成功后 `||` 不赋值，rc 残留第一次的 1 → 重试成功仍被判失败。
+  # 现在最多两次尝试、两次都非 0 才失败；attempts 与每次 rc 记入打包日志（单一真源）。
+  # 注入开关（仅供反证）：BACKUP_TAR_FAIL_ONCE=1 第一次故意 rc=1、第二次正常；
+  #                      BACKUP_TAR_ALWAYS_FAIL=1 两次都 rc=1（整轮失败）。
+  attempts=0
+  rc=1
+  for attempt in 1 2; do
+    rc=0
+    inject=0
+    [ "${BACKUP_TAR_FAIL_ONCE:-0}" = "1" ] && [ "$attempt" = "1" ] && inject=1
+    [ "${BACKUP_TAR_ALWAYS_FAIL:-0}" = "1" ] && inject=1
+    if [ "$inject" = "1" ]; then
+      echo "[backup] INJECT $vol attempt=$attempt 故意返回 rc=1" >> "$LOG_TAR"
+      rc=1
+    else
+      tar --warning=no-file-changed -czf "$DEST/$vol.tar.gz" -C "$mp" . 2>>"$LOG_TAR" || rc=$?
+    fi
+    attempts=$attempt
+    echo "[backup] tar $vol attempt=$attempt rc=$rc" | tee -a "$LOG_TAR"
+    [ "$rc" -eq 0 ] && break
+    if [ "$attempt" -eq 1 ]; then
+      echo "[backup] ⚠ $vol tar 退出码=$rc，重试一次" >&2
+      : > "$tfile"
+    fi
+  done
   if [ "$rc" -ne 0 ]; then
-    echo "✗ 卷 $vol 打包失败（rc=$rc）" >&2
+    echo "✗ 卷 $vol 打包失败（attempts=$attempts rc=$rc）" >&2
     rm -f "$tfile"
     exit 1
   fi
@@ -99,8 +116,20 @@ for v in vols:
         "entries": n,
         "changed_during_backup": changed.get(v, 0),
     })
+# D3（M3.0.2）：本地日期字段（Asia/Shanghai，无 DST，固定 UTC+8）。
+# 目录名 ts 是 UTC；周备判定改用本地星期，避免 UTC 与本地跨日错位导致周备永不生成。
+try:
+    from datetime import datetime, timedelta, timezone
+    _utc = datetime.strptime(ts, '%Y%m%dT%H%M%SZ').replace(tzinfo=timezone.utc)
+    _local = _utc.astimezone(timezone(timedelta(hours=8)))
+    local_date = _local.strftime('%Y-%m-%d')
+    weekday = int(_local.strftime('%u'))  # 1=周一 ... 7=周日
+except Exception:
+    local_date, weekday = '', 0
 m={
     "created_utc": ts,
+    "local_date": local_date,
+    "weekday": weekday,
     "commit": commit,
     "image_tags": img_snapshot(repo),
     "volumes": entries,
@@ -108,8 +137,9 @@ m={
 }
 with open(os.path.join(dest,'manifest.json'),'w',encoding='utf-8') as f:
     json.dump(m,f,ensure_ascii=False,indent=2)
-# 清理中间文件（不进交付产物）
-for tmp in ('.changed.tsv','.tar-warnings.log'):
+# 清理中间文件（.changed.tsv 不进交付产物；.tar-warnings.log 保留为 tar 尝试审计日志，
+# 含 D1 反证所需的 attempt=1 rc=1 / attempt=2 rc=0 证据）
+for tmp in ('.changed.tsv',):
     p=os.path.join(dest,tmp)
     if os.path.exists(p): os.remove(p)
 print("[backup] manifest: %d 卷, %d 条目 (changed_during_backup 已记录)" % (len(entries), sum(e['entries'] for e in entries)))
