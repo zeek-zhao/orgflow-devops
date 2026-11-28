@@ -2,6 +2,19 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m3.0-reliability] — 2026-11-28（可靠性与灾备）
+
+> 基线 `m2-v1.0`（a553a9e），分支 `feat/m2-gerrit-cgit-harbor`，**不合并 main**。依据《OrgFlow M3 规划与 M3.0 施工提示词：可靠性与灾备先行》。零代码逻辑改动，只加脚本与文档；实测见 `docs/records/执行日志/2026-11-28.md` 与 `docs/运维/备份与恢复.md` §6、容量与清理.md §5。
+>
+> - **基线采集**：磁盘 39%、23 镜像 3.6GB、52 卷 640MB、12 容器 healthy；9 个必备卷与大小盘点。
+> - **备份脚本**：`scripts/backup.sh` + `make backup`（9 卷 tar+sha256+manifest → `/data/backups/<UTC>`）；`scripts/backup-verify.sh` + `make backup-verify`（sha256 + 逐卷解包 + 条目数）。连续两次备份成功、两次 verify 全通过（9 卷/7692 条目）。
+> - **恢复脚本**：`scripts/restore.sh` + `make restore`（解包到隔离目录，逐项比对 Gerrit 仓库数/registry digest/Jenkins Job 数）。隔离演练：3 库 / 2 digest / 23 Job，数量+名单与生产一致。
+> - **容量清理**：`scripts/disk-report.sh` + `make disk-report`；`scripts/prune-images.sh` + `make prune-images`（CONFIRM=1 实际清 dangling，保留在用 tag）。实测回收 97.23MB。
+> - **全量重建演练**：暂停 cron → 备份校验 → `./down.sh`（保留卷）→ `./up.sh --no-pull` → `scripts/gerrit-reindex.sh` + `make gerrit-reindex`（匿名 index 卷重建必做）→ 恢复 cron。13 步 healthy，总耗时 ≈27 分钟（窗口内）。
+> - **重建后验收**：自检 #24 PASS（FAIL=0 SKIP=0，mechanism=supervisor）；端到端 change #61 → Verified +1 → abandon → open=0；入口 7 路径符合预期。
+> - **发现与遗留**：Gerrit index 是匿名卷，每次 down+up 换新空卷需 reindex（已用 `make gerrit-reindex` 固化为补救步骤）；镜像 tag 漂移（配置期望 `m2-gerrit:ctx-547cec6a8cd0`，线上原 `3.9.0`）；根治方案（index/db/cache 改 named volume）与备份外送留到 M3.1 评估。
+> - **文档**：`docs/运维/备份与恢复.md`（§6 自动化 + 演练记录）、`docs/运维/容量与清理.md`（新建）、执行日志 2026-11-28 M3.0 小节。
+
 ## [m2-v1.0] — 2026-11-27（M2 封版：自检可信度 + 全量终验通过）
 
 > 分支 `feat/m2-gerrit-cgit-harbor`，annotated tag `m2-v1.0` 指向封版提交（含 M2.5.5 自检可信度修复）。**分支保持不合并 main**。依据《OrgFlow M2.5.5 自检可信度修复与 M2 封版收口 · AI 提示词》。本段汇总 M2.1~M2.5.5 全量条目；每步实测见 `docs/records/` 执行日志与封版记录 `docs/records/M2-封版记录.md`。

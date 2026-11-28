@@ -130,3 +130,4 @@ make verify                   # 全量验收矩阵 AC-1~22
 | DOC-P-008 | Gerrit 人工使用指南（面向写代码的人） | docs/使用手册/Gerrit-人工使用指南.md | 规程 | review | zeek.zhao | 6 | M2.4-P2 |
 | DOC-P-009 | 自检框架（checks.tsv / 报告 / 加检查项） | docs/运维/自检框架.md | 规程 | review | zeek.zhao | 6 | M2.4-P3 |
 | DOC-E-011 | 构建资源配额（四项铁律 / quota-guard / Quota gate） | docs/运维/构建资源配额.md | 规程 | review | zeek.zhao | 6 | M2.5-P0 |
+| DOC-P-010 | 容量与清理（disk-report / prune-images / 水位阈值） | docs/运维/容量与清理.md | 规程 | review | zeek.zhao | 6 | M3.0 |

@@ -235,3 +235,22 @@ sync-context: ## 把 config/ 真源同步到各服务的自包含构建上下文
 
 images-upstream: ## 校验 Dockerfile FROM 与上游 digest 登记表一致
 	@bash scripts/check-images.sh --mode=upstream
+
+# ---------- M3.0 可靠性与灾备 ----------
+backup: ## 卷级备份（tar+sha256+manifest → /data/backups/<UTC>，可用 BACKUP_ROOT 覆盖）
+	@bash scripts/backup.sh
+
+backup-verify: ## 校验备份（sha256 + 逐卷解包 + 条目数，可指定 BACKUP=...）
+	@bash scripts/backup-verify.sh $(if $(BACKUP),$(BACKUP),)
+
+disk-report: ## 磁盘水位 + 可清理镜像/旧构建/artifacts 报告（只读）
+	@bash scripts/disk-report.sh
+
+prune-images: ## 清理悬空镜像（保留在用 tag，仅 dangling，人工确认制）
+	@bash scripts/prune-images.sh
+
+restore: ## 从备份恢复到指定 project（BACKUP=... PROJECT=... 默认 orgflow-drill）
+	@bash scripts/restore.sh
+
+gerrit-reindex: ## 全量重建后重建 Gerrit 索引（匿名卷重建必做，NoteDb 为数据源）
+	@bash scripts/gerrit-reindex.sh
