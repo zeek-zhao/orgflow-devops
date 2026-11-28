@@ -65,16 +65,22 @@ echo "[drill] gerrit 镜像 tag=$GERRIT_TAG（来自 config/images.env）"
 # F5：backup 字段必须绑定实际备份目录（RESULT_BACKUP），取不到写 unknown，绝不用字面 "latest"。
 # F6：mode 恒为 full（无 quick 轻量路径，不设 DRILL_MODE 分支）。
 RESULT_FIELDS='{}'
-RESULT_BACKUP="unknown"   # 解包后更新为实际备份绝对路径；失败路径仍指向实际目录或 unknown
+# m3.0.5 T3（D3）：三个结果变量必须在 trap 之前初始化，否则早期失败（如 quota preflight）
+# 触发 trap → write_result 在 set -u 下引用未定义变量直接崩，drill.result 写不出。
+# RESULT_BACKUP 先按 resolve_backup_path 求值一次（实际目录或 unknown，绝不写字面 latest）。
+STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+RESULT_BACKUP="$(resolve_backup_path "$BACKUP")"
 BMODE="full"              # M3.0.4 T2/F6：只保留 full，删除 DRILL_MODE 分支
 write_result() {
   local result="$1" note="${2:-}"
-  python3 - "$result" "$(basename "$LOG")" "$RESULT_BACKUP" "$LOG" "$note" "$RESULT_FIELDS" "$STARTED_AT" "$BMODE" <<'PY'
+  python3 - "$result" "$(basename "$LOG")" "${RESULT_BACKUP:-unknown}" "$LOG" "$note" "${RESULT_FIELDS:-}" "${STARTED_AT:-}" "${BMODE:-full}" <<'PY'
 import json,sys,os,time,datetime
 result,logdir,backup,log,notes,fields,started_at,mode=sys.argv[1:9]
 d={"result":result,"ts":logdir,"backup":backup,"log":log,"mode":mode}
-try: d.update(json.loads(fields))
-except Exception: pass
+# m3.0.5 T3：set -u 兜底——fields 空/非法都不得让 write_result 崩，保证早期失败也落结果。
+if fields and fields.strip():
+    try: d.update(json.loads(fields))
+    except Exception: pass
 if notes: d["note"]=notes
 # 时间字段（Job 打印但不判红）
 if not started_at or started_at.startswith('$'):
@@ -98,8 +104,8 @@ trap 'rc=$?; [ "$rc" -ne 0 ] && write_result "FAIL" "exit rc=$rc" || true' EXIT
 
 echo "=== T3 隔离恢复演练开始 $(date -u +%FT%TZ) ==="
 START=$(date +%s)
-STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-echo "[drill] backup=${BACKUP:-latest} drill=$DRILL log=$LOG"
+# m3.0.5 T3：STARTED_AT 已在 trap 前初始化（见文件头），此处不再重赋值，确保早期失败也有时间基准。
+echo "[drill] backup=${BACKUP:-latest} drill=$DRILL log=$LOG started_at=$STARTED_AT"
 
 # ---- 1) 资源守卫前置 ----
 echo "--- [1/5] quota-guard --preflight ---"

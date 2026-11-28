@@ -119,6 +119,11 @@ pipeline {
                         ''', returnStdout: true).trim()
                         if (jver == 'unknown') { echo "⚠ 报告 jenkinsVersion=unknown：版本文件与 war MANIFEST 均不可读" }
                         def now = sh(script: "date '+%Y-%m-%d %H:%M:%S %z'", returnStdout: true).trim()
+                        // m3.0.5 T2（D1）：报告时效真源——generated_at 为 UTC ISO8601，
+                        // generator 标注产出者。HTML 用内联 JS 按浏览器当前时间算 age，>24h 标红。
+                        def generatedAt = sh(script: "date -u '+%Y-%m-%dT%H:%M:%SZ'", returnStdout: true).trim()
+                        def generator = 'selfcheck#' + env.BUILD_NUMBER
+                        echo "报告时效: generated_at=${generatedAt} generator=${generator}"
                         // 3) 镜像：输出 键=值（仅镜像名与 tag，无口令），报告表格单独一列"镜像 tag"。
                         def images = sh(script: "grep -E '^IMAGE_[A-Z_]+=' /opt/orgflow/config/images.env 2>/dev/null | tr '\\n' ' '", returnStdout: true).trim()
                         def imageKeys = sh(script: "grep -E '^IMAGE_[A-Z_]+=' /opt/orgflow/config/images.env 2>/dev/null | cut -d= -f1 | tr '\\n' ' '", returnStdout: true).trim()
@@ -152,8 +157,8 @@ pipeline {
                         ''', returnStdout: true).trim()
                         if (!mechanism) mechanism = 'unknown'
                         echo "报告 mechanism 来源独立化：mechanism=${mechanism}"
-                        def json = buildJson(env.BUILD_NUMBER, now, overall, commit, deployedHead, deployTag, tagCommit, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn)
-                        def html = renderHtml(env.BUILD_NUMBER, now, overall, commit, deployedHead, deployTag, tagCommit, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn)
+                        def json = buildJson(env.BUILD_NUMBER, now, generatedAt, generator, overall, commit, deployedHead, deployTag, tagCommit, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn)
+                        def html = renderHtml(env.BUILD_NUMBER, now, generatedAt, generator, overall, commit, deployedHead, deployTag, tagCommit, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn)
                         def reportDir = '/reports/selfcheck'
                         def base = "${reportDir}/selfcheck-${env.BUILD_NUMBER}"
                         writeFile file: "${base}.json", text: json
@@ -177,7 +182,7 @@ pipeline {
 }
 
 // 手工 JSON 序列化（沙箱无 groovy.json.JsonOutput）：字符串转义 + 拼接。
-def buildJson(build, now, overall, commit, deployedHead, deployTag, tagCommit, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn) {
+def buildJson(build, now, generatedAt, generator, overall, commit, deployedHead, deployTag, tagCommit, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn) {
     def esc = { s -> (s ?: '').toString()
         .replace('\\', '\\\\').replace('"', '\\"')
         .replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t') }
@@ -188,7 +193,10 @@ def buildJson(build, now, overall, commit, deployedHead, deployTag, tagCommit, c
     }.join(',')
     // m2.5.4 P2-1：overall 与 result 并存且同值——机器消费方按 result 读，HTML 仍用 overall。
     // m3.0.1 T4：deployedHead/consistent 同源字段；m3.0.2 T6：加 deployTag/tagCommit，consistent 改真校验。
-    return '{' + '"build":"' + esc(build) + '","time":"' + esc(now) + '","overall":"' + esc(overall) +
+    // m3.0.5 T2（D1）：generated_at（UTC ISO8601）+ generator 报告时效真源。
+    return '{' + '"build":"' + esc(build) + '","time":"' + esc(now) +
+        '","generated_at":"' + esc(generatedAt) + '","generator":"' + esc(generator) +
+        '","overall":"' + esc(overall) +
         '","result":"' + esc(overall) +
         '","commit":"' + esc(commit) + '","deployedHead":"' + esc(deployedHead) +
         '","deployTag":"' + esc(deployTag) + '","tagCommit":"' + esc(tagCommit) + '","consistent":"' + esc(consistent) +
@@ -200,7 +208,7 @@ def buildJson(build, now, overall, commit, deployedHead, deployTag, tagCommit, c
 }
 
 // 自包含 HTML：内联 CSS、无外链、无 JS；表格 + 状态色块 + 总判 + 环境快照 + 未覆盖提示。
-def renderHtml(build, now, overall, commit, deployedHead, deployTag, tagCommit, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn) {
+def renderHtml(build, now, generatedAt, generator, overall, commit, deployedHead, deployTag, tagCommit, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn) {
     def esc = { s -> (s ?: '').toString().replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;') }
     def color = overall=='PASS' ? '#2e7d32' : (overall=='FAIL' ? '#c62828' : '#ef6c00')
     def sb = ''
@@ -211,9 +219,25 @@ def renderHtml(build, now, overall, commit, deployedHead, deployTag, tagCommit, 
     sb = sb + 'h1{font-size:1.5rem}.verdict{display:inline-block;padding:.4rem 1rem;border-radius:6px;color:#fff;font-weight:700;background:' + color + '}'
     sb = sb + 'table{border-collapse:collapse;width:100%;margin-top:1rem}th,td{border:1px solid #d8dee9;padding:.45rem .6rem;text-align:left;font-size:.9rem}'
     sb = sb + 'th{background:#f2f5f9}.ok{color:#2e7d32;font-weight:700}.fail{color:#c62828;font-weight:700}.skip{color:#ef6c00;font-weight:700}'
-    sb = sb + '.meta{color:#556;font-size:.85rem}.ev{font-family:monospace;font-size:.8rem;color:#444}.note{margin-top:1rem;color:#556}</style></head><body>'
+    sb = sb + '.meta{color:#556;font-size:.85rem}.ev{font-family:monospace;font-size:.8rem;color:#444}.note{margin-top:1rem;color:#556}'
+    // m3.0.5 T2（D1）：报告时效块——stale 整块标红。JS 内联，无外链，报告仍自包含。
+    sb = sb + '.fresh{padding:.6rem .8rem;border-radius:6px;background:#e8f5e9;border-left:4px solid #2e7d32;margin:.8rem 0}'
+    sb = sb + '.fresh.stale{background:#ffebee;border-left-color:#c62828;color:#c62828;font-weight:700}</style></head><body>'
     sb = sb + '<h1>OrgFlow 自检报告 <span class="meta">#' + build + '</span></h1>'
-    sb = sb + '<p>生成时间：' + esc(now) + '　总判：<span class="verdict">' + overall + '</span></p>'
+    // 时效块：data-generated-at 为 UTC ISO8601 真源；无值=旧版本报告；JS 前端算 age，>24h 标红。
+    sb = sb + '<div class="fresh" id="freshness" data-generated-at="' + esc(generatedAt) + '">'
+    sb = sb + '<span id="fresh-text">生成时间（UTC）：' + (generatedAt ? esc(generatedAt) : '未知（旧版本报告）') +
+        '　' + (generator ? '来源：' + esc(generator) : '') + '</span></div>'
+    sb = sb + '<p>生成时间（本地）：' + esc(now) + '　总判：<span class="verdict">' + overall + '</span></p>'
+    // 内联 JS：浏览器加载时按当前时间计算 age，动态显示"距现在 X 小时"，>24h 整块标红。
+    sb = sb + '<script>(function(){var el=document.getElementById("freshness");if(!el)return;' +
+        'var g=el.getAttribute("data-generated-at");var t=document.getElementById("fresh-text");' +
+        'if(!g){t.textContent="生成时间：未知（旧版本报告）——无 generated_at，请重跑 selfcheck";el.classList.add("stale");return;}' +
+        'var ms=Date.parse(g);if(isNaN(ms)){t.textContent="生成时间：无法解析（" + g + "），请重跑 selfcheck";el.classList.add("stale");return;}' +
+        'var h=Math.max(0,Math.floor((Date.now()-ms)/3600000));' +
+        'var base="生成时间（UTC）：" + g + "（距现在 " + h + " 小时）";' +
+        'if(h>24){t.textContent=base + "　✗ 数据已过期，请重跑 selfcheck";el.classList.add("stale");}' +
+        'else{t.textContent=base + "　✓ 数据新鲜";}})();</script>'
     // m3.0.1 T4：报告顶部工作区实际头 / 报告 commit；m3.0.2 T6：顶部显示 commit/tag/consistent 三行真同源。
     def consColor = (consistent=='YES') ? '#2e7d32' : '#c62828'
     sb = sb + '<p class="meta">report_commit（报告采集头）：<span class="ev">' + esc(commit) + '</span></p>'

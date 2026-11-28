@@ -110,8 +110,10 @@ if [ "$BRC" -ne 0 ] || [ ! -f "$DEST/manifest.json" ]; then
 fi
 
 # ---- 3) 调 backup-verify.sh 校验（跳过其自身 status 写入）----
+# m3.0.5 T5（D5）：透传 BACKUP_ROOT="$ROOT"，使 verify 的临时状态文件 <ROOT>/status.json.verify.tmp
+#   落在与备份同一根目录，自定义 BACKUP_ROOT 时 verify.ok 不再读到 /data/backups 的陈旧文件而误判红。
 VRC=0
-BACKUP_VERIFY_NO_STATUS=1 bash "$REPO/scripts/backup-verify.sh" "$DEST" || VRC=$?
+BACKUP_ROOT="$ROOT" BACKUP_VERIFY_NO_STATUS=1 bash "$REPO/scripts/backup-verify.sh" "$DEST" || VRC=$?
 VERIFY_JSON="$(python3 - "$ROOT/status.json" "$VRC" <<'PY' 2>/dev/null
 import json,sys
 p, vrc = sys.argv[1], int(sys.argv[2])

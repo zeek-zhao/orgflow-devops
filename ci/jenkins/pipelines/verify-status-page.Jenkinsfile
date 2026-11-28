@@ -44,6 +44,36 @@ pipeline {
                 '''
             }
         }
+        stage('report-freshness') {
+            steps {
+                // m3.0.5 T2（D1）：报告时效断言——latest.json 必须有 generated_at 且为合法 ISO8601；
+                // HTML 必须内嵌同一时间串（供前端计算 age）。反证：删 generated_at → FAILURE。
+                sh '''
+                    set -uo pipefail
+                    R=/opt/orgflow/reports/latest.json
+                    H=/opt/orgflow/reports/latest.html
+                    rc=0
+                    [ -f "$R" ] || { echo "✗ 缺 $R"; exit 1; }
+                    [ -f "$H" ] || { echo "✗ 缺 $H"; exit 1; }
+                    gen="$(jq -r '.generated_at // empty' "$R" 2>/dev/null)"
+                    genr="$(jq -r '.generator // empty' "$R" 2>/dev/null)"
+                    echo "[时效] generated_at=$gen generator=$genr"
+                    [ -n "$gen" ] || { echo "✗ generated_at 缺失（旧版本报告，请重跑 selfcheck）"; rc=1; }
+                    [ -n "$genr" ] || { echo "✗ generator 缺失"; rc=1; }
+                    # 可解析校验：agent 容器无 python3，用 GNU date -d 解析 ISO8601（Z→+00:00）。
+                    if [ -n "$gen" ]; then
+                      if date -d "${gen%Z}+00:00" +%s >/dev/null 2>&1; then
+                        echo "[时效] generated_at 可解析 OK"
+                      else
+                        echo "✗ generated_at 不可解析: $gen"; rc=1
+                      fi
+                      # HTML 必须出现该时间串（前端据此计算 age）
+                      grep -qF "$gen" "$H" || { echo "✗ HTML 未出现 generated_at 时间串 $gen"; rc=1; }
+                    fi
+                    exit "$rc"
+                '''
+            }
+        }
     }
     post { always { cleanWs() } }
 }

@@ -168,6 +168,47 @@ if ! grep -q 'deployTag' ci/jenkins/pipelines/verify-status-page.Jenkinsfile \
   echo "✗ verify-status-page 缺 deployTag/tagCommit 断言（m3.0.2 T6）" >&2; rc=1
 fi
 
+# m3.0.5 T2（D1）：报告时效字段 + HTML 过期标记 + verify-status-page 时效断言。
+if ! grep -q 'generated_at' ci/jenkins/pipelines/selfcheck.Jenkinsfile \
+   || ! grep -q 'generator' ci/jenkins/pipelines/selfcheck.Jenkinsfile \
+   || ! grep -q 'data-generated-at' ci/jenkins/pipelines/selfcheck.Jenkinsfile \
+   || ! grep -q '数据已过期' ci/jenkins/pipelines/selfcheck.Jenkinsfile; then
+  echo "✗ selfcheck.Jenkinsfile 缺报告时效字段/过期标记（generated_at/generator/数据已过期，m3.0.5 T2）" >&2; rc=1
+fi
+if ! grep -q 'report-freshness' ci/jenkins/pipelines/verify-status-page.Jenkinsfile \
+   || ! grep -q 'generated_at' ci/jenkins/pipelines/verify-status-page.Jenkinsfile; then
+  echo "✗ verify-status-page 缺报告时效断言（report-freshness/generated_at，m3.0.5 T2）" >&2; rc=1
+fi
+
+# m3.0.5 T3（D3）：结果变量必须在 trap 前初始化 + write_result set -u 兜底。
+# 门禁用行序断言：STARTED_AT 赋值行号 < trap 行号；write_result 内出现 ${...:-} 兜底。
+sc_trap_line="$(grep -n "^trap 'rc=" scripts/drill-up.sh | head -1 | cut -d: -f1)"
+sc_start_line="$(grep -n '^STARTED_AT=' scripts/drill-up.sh | head -1 | cut -d: -f1)"
+if [ -z "$sc_trap_line" ] || [ -z "$sc_start_line" ] || [ "$sc_start_line" -ge "$sc_trap_line" ]; then
+  echo "✗ drill-up.sh STARTED_AT 未在 trap 前初始化（m3.0.5 T3，start=${sc_start_line:-无} trap=${sc_trap_line:-无}）" >&2; rc=1
+fi
+if ! grep -q '\${RESULT_FIELDS:-}' scripts/drill-up.sh \
+   || ! grep -q '\${STARTED_AT:-}' scripts/drill-up.sh \
+   || ! grep -q '\${RESULT_BACKUP:-unknown}' scripts/drill-up.sh; then
+  echo "✗ drill-up.sh write_result 缺 set -u 兜底（m3.0.5 T3）" >&2; rc=1
+fi
+
+# m3.0.5 T4（D4）：verify-all 读 timeout 列 + trigger 接受超时参数 + FAIL(timeout)。
+if ! grep -q 'FAIL(timeout)' scripts/verify-all.sh \
+   || ! grep -q '"$tmin"' scripts/verify-all.sh; then
+  echo "✗ verify-all.sh 缺 timeout 透传/FAIL(timeout)（m3.0.5 T4）" >&2; rc=1
+fi
+if ! grep -q 'TIMEOUT_MIN' scripts/jenkins-trigger.sh \
+   || ! grep -q 'result: TIMEOUT' scripts/jenkins-trigger.sh \
+   || ! grep -q 'exit 5' scripts/jenkins-trigger.sh; then
+  echo "✗ jenkins-trigger.sh 缺超时参数/result: TIMEOUT/exit 5（m3.0.5 T4）" >&2; rc=1
+fi
+
+# m3.0.5 T5（D5）：backup-run.sh 调 verify 透传 BACKUP_ROOT。
+if ! grep -q 'BACKUP_ROOT="$ROOT" BACKUP_VERIFY_NO_STATUS=1' scripts/backup-run.sh; then
+  echo "✗ backup-run.sh 调 backup-verify 未透传 BACKUP_ROOT（m3.0.5 T5）" >&2; rc=1
+fi
+
 # m3.0.3 T2：自检恢复 21 项（data-drill 已移除）。
 # 口径：checks.tsv 数据行=22（含默认 EXCLUDE 的 feat-review-flow），selfcheck selected=21（报告 total）。
 if [[ "$n" -ne 22 ]]; then

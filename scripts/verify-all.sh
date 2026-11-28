@@ -5,6 +5,9 @@
 # 即报告口径 21 项），逐项打印 SUCCESS/FAIL，末尾汇总。仅手动执行，不注册任何 cron/守护。
 # 依赖 jenkins-trigger.sh 触发单个 Job 并等待结果；JENKINS_PASS 由调用方提供。
 #
+# m3.0.5 T4（D4）：从 checks.tsv 第 7 列读 timeout（分钟）传给 jenkins-trigger.sh 作等待上限；
+#   超时（trigger 输出 "result: TIMEOUT" / exit 5）判 FAIL(timeout)，不得写 UNKNOWN。
+#
 # 用法: JENKINS_PASS=... bash scripts/verify-all.sh
 #   可选 HEAVY=1 时连 heavy 项（feat-review-flow）一起跑，共 22 项。
 set -uo pipefail
@@ -33,8 +36,16 @@ while IFS=$'\t' read -r id kind target title what expect timeout; do
     printf '%-24s %s\n' "$target" "SKIP(heavy)"; skip=$((skip+1)); continue
   fi
   total=$((total+1))
-  out="$(bash "$TRIGGER" "$target" 2>&1)"
+  # m3.0.5 T4：按 checks.tsv 的 timeout（分钟，第7列）传等待上限；空/非法回落默认 6。
+  tmin="${timeout:-6}"; case "$tmin" in ''|*[!0-9]*) tmin=6;; esac
+  out="$(bash "$TRIGGER" "$target" "" "$tmin" 2>&1)"
   trc=$?
+  # 超时优先判定：trigger 以 "result: TIMEOUT" + exit 5 表示等待超上限（m3.0.5 T4）。
+  if printf '%s\n' "$out" | grep -qE '^result: TIMEOUT' || [ "$trc" -eq 5 ]; then
+    printf '%-24s %s\n' "$target" "FAIL(timeout)"; fail=$((fail+1))
+    printf '%s\n' "$out" | tail -8
+    continue
+  fi
   # 从 console 输出里取 Jenkins 构建结果（"result: False SUCCESS" / "False FAILURE"）
   result="$(printf '%s\n' "$out" | grep -E '^result:' | tail -1 | awk '{print $3}')"
   [ -n "$result" ] || result="UNKNOWN(trigger_rc=$trc)"

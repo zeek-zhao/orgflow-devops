@@ -2,6 +2,19 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m3.0.5-report-freshness] — 2026-11-29（报告时效性 + 演练健壮性 + 部署后必验）
+
+> 基线 `m3.0.4-backup-status`（tag 指 `3450579`），分支 `feat/m2-gerrit-cgit-harbor`，**不合并 main**，旧 tag 不移动。依据《OrgFlow M3.0.5 施工提示词：报告时效性 + 演练健壮性 + 部署后必验》。逐条实测见 `docs/records/执行日志/2026-11-29.md` 的 M3.0.5 小节。本轮先补部署与验证（T1），再修五处缺陷（D1–D5）。硬约束同前：无告警外发/监控/多环境/任何定时器/自动调度。
+>
+> - **T1 先补部署与验证（D2）**：服务器仓库更新到基线 `3450579`（`git log -1` 留证，detached 在 tag 上），四项资源证据 nproc=5/MemTotal=8570968kB/docker 5CPU 8.17GiB/of-builder NanoCpus=0 Memory=0 CpuQuota=0，12 业务容器 healthy；`make backup` 同源（exit=0/verify.ok/bytes≈306MB/volumes=9）；手动 selfcheck（quota 刷新进程因沙箱休眠丢失，恢复既有 supervisor loop 单实例后）#34 全绿 total=21/deployTag=m3.0.4-backup-status/consistent=YES/FAIL=0；`make drill` PASS（154s）+ verify-backup/verify-restore-drill 在线 SUCCESS。
+> - **T2 报告加时间戳与过期标记（D1）**：`selfcheck.Jenkinsfile` 的 `latest.json` 增 `generated_at`（UTC ISO8601）与 `generator`（selfcheck#build）；HTML 头部增时效块（`data-generated-at` + 内联 JS 无外链），显示生成时间/距现在 X 小时，`>24h` 整块标红写"数据已过期，请重跑 selfcheck"，无字段显示"未知（旧版本报告）"；`verify-status-page` 增 `report-freshness` stage 断言 generated_at 可解析且 HTML 含该时间串。反证：2h 前 fresh / 26h 前 stale / 删字段断言 FAILURE。
+> - **T3 演练早期失败也能落结果（D3）**：`drill-up.sh` 把 `STARTED_AT`/`RESULT_BACKUP`/`BMODE` 赋值移到 trap 之前（RESULT_BACKUP 先按 `resolve_backup_path` 求值一次），`write_result` 对 fields/started_at 用 `${VAR:-}` 兜底，set -u 下不再因取未定义变量崩。反证：preflight 前注入 fail → drill.result 仍落盘 result=FAIL/backup 实际路径/时间字段齐全。
+> - **T4 手动巡检按清单超时（D4）**：`verify-all.sh` 读 checks.tsv 第 7 列 timeout（分钟）传给 `jenkins-trigger.sh` 作等待上限（默认 6min），超时输出 `result: TIMEOUT` + exit 5，巡检判 `FAIL(timeout)` 不写 UNKNOWN。反证：trigger 传 1min 跑 selfcheck 超时退出（72s）；桩测 verify-all 超时候 FAIL(timeout)/正常项 SUCCESS。
+> - **T5 备份根目录透传（D5）**：`backup-run.sh` 调 `backup-verify.sh` 加 `BACKUP_ROOT="$ROOT"`，verify 临时状态文件落同根目录。反证：`BACKUP_ROOT=/tmp/bt-test make backup` → /tmp/bt-test/status.json verify.ok=true 且 /data/backups 未被写本轮；默认路径复验 verify.ok=true。
+> - **T6 收尾**：更新 CHANGELOG/自检框架（报告时效规则）/执行日志 2026-11-29（含 T1 部署与自检证据）；`make check`/`make test` 全绿；打 annotated tag `m3.0.5-report-freshness`，git ls-remote 核验。
+>
+> **不做**：告警外发、监控组件、多环境、任何定时器、任何自动调度。
+
 ## [m3.0.4-backup-status] — 2026-11-28（站点恢复与备份状态修复）
 
 > 基线 `m3.0.3-manual-drill`（tag 指 `f70a024`），分支 `feat/m2-gerrit-cgit-harbor`，**不合并 main**，旧 tag 不移动。依据《OrgFlow M3.0.4 施工提示词：站点恢复与备份状态修复》。逐条实测见 `docs/records/执行日志/2026-11-28.md` 的 M3.0.4 小节。本轮两件事：P0 站点恢复（tailscaled 被沙箱休眠杀掉，已重启 + Funnel 对账）、修复备份状态断链 6 缺陷（F1–F6）。硬约束同前：无 >5min 定时器、无"睡到固定时刻"守护、不改端口/Funnel 配置/域名/routes。
