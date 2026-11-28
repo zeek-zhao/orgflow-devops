@@ -2,6 +2,20 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m3.0.1-backup-trust] — 2026-11-28（让备份变成可信灾备）
+
+> 基线 `m3.0-reliability`（tag 指 `46665af`），分支 `feat/m2-gerrit-cgit-harbor`，**不合并 main**，旧 tag（`m2-v1.0`/`m3.0-reliability`）不移动。依据《OrgFlow M3.0.1 施工提示词：让备份变成"可信灾备"》。依据文档口径实测见 `docs/records/执行日志/2026-11-28.md` 的 M3.0.1 小节与三份运维文档。
+>
+> - **T1 备份定时化**：`scripts/backup-daemon.sh`（03:30 常驻 + 26h 补跑 + flock/pidfile 单实例 + 水位>85% exit_code=5 + 日备7/周备4 轮转 + status.json 全字段）；`deploy/supervisor/orgflow-backup.conf`（+ watchdog 兜底，云 IDE supervisor autorestart 不触发）；`deploy/systemd/orgflow-backup.{service,timer}`；`backup.sh` 加 `--warning=no-file-changed` + 退出码1重试 + `changed_during_backup`。验收：supervisor RUNNING、kill -9 后 9s 拉起新 PID、FAKE_NOW 9 日轮转稳定7、5 周备留4、水位跳过 exit_code=5、真实备份 status 全字段 exit=0。
+> - **T2 接入自检**：`verify-backup` Job（四项断言 latest≤26h/sha256/manifest 9卷/status=0，jq+shell，无 python3）；checks.tsv + data-backup、check-selfcheck.sh 5f 门禁。反证 #5 过期/#6 tar 损坏/#7 status≠0 全 FAILURE，恢复 #8 SUCCESS。项数口径：文档按旧 20→21，实际 M2.5.5 已 21 项，本轮加后 **22 项**；Job 23→24。
+> - **T3 隔离恢复真起栈**：`scripts/drill-up.sh`/`drill-down.sh` + `deploy/drill/compose.yml`（独立 project `orgflow-drill`、网络 172.31.90.0/24、起 gerrit/cgit/ldap 三容器、quota 守卫 PASS 才起、reindex 到 bind index）；`verify-restore-drill` Job（cron H 4 * * 0，离线只读结果）。DRILL PASS 四项断言全过、172s<10min、三容器 healthy、生产不受影响；反证删 pack → git fsck 指出缺失仓库 + Job #2 FAILURE；Job 24→25，自检 22→23。
+> - **T4 报告与代码同源**：selfcheck commit 取 Pipeline git rev-parse HEAD（全 SHA），latest.json 加 `deployedHead`/`consistent` 字段 + 报告顶部两行；verify-status-page 加同源断言。全量 selfcheck #26 PASS（commit=deployedHead=283a3ed，consistent=YES），反证旧 commit 报告 → #21 FAILURE、恢复 #22 SUCCESS。
+> - **T5 热备一致性**：`backup-verify.sh` 加 git fsck --no-dangling（白名单 Gerrit meta HEAD 误报）+ Jenkins XML 解析 + status.json.verify 字段；正常 verify 全过，截断 pack 反证 FAIL。
+> - **T6 Gerrit index named volume**：`services/gerrit/compose.yml` 加 `gerrit_index` external volume（up.sh 预建、defaults.env 定义），`scripts/gerrit-index-migrate.sh` 停 gerrit→建卷→root 容器 cp -a 旧 index（26 文件）→起 gerrit（未手工 reindex）；两次 force-recreate 62/66s healthy（≤90s）、open changes 前后=0、端到端 #13 SUCCESS（change 81）。根治 M3.0 遗留的"匿名卷每次换卷需 reindex"。
+> - **口径偏差说明**：沙箱云 IDE supervisor 的 RPC 对动态 program 的 autorestart 实测不触发 → 备份守护与 quota 同机制加 watchdog（nohup 常驻）兜底；agent 无 docker.sock → verify-restore-drill 采用离线只读结果（同 T4「隔离起栈内存不足改离线校验」口径）。
+>
+> **门禁**：`make check`/`make test` 全绿；selfcheck 全量 #26 PASS（FAIL=0 SKIP=0，commit 等于头）。
+
 ## [m3.0-reliability] — 2026-11-28（可靠性与灾备）
 
 > 基线 `m2-v1.0`（a553a9e），分支 `feat/m2-gerrit-cgit-harbor`，**不合并 main**。依据《OrgFlow M3 规划与 M3.0 施工提示词：可靠性与灾备先行》。零代码逻辑改动，只加脚本与文档；实测见 `docs/records/执行日志/2026-11-28.md` 与 `docs/运维/备份与恢复.md` §6、容量与清理.md §5。
