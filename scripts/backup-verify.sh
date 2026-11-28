@@ -106,15 +106,20 @@ print("[verify] jenkins xml(stream): 文件=%d 解析失败=%d" % (nfiles,bad))
 sys.exit(1 if bad or nfiles==0 else 0)
 PY
 
-# 5) T5-c: 写 status.json 的 verify 字段（ok/checked_at/failures）
-python3 - "$ROOT/status.json" "$rc" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "${failures[@]+${failures[@]}}" <<'PY' || true
+# 5) T5-c: 写校验结果。
+#    M3.0.4 T1：默认仍写 status.json.verify（兼容 backup-verify 单独调用）。
+#    当 BACKUP_VERIFY_NO_STATUS=1（由 backup-run.sh 单一入口调用）时，改为写
+#    <status>.verify.tmp 供 backup-run 一次性原子合并，避免两个进程对 status.json 的写竞争。
+VERIFY_OUT="$ROOT/status.json"
+[ "${BACKUP_VERIFY_NO_STATUS:-0}" = "1" ] && VERIFY_OUT="$ROOT/status.json.verify.tmp"
+python3 - "$VERIFY_OUT" "$rc" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "${failures[@]+${failures[@]}}" <<'PY' || true
 import json,sys,os
 p=sys.argv[1]; rc=sys.argv[2]; ts=sys.argv[3]; fails=sys.argv[4:]
 try: d=json.load(open(p,encoding='utf-8'))
 except Exception: d={}
 d['verify']={"ok": (rc=='0'), "checked_at": ts, "failures": [f for f in fails if f]}
 tmp=p+'.tmp'; json.dump(d,open(tmp,'w',encoding='utf-8'),ensure_ascii=False,indent=2); os.replace(tmp,p)
-print("[verify] status.json.verify.ok=%s failures=%s" % (rc=='0', d['verify']['failures']))
+print("[verify] %s.verify.ok=%s failures=%s" % (os.path.basename(p), rc=='0', d['verify']['failures']))
 PY
 
 if [ "$rc" -eq 0 ]; then

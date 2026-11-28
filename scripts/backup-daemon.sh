@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# backup-daemon.sh —— M3.0.3 备份运维工具（去 03:30 常驻，改手动 + up.sh 启动补跑）
+# backup-daemon.sh —— M3.0.4 备份运维工具（无长定时、无常驻；手动 + up.sh 启动补跑）
 #
-# M3.0.3 T5（E2）：服务随时可能被关停，"睡到每天 03:30"不可靠且关停后永不补。
-# 本脚本只保留 once/rotate/status/simulate 供手动调用；run 常驻模式已移除（调用报错退出）。
+# M3.0.3 T5（E2）/ M3.0.4 T1（F3）：服务随时可能被关停，"睡到固定时刻"不可靠且关停后永不补。
+# 本脚本只保留 once/rotate/status/simulate 供手动调用；run 常驻模式与固定时刻调度已彻底移除。
+# 备份唯一入口为 scripts/backup-run.sh（make backup 与 up.sh 补跑都调它，写同源 status.json）；
+# 本脚本的 once 用于轮转/周备策略的运维与 FAKE_NOW 测试。
 # up.sh 在全部服务 healthy 后同步检查 /data/backups/latest 年龄（>26h 或缺失则前台跑一次
 # backup.sh），是一次性动作，不是定时器。
 #
@@ -210,7 +212,7 @@ if dry=='0':
 PY
 }
 
-# ---- 执行一轮备份（供补跑与 03:30 定时调用）----
+# ---- 执行一轮备份（手动运维/测试，含轮转与周备策略）----
 run_once() {
   local diskpct; diskpct="$(disk_used_pct)"
   local start_epoch; start_epoch="$(now_epoch)"
@@ -262,8 +264,8 @@ PY
   local dname_now; dname_now="$(date -u -d "@$end_epoch" '+%Y%m%dT%H%M%SZ')"
   rotate "$dry" "$dname_now" || true
 
-  # 下一次运行时间（本地 03:30）
-  local nextrun; nextrun="$(next_0330 "$end_epoch")"
+  # M3.0.4 T1/F3：无常驻调度，不再计算"下一次运行时刻"（nextrun 恒空）。
+  local nextrun=""
 
   # D2（M3.0.2）：校验失败必须判红。顺序：
   #   1) 先写 status 初值（exit_code=备份 rc），保证任何时候状态文件存在且字段齐全；
@@ -307,24 +309,14 @@ PY
   if [ "$final_rc" -eq 7 ]; then
     log "✗ verify failed（backup-verify 返回非 0）：本轮 exit_code=7，verify 判红，保留现场 $dest"
   elif [ "$final_rc" -eq 0 ]; then
-    log "✓ 一轮备份完成 rc=0 dest=$dest bytes=$bytes volumes=$volumes next_run=$nextrun"
+    log "✓ 一轮备份完成 rc=0 dest=$dest bytes=$bytes volumes=$volumes"
   else
     log "✗ 一轮备份失败 rc=$final_rc（保留现场 $dest）"
   fi
   return "$final_rc"
 }
 
-# 计算下一个本地 03:30（从 from_epoch 之后），输出 ISO8601 字符串
-next_0330() {
-  local from="${1:-$(date +%s)}"
-  python3 - "$from" <<'PY'
-import sys, datetime
-t=datetime.datetime.fromtimestamp(int(sys.argv[1]))
-target=t.replace(hour=3,minute=30,second=0,microsecond=0)
-if target<=t: target+=datetime.timedelta(days=1)
-print(target.strftime('%Y-%m-%dT%H:%M:%S%z'))
-PY
-}
+# M3.0.4 T1/F3：next_0330 固定时刻调度已移除（无长定时、无常驻守护）。
 
 # 补跑判定：latest 对应备份 age（小时）> INTERVAL_H 则立即跑一次
 maybe_catchup() {
@@ -350,7 +342,7 @@ usage() {
   simulate 轻量模拟一轮（造目录+轮转，配 BACKUP_FAKE_NOW 注入连续日期测保留策略）
   rotate   仅执行保留轮转（BACKUP_DRY_RUN=1 打印 dry-run）
   status   打印 status.json
-  （run 常驻模式已移除：M3.0.3 起备份改手动 + up.sh 启动补跑，不再睡到 03:30）
+  （run 常驻模式与固定时刻调度已彻底移除：备份唯一入口 scripts/backup-run.sh，手动 + up.sh 启动补跑）
 环境变量：BACKUP_ROOT BACKUP_PIDFILE BACKUP_FAKE_NOW BACKUP_WATERMARK
          BACKUP_DRY_RUN BACKUP_INTERVAL_H BACKUP_LOG
 EOF
@@ -396,12 +388,6 @@ PY
       ;;
     status)
       cat "$STATUS" 2>/dev/null || { echo "无 $STATUS"; exit 1; }
-      ;;
-    run)
-      # M3.0.3 T5（E2）：去掉 03:30 常驻守护。服务可能被关停，"睡到固定时刻"不可靠；
-      # 备份改由 up.sh 启动后一次性补跑 + 手动 backup-once。保留 run 仅作兼容提示，不再常驻。
-      echo "✗ backup-daemon run 常驻模式已在 M3.0.3 移除（不再睡到 03:30）：请用 make backup / make backup-once 手动备份，或由 up.sh 启动补跑。" >&2
-      exit 3
       ;;
     -h|--help|help)
       usage ;;

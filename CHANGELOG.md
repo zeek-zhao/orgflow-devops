@@ -2,6 +2,18 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m3.0.4-backup-status] — 2026-11-28（站点恢复与备份状态修复）
+
+> 基线 `m3.0.3-manual-drill`（tag 指 `f70a024`），分支 `feat/m2-gerrit-cgit-harbor`，**不合并 main**，旧 tag 不移动。依据《OrgFlow M3.0.4 施工提示词：站点恢复与备份状态修复》。逐条实测见 `docs/records/执行日志/2026-11-28.md` 的 M3.0.4 小节。本轮两件事：P0 站点恢复（tailscaled 被沙箱休眠杀掉，已重启 + Funnel 对账）、修复备份状态断链 6 缺陷（F1–F6）。硬约束同前：无 >5min 定时器、无"睡到固定时刻"守护、不改端口/Funnel 配置/域名/routes。
+>
+> - **T0 站点恢复（P0）**：`tailscaled` 进程被沙箱休眠杀掉（socket connection refused）是站点 000/TLS EOF 的直接根因；按本环境标准参数 `--state=... --socket=... --tun=userspace-networking` 重启，`tailscale funnel status` 三条映射（443/8443/10000）在，`openssl s_client` 证书 Verify return code=0；`bash scripts/funnel-up.sh` 幂等对账重建三条映射。容器内 Caddy 全部站点 200（healthz ok、/、/status、/cgit）。公网 7 路径仍受沙箱平台 `ZEROPROXY_REDIRECT`（宿主出站 TCP 强制 REDIRECT 到 Pingora 57890）+ bridge/veth 转发层故障拦截返回 502——非项目代码问题，如实记录为环境偏差（同 M3.0.3）。
+> - **T1 备份单一入口、状态同源（F1/F2/F4）**：新增 `scripts/backup-run.sh` 作为唯一入口（记录 start/commit → 调 backup.sh → 调 backup-verify.sh → 一次性原子写 status.json：backup 绝对路径/backup_ts/exit_code/verify/bytes/volumes/commit/duration_sec/finished_at；exit_code 备份失败=1/校验失败=7/成功=0）；`backup-verify.sh` 增 `BACKUP_VERIFY_NO_STATUS=1` 避免双写 status；Makefile `backup` 与 `up.sh` 启动补跑都改调 backup-run.sh，补跑失败打 `✗ [up] 启动补跑备份失败…selfcheck 将红` 但仍 exit 0；`verify-backup.Jenkinsfile` 增断言 f（status.backup 与 latest 内容完全一致 + finished_at 与 latest 时间差≤2h，防旧状态套新备份）；删 backup-daemon.sh 的 run 分支与全部 03:30 字样，清理 `deploy/systemd/orgflow-backup.{service,timer}`。验收：make backup 同源/exit=0/verify.ok；反证改 status.backup、删 status.json、损坏 pack 均 FAILURE（exit_code=7）。
+> - **T2 drill 结果补齐（F5/F6）**：`drill-up.sh` 增 `resolve_backup_path()`，任何失败路径的 backup 字段绑定实际备份目录或 unknown（不再写字面 latest）；新增 `started_at`/`finished_at`/`duration_sec`（Job 打印不判红）；mode 恒 full，删 `DRILL_MODE` 分支与 Job 的 quick 允许项。验收：正常 make drill mode=full/backup 实际目录/时间字段齐全/Job SUCCESS；反证移走 LDAP 口令文件后 backup=实际目录非 latest。
+> - **T3 手动一键巡检（不设定时器）**：新增 `scripts/verify-all.sh` + Makefile `verify-all`：按 checks.tsv 顺序串行触发全部子 Job（默认排除 heavy feat-review-flow，共 21 项），逐项 SUCCESS/FAIL + 汇总；只手动执行，不注册 cron。验收：输出 21 行 SUCCESS/FAIL + 总计，无定时任务（桩测试 TOTAL=21 PASS=21 SKIP(heavy)=1；在线触发受沙箱 Jenkins 502 阻塞）。
+> - **T4 收口**：更新备份与恢复/自检框架/CHANGELOG/执行日志 M3.0.4（含 T0 根因 + 六列回报 + 验收总表 + 反证输出 + 环境偏差）；`make check`/`make test` 全绿；推送并打 annotated tag `m3.0.4-backup-status`，git ls-remote 核验。
+>
+> **不做**：备份外送、告警外发、监控组件、多环境、任何自动调度。
+
 ## [m3.0.3-manual-drill] — 2026-11-28（手动演练、不设长定时器）
 
 > 基线 `m3.0.2-backup-truth`（tag 指 `7016ae1`），分支 `feat/m2-gerrit-cgit-harbor`，**不合并 main**，旧 tag 不移动。依据《OrgFlow M3.0.3 施工提示词（修订版）：手动演练、不设长定时器》。逐条实测见 `docs/records/执行日志/2026-11-28.md` 的 M3.0.3 小节。核心：撤销 M3.0.2 引入的自动调度（drill 周日跑、backup 03:30），改纯手动 + `up.sh` 启动时一次性补跑。硬约束：不新增任何 >5 分钟定时器、不新增"睡到固定时刻"的常驻守护；服务随时可能被关停，任何依赖"昨夜已跑过"的设计不可靠。

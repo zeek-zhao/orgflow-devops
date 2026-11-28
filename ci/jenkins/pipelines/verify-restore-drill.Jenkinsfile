@@ -5,7 +5,8 @@
 //   放进每次自检会造成"没演练就红、演练了也只绿一天"的假信号）；但 result 缺失/FAIL 仍 FAILURE。
 // M3.0.3 T2 字段化断言（不再 grep 中文文案，E5）：
 //   result=PASS / healthy=3 / repos=3 / P_open=D_open / P_total=D_total /
-//   backup_sha256 与 manifest 一致 / mode ∈ {quick,full}。
+//   backup_sha256 与 manifest 一致 / mode=full（M3.0.4 T2/F6：删除 quick 空承诺）。
+// M3.0.4 T2：started_at/finished_at/duration_sec 仅打印不判红。
 pipeline {
     agent { label 'orgflow-agent' }
     options { timestamps(); timeout(time: 3, unit: 'MINUTES'); skipDefaultCheckout(true) }
@@ -48,7 +49,11 @@ pipeline {
                     [ "$repos" = "3" ] || fail "repos=$repos != 3"
                     [ "$popen" = "$dopen" ] || fail "P_open=$popen != D_open=$dopen"
                     [ "$ptotal" = "$dtotal" ] || fail "P_total=$ptotal != D_total=$dtotal"
-                    case "$mode" in quick|full) ;; *) fail "mode=$mode 非 quick/full" ;; esac
+                    [ "$mode" = "full" ] || fail "mode=$mode != full（M3.0.4：只保留 full）"
+                    sat="$(jq -r '.started_at // "missing"' "$D/drill.result" 2>/dev/null)"
+                    fat="$(jq -r '.finished_at // "missing"' "$D/drill.result" 2>/dev/null)"
+                    dur="$(jq -r '.duration_sec // "missing"' "$D/drill.result" 2>/dev/null)"
+                    echo "[drill] started_at=$sat finished_at=$fat duration_sec=$dur（信息字段，不判红）"
 
                     printf '%s' "$rts" | grep -qE '^[0-9]{8}T[0-9]{6}Z$' || fail "ts 非法: $rts"
                     # backup_sha256 交叉校验：drill-up 与 Job 同口径，取 sha256sum.txt 文件自身的 sha256。

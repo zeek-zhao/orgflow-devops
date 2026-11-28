@@ -452,7 +452,7 @@ msg="全部 ${#SEQ[@]} 步 healthy"
 # --dry-run / --only / --from 等非完整起栈不触发补跑，避免局部操作误备份。
 startup_backup_catchup() {
   local backup_root="${BACKUP_ROOT:-/data/backups}" latest age_h rc=0
-  [[ -f "$ROOT/scripts/backup.sh" ]] || return 0
+  [[ -f "$ROOT/scripts/backup-run.sh" ]] || return 0
   latest="$(cat "$backup_root/latest" 2>/dev/null || true)"
   age_h=999999
   if [[ -n "$latest" && -d "$latest" ]]; then
@@ -464,12 +464,14 @@ startup_backup_catchup() {
   fi
   (( JSON )) || echo "[up] 备份新鲜度检查：latest=${latest:-无} age=${age_h}h（阈值 26h）"
   if [[ -z "$latest" || ! -d "$latest" || "$age_h" -gt 26 ]]; then
-    (( JSON )) || echo "[up] 启动补跑备份：latest 缺失或 age=${age_h}h >26h，前台跑 backup.sh（一次性，非定时器）"
-    bash "$ROOT/scripts/backup.sh" || rc=$?
+    (( JSON )) || echo "[up] 启动补跑备份：latest 缺失或 age=${age_h}h >26h，前台跑 backup-run.sh（一次性，非定时器）"
+    # M3.0.4 T1/F4：改调 backup-run.sh（备份+校验+原子写 status 同源）。失败时状态已由 backup-run 写好，
+    # 这里只明确打错误行；起栈仍 exit 0（return 0），但日志明确 selfcheck 将红，不静默。
+    bash "$ROOT/scripts/backup-run.sh" || rc=$?
     if (( rc == 0 )); then
-      (( JSON )) || echo "[up] 启动补跑备份完成（rc=0）"
+      (( JSON )) || echo "[up] 启动补跑备份完成（rc=0，status.json 已同源写入）"
     else
-      echo "✗ [up] 启动补跑备份失败 rc=$rc（不影响起栈结果，请人工检查）" >&2
+      echo "✗ [up] 启动补跑备份失败 rc=$rc（status.json 已写失败态，不影响起栈结果，selfcheck 将红）" >&2
     fi
   else
     (( JSON )) || echo "[up] 备份新鲜（age=${age_h}h ≤26h），跳过补跑"

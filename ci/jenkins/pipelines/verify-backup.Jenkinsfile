@@ -89,11 +89,38 @@ pipeline {
                       fail "status.json 缺失（无法校验 verify）"
                     fi
 
-                    if [ "$rc" -eq 0 ]; then
-                      echo "✓ 备份五项断言全过（age=${age_h:-?}h sha256=OK manifest=9 status=0 verify=ok）"
-                      printf 'BACKUP_OK age=%sh volumes=9 exit=0 verify=ok' "${age_h:-?}" > /tmp/backup_desc.txt
+                    # ---- 断言 f: status.backup 与 latest 同源 + finished_at 与 latest 时间差 ≤2h（M3.0.4 T1/F2）----
+                    # 防"旧 status 套新备份"：status.backup 必须与 latest 指针内容完全一致（同一份备份），
+                    # 且 status.finished_at 与 latest 目录名时间的差不超过 2 小时。
+                    if [ -f "$B/status.json" ] && [ -f "$B/latest" ]; then
+                      sb="$(jq -r '.backup // "missing"' "$B/status.json" 2>/dev/null || echo missing)"
+                      lr="$(cat "$B/latest" 2>/dev/null | tr -d '\\r\\n')"
+                      echo "[backup] status.backup=$sb latest=$lr"
+                      [ "$sb" = "$lr" ] || fail "status.backup=$sb != latest=$lr（状态与最新备份不同源）"
+                      # 时间差：finished_at(ISO) 与 latest 目录名(UTC) 相差 ≤7200s
+                      fin="$(jq -r '.finished_at // "missing"' "$B/status.json" 2>/dev/null || echo missing)"
+                      ldname="$(basename "$lr")"
+                      lymd="$(printf '%s' "$ldname" | cut -c1-8)"
+                      lhms="$(printf '%s' "$ldname" | cut -c10-15)"
+                      liso="$(printf '%s' "$lymd" | cut -c1-4)-$(printf '%s' "$lymd" | cut -c5-6)-$(printf '%s' "$lymd" | cut -c7-8) $(printf '%s' "$lhms" | cut -c1-2):$(printf '%s' "$lhms" | cut -c3-4):$(printf '%s' "$lhms" | cut -c5-6)"
+                      lets=$(date -u -d "$liso" +%s 2>/dev/null || echo 0)
+                      fets=$(date -u -d "$fin" +%s 2>/dev/null || echo 0)
+                      if [ "$lets" -le 0 ] || [ "$fets" -le 0 ]; then
+                        fail "时间解析失败 finished_at=$fin latest_ts=$liso"
+                      else
+                        diff=$(( fets - lets )); [ "$diff" -lt 0 ] && diff=$(( -diff ))
+                        echo "[backup] status.finished_at 与 latest 时间差=${diff}s (max=7200s)"
+                        [ "$diff" -le 7200 ] || fail "finished_at 与 latest 时间差=${diff}s >7200s（疑似旧状态套新备份）"
+                      fi
                     else
-                      printf 'BACKUP_FAIL 见 console（断言 a/b/c/d/e 有失败）' > /tmp/backup_desc.txt
+                      fail "status.json 或 latest 缺失（无法校验同源）"
+                    fi
+
+                    if [ "$rc" -eq 0 ]; then
+                      echo "✓ 备份六项断言全过（age=${age_h:-?}h sha256=OK manifest=9 status=0 verify=ok 同源=OK）"
+                      printf 'BACKUP_OK age=%sh volumes=9 exit=0 verify=ok same-source=ok' "${age_h:-?}" > /tmp/backup_desc.txt
+                    else
+                      printf 'BACKUP_FAIL 见 console（断言 a/b/c/d/e/f 有失败）' > /tmp/backup_desc.txt
                     fi
                     exit "$rc"
                 '''

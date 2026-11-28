@@ -19,6 +19,16 @@ LOG="/data/drill-logs/$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$LOG" "$(dirname "$DRILL")" && : > "$LOG/drill-up.log"
 exec > >(tee -a "$LOG/drill-up.log") 2>&1
 
+# M3.0.4 T2/F5：解析"实际备份目录"用于任何失败路径的 backup 字段——绝不写字面 "latest"。
+# 优先级：显式 BACKUP（存在）→ /data/backups/latest 指向（存在）→ unknown。
+resolve_backup_path() {
+  local b="${1:-}"
+  if [ -n "$b" ] && [ -d "$b" ]; then printf '%s' "$b"; return 0; fi
+  b="$(cat /data/backups/latest 2>/dev/null || true)"
+  if [ -n "$b" ] && [ -d "$b" ]; then printf '%s' "$b"; return 0; fi
+  printf 'unknown'
+}
+
 # D5（M3.0.2）/ M3.0.3 T4：LDAP 口令从 LDAP_PASSWORD 环境或口令文件读，禁止脚本内写死。
 LDAP_PWFILE="${LDAP_PASSWORD_FILE:-/opt/orgflow/secrets/ldap_admin_password}"
 LDAP_PASSWORD=""
@@ -30,7 +40,8 @@ elif [ -f "$LDAP_PWFILE" ]; then
 fi
 if [ -z "$LDAP_PASSWORD" ]; then
   echo "[drill] ✗ LDAP 口令缺失：请设 LDAP_PASSWORD 环境或写 $LDAP_PWFILE（chmod 600）"
-  echo "{\"result\":\"FAIL\",\"ts\":\"$(basename "$LOG")\",\"backup\":\"${BACKUP:-latest}\",\"log\":\"$LOG\",\"note\":\"ldap-password-missing\"}" > /data/drill/drill.result
+  printf '{"result":"FAIL","ts":"%s","backup":"%s","log":"%s","mode":"full","note":"ldap-password-missing"}\n' \
+    "$(basename "$LOG")" "$(resolve_backup_path "$BACKUP")" "$LOG" > /data/drill/drill.result
   exit 2
 fi
 export LDAP_PASSWORD
@@ -41,24 +52,42 @@ echo "[drill] LDAP 口令已从 $LDAP_PW_SRC 读取（不回显）"
 GERRIT_TAG="$(grep '^IMAGE_GERRIT=' "$REPO/config/images.env" | cut -d= -f2- | awk -F: '{print $NF}')"
 if [ -z "$GERRIT_TAG" ]; then
   echo "[drill] ✗ 无法从 config/images.env 解析 IMAGE_GERRIT tag"
-  echo "{\"result\":\"FAIL\",\"ts\":\"$(basename "$LOG")\",\"backup\":\"${BACKUP:-latest}\",\"log\":\"$LOG\",\"note\":\"gerrit-tag-missing\"}" > /data/drill/drill.result
+  printf '{"result":"FAIL","ts":"%s","backup":"%s","log":"%s","mode":"full","note":"gerrit-tag-missing"}\n' \
+    "$(basename "$LOG")" "$(resolve_backup_path "$BACKUP")" "$LOG" > /data/drill/drill.result
   exit 2
 fi
 GIMG="ghcr.io/zeek-zhao/orgflow-devops/m2-gerrit:$GERRIT_TAG"
 echo "[drill] gerrit 镜像 tag=$GERRIT_TAG（来自 config/images.env）"
 
-# M3.0.3 T2：drill.result 字段化（E5：verify Job 按字段断言，不 grep 中文文案）。
-# 字段：result/ts/backup/log/healthy/repos/P_open/D_open/P_total/D_total/mode/backup_sha256/age/note
+# M3.0.3 T2 / M3.0.4 T2：drill.result 字段化（E5：verify Job 按字段断言，不 grep 中文文案）。
+# 字段：result/ts/backup/log/healthy/repos/P_open/D_open/P_total/D_total/mode/backup_sha256/age_h/
+#       started_at/finished_at/duration_sec/note
+# F5：backup 字段必须绑定实际备份目录（RESULT_BACKUP），取不到写 unknown，绝不用字面 "latest"。
+# F6：mode 恒为 full（无 quick 轻量路径，不设 DRILL_MODE 分支）。
 RESULT_FIELDS='{}'
+RESULT_BACKUP="unknown"   # 解包后更新为实际备份绝对路径；失败路径仍指向实际目录或 unknown
+BMODE="full"              # M3.0.4 T2/F6：只保留 full，删除 DRILL_MODE 分支
 write_result() {
   local result="$1" note="${2:-}"
-  python3 - "$result" "$(basename "$LOG")" "${BACKUP:-latest}" "$LOG" "$note" "$RESULT_FIELDS" <<'PY'
-import json,sys,os
-result,logdir,backup,log,notes,fields=sys.argv[1:7]
-d={"result":result,"ts":logdir,"backup":backup,"log":log}
+  python3 - "$result" "$(basename "$LOG")" "$RESULT_BACKUP" "$LOG" "$note" "$RESULT_FIELDS" "$STARTED_AT" "$BMODE" <<'PY'
+import json,sys,os,time,datetime
+result,logdir,backup,log,notes,fields,started_at,mode=sys.argv[1:9]
+d={"result":result,"ts":logdir,"backup":backup,"log":log,"mode":mode}
 try: d.update(json.loads(fields))
 except Exception: pass
 if notes: d["note"]=notes
+# 时间字段（Job 打印但不判红）
+if not started_at or started_at.startswith('$'):
+    started_at=datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+d["started_at"]=started_at
+fin=datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+d["finished_at"]=fin
+try:
+    st=datetime.datetime.strptime(started_at,'%Y-%m-%dT%H:%M:%SZ')
+    ft=datetime.datetime.strptime(fin,'%Y-%m-%dT%H:%M:%SZ')
+    d["duration_sec"]=int((ft-st).total_seconds())
+except Exception:
+    d["duration_sec"]=0
 p="/data/drill/drill.result"
 tmp=p+".tmp"; json.dump(d,open(tmp,'w',encoding='utf-8'),ensure_ascii=False,indent=2); os.replace(tmp,p)
 PY
@@ -69,6 +98,7 @@ trap 'rc=$?; [ "$rc" -ne 0 ] && write_result "FAIL" "exit rc=$rc" || true' EXIT
 
 echo "=== T3 隔离恢复演练开始 $(date -u +%FT%TZ) ==="
 START=$(date +%s)
+STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "[drill] backup=${BACKUP:-latest} drill=$DRILL log=$LOG"
 
 # ---- 1) 资源守卫前置 ----
@@ -89,6 +119,10 @@ else
   VERIFY=0 PROJECT=orgflow-drill bash scripts/restore.sh || fail "restore 解包失败"
   printf '%s' "$(cat /data/backups/latest 2>/dev/null || echo unknown)" > /data/drill/backup.latest
 fi
+# F5：无论显式 BACKUP 还是 latest 解析，都把实际备份绝对路径绑定进结果（失败路径也不写字面 latest）。
+RESULT_BACKUP="$(cat /data/drill/backup.latest 2>/dev/null || echo unknown)"
+[ -n "$RESULT_BACKUP" ] || RESULT_BACKUP="unknown"
+echo "[drill] RESULT_BACKUP（结果绑定备份）=$RESULT_BACKUP"
 for d in gerrit_git gerrit_etc ldap_data ldap_config; do
   [ -d "$DRILL/$d" ] || fail "解包缺目录 $d"
 done
@@ -286,18 +320,15 @@ echo "[assert d] ldap bind rc=$ldap_ok（口令经 docker exec -e 注入，命�
 
 [ "$assertrc" -eq 0 ] || fail "四项断言有失败（rc=$assertrc）"
 
-# ---- 5) 收尾：字段化结果（healthy/repos/mode/backup_sha256/age）----
-# healthy=3 与 repos=3 上面已强断言；mode 默认 full（本脚本恒做完整 reindex + 四断言）。
-BMODE="${DRILL_MODE:-full}"
-# backup_sha256 与 backup 目录：manifest 无单一汇总 sha，采用 sha256sum.txt 文件自身的 sha256
-# 作为整份备份指纹（verify Job 用同口径交叉校验）。
-BACKUP_DIR="$(cat /data/drill/backup.latest 2>/dev/null || true)"
-[ -n "$BACKUP_DIR" ] && [ -d "$BACKUP_DIR" ] || BACKUP_DIR="$(cat /data/backups/latest 2>/dev/null || true)"
+# ---- 5) 收尾：字段化结果（healthy/repos/backup_sha256/age_h）----
+# M3.0.4 T2/F6：mode 恒 full（BMODE 在头部固定，删除 DRILL_MODE 分支），由 write_result 统一写。
+# backup 字段由 write_result 用 RESULT_BACKUP（实际目录）统一写，不再在收尾覆盖。
+BACKUP_DIR="$RESULT_BACKUP"
 B_SHA="$(sha256sum "$BACKUP_DIR/sha256sum.txt" 2>/dev/null | awk '{print $1}' || true)"
 [ -n "$B_SHA" ] || B_SHA="unknown"
 AGE_H=$(( ($(date -u +%s) - $(date -u -d "$(basename "$BACKUP_DIR" | sed -E 's/^([0-9]{4})([0-9]{2})([0-9]{2})T([0-9]{2})([0-9]{2})([0-9]{2})Z$/\1-\2-\3 \4:\5:\6 UTC/')" +%s 2>/dev/null || echo $(date -u +%s)) ) / 3600 ))
-RESULT_FIELDS="$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); d.update({"healthy":int(sys.argv[2]),"repos":int(sys.argv[3]),"mode":sys.argv[4],"backup_sha256":sys.argv[5],"backup":sys.argv[6],"age_h":int(sys.argv[7])}); print(json.dumps(d))' "$RESULT_FIELDS" "$hc" "$REPOS" "$BMODE" "$B_SHA" "$BACKUP_DIR" "$AGE_H")"
-echo "[drill] 结果字段: healthy=$hc repos=$REPOS mode=$BMODE backup_sha256=$B_SHA backup=$BACKUP_DIR age_h=$AGE_H"
+RESULT_FIELDS="$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); d.update({"healthy":int(sys.argv[2]),"repos":int(sys.argv[3]),"backup_sha256":sys.argv[4],"age_h":int(sys.argv[5])}); print(json.dumps(d))' "$RESULT_FIELDS" "$hc" "$REPOS" "$B_SHA" "$AGE_H")"
+echo "[drill] 结果字段: healthy=$hc repos=$REPOS mode=$BMODE backup_sha256=$B_SHA backup=$RESULT_BACKUP age_h=$AGE_H"
 
 echo "--- [5/5] 清理 drill 栈（保留解包数据与日志）---"
 bash scripts/drill-down.sh 2>&1 | tail -5 || true

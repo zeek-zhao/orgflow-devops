@@ -98,6 +98,20 @@ if ! grep -q 'total_volumes' ci/jenkins/pipelines/verify-backup.Jenkinsfile \
 fi
 awk -F'\t' 'NR>1 && ($1=="data-backup"){f=1} END{exit f?0:1}' "$TSV" \
   || { echo "✗ checks.tsv 缺 data-backup 行（m3.0.1 T2）" >&2; rc=1; }
+# m3.0.4 T1：备份单一入口 backup-run.sh + 状态同源断言 f + 无 03:30/run 常驻（F1/F2/F3/F4）。
+if [ ! -f scripts/backup-run.sh ]; then
+  echo "✗ 缺 scripts/backup-run.sh（m3.0.4 T1 备份唯一入口）" >&2; rc=1
+fi
+if ! grep -q 'backup-run.sh' Makefile || ! grep -q 'backup-run.sh' up.sh; then
+  echo "✗ Makefile 或 up.sh 未改调 backup-run.sh（m3.0.4 T1）" >&2; rc=1
+fi
+if ! grep -q 'status.backup' ci/jenkins/pipelines/verify-backup.Jenkinsfile \
+   || ! grep -q 'finished_at' ci/jenkins/pipelines/verify-backup.Jenkinsfile; then
+  echo "✗ verify-backup.Jenkinsfile 缺断言 f（status.backup 同源/finished_at 时间差，m3.0.4 T1/F2）" >&2; rc=1
+fi
+if grep -q '03:30' scripts/backup-daemon.sh || grep -qE '^[[:space:]]*run\)' scripts/backup-daemon.sh; then
+  echo "✗ backup-daemon.sh 仍有 03:30 或 run 常驻分支（m3.0.4 T1/F3）" >&2; rc=1
+fi
 # m3.0.3 T2：verify-restore-drill 字段化断言（不 grep 中文文案，E5）+ 无 26h 判红。
 if ! grep -q 'drill.result' ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile \
    || ! grep -q 'P_open' ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile \
@@ -109,6 +123,25 @@ fi
 # m3.0.3 T2：不得出现 26h 判红（年龄仅信息字段）。
 if grep -qE '结果过期|新鲜度.*判红|age_h.*-le 26|age.*-gt 26' ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile; then
   echo "✗ verify-restore-drill.Jenkinsfile 仍有 26h 判红（m3.0.3 T2 要求年龄仅信息字段）" >&2; rc=1
+fi
+# m3.0.4 T2：mode 只保留 full（删 quick 空承诺）+ 时间字段（打印不判红）+ F5 失败路径 backup 不写字面 latest。
+if grep -qE 'quick\|full|mode=quick|\bquick\b.*fail' ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile \
+   || grep -qE '^[^#]*DRILL_MODE=' scripts/drill-up.sh; then
+  echo "✗ 仍存在 quick 允许项或 DRILL_MODE 赋值（m3.0.4 T2/F6：mode 只保留 full）" >&2; rc=1
+fi
+if ! grep -q 'started_at' scripts/drill-up.sh || ! grep -q 'duration_sec' ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile; then
+  echo "✗ 缺 started_at/duration_sec 时间字段（m3.0.4 T2）" >&2; rc=1
+fi
+if grep -qE '"backup":"\$\{BACKUP:-latest\}"' scripts/drill-up.sh; then
+  echo "✗ drill 失败路径 backup 仍写字面 latest（m3.0.4 T2/F5）" >&2; rc=1
+fi
+# m3.0.4 T3：手动一键巡检 verify-all（存在 + Makefile target + 不注册 cron）。
+if [ ! -f scripts/verify-all.sh ] || ! grep -q '^verify-all:' Makefile; then
+  echo "✗ 缺 scripts/verify-all.sh 或 Makefile verify-all target（m3.0.4 T3）" >&2; rc=1
+fi
+# verify-all 不得注册定时调度（无 crontab/systemd timer 写入）
+if grep -qE 'crontab|systemctl.*enable|OnCalendar' scripts/verify-all.sh; then
+  echo "✗ verify-all.sh 含调度注册（m3.0.4 T3：手动执行，不注册 cron）" >&2; rc=1
 fi
 # m3.0.3 T2：checks.tsv 必须已删除 data-drill 行（自检恢复 21 项）。
 awk -F'\t' 'NR>1 && ($1=="data-drill"){f=1} END{exit f?1:0}' "$TSV" \

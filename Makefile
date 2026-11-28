@@ -57,6 +57,9 @@ smoke: ## Jenkins Job 冒烟（触发 verify-* → 等结果 → 下载 consoleT
 verify: ## 全量验收矩阵（AC-1~AC-15）
 	@bash scripts/verify.sh
 
+verify-all: ## 手动一键巡检：按 checks.tsv 串行触发全部子 Job（默认 21 项，排除 heavy），输出每项结果与汇总（不注册 cron）
+	@bash scripts/verify-all.sh
+
 # ---------- §8 独立命名空间测试（ofv2，与线上隔离）----------
 e2e: ## 独立命名空间测试：起栈 + 跑 bats（线上零影响）
 	@bash tests/run-v2.sh up && bash tests/run-v2.sh test
@@ -237,8 +240,8 @@ images-upstream: ## 校验 Dockerfile FROM 与上游 digest 登记表一致
 	@bash scripts/check-images.sh --mode=upstream
 
 # ---------- M3.0 可靠性与灾备 ----------
-backup: ## 卷级备份（tar+sha256+manifest → /data/backups/<UTC>，可用 BACKUP_ROOT 覆盖）
-	@bash scripts/backup.sh
+backup: ## 备份唯一入口（备份+校验+原子写 status → /data/backups/<UTC>，可用 BACKUP_ROOT 覆盖）
+	@bash scripts/backup-run.sh
 
 backup-verify: ## 校验备份（sha256 + 逐卷解包 + 条目数，可指定 BACKUP=...）
 	@bash scripts/backup-verify.sh $(if $(BACKUP),$(BACKUP),)
