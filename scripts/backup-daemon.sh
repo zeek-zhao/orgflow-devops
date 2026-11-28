@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
-# backup-daemon.sh —— M3.0.1 T1 备份守护常驻进程（备份从"人跑"变成"守护跑"）
+# backup-daemon.sh —— M3.0.3 备份运维工具（去 03:30 常驻，改手动 + up.sh 启动补跑）
 #
-# 职责（与 quota-guard-loop.sh 同机制，PID1=supervisord）：
-#   1) 常驻循环：计算下一个本地时间 03:30 执行 scripts/backup.sh；
-#   2) 启动补跑：若 /data/backups/latest 对应备份超过 26 小时，立即补跑一次再进入等待；
-#   3) 单实例：/run/orgflow-backup.pid + flock，pidfile 指向存活进程则 exit 4；
-#   4) 状态文件 /data/backups/status.json（last_start/last_end/exit_code/duration_sec/
+# M3.0.3 T5（E2）：服务随时可能被关停，"睡到每天 03:30"不可靠且关停后永不补。
+# 本脚本只保留 once/rotate/status/simulate 供手动调用；run 常驻模式已移除（调用报错退出）。
+# up.sh 在全部服务 healthy 后同步检查 /data/backups/latest 年龄（>26h 或缺失则前台跑一次
+# backup.sh），是一次性动作，不是定时器。
+#
+# 职责：
+#   1) once：手动执行一轮备份（scripts/backup.sh）+ 状态 + 轮转；
+#   2) rotate：保留轮转（日备 7 / 周备 weekly.flag 4）；
+#   3) status：打印 /data/backups/status.json（last_start/last_end/exit_code/duration_sec/
 #      bytes/volumes/commit/retention{daily,weekly}/next_run/disk_used_pct/verify）；
+#   4) simulate：轻量模拟（配 BACKUP_FAKE_NOW 验保留策略）。
 #   5) 保留轮转：日备 7 份、周备（weekly.flag）4 份；只删 YYYYMMDDTHHMMSSZ 命名目录，
 #      不删 latest 指向、不删周备保留集；删除前先打印 dry-run 列表；
 #   6) 水位保护：/data 使用率 > 阈值（默认 85%）时跳过本轮并写 exit_code=5。
@@ -340,19 +345,19 @@ maybe_catchup() {
 
 usage() {
   cat <<EOF
-用法: bash scripts/backup-daemon.sh [run|once|rotate|status]
-  run     常驻循环（默认）：补跑判定 + 每本地 03:30 备份（supervisor 管理）
-  once    执行一轮备份+状态+轮转后退出（供补跑/测试，支持 BACKUP_FAKE_NOW）
+用法: bash scripts/backup-daemon.sh [once|rotate|status|simulate]
+  once     执行一轮备份+状态+轮转后退出（手动，支持 BACKUP_FAKE_NOW）
   simulate 轻量模拟一轮（造目录+轮转，配 BACKUP_FAKE_NOW 注入连续日期测保留策略）
-  rotate  仅执行保留轮转（BACKUP_DRY_RUN=1 打印 dry-run）
-  status  打印 status.json
+  rotate   仅执行保留轮转（BACKUP_DRY_RUN=1 打印 dry-run）
+  status   打印 status.json
+  （run 常驻模式已移除：M3.0.3 起备份改手动 + up.sh 启动补跑，不再睡到 03:30）
 环境变量：BACKUP_ROOT BACKUP_PIDFILE BACKUP_FAKE_NOW BACKUP_WATERMARK
          BACKUP_DRY_RUN BACKUP_INTERVAL_H BACKUP_LOG
 EOF
 }
 
 main() {
-  local cmd="${1:-run}"
+  local cmd="${1:-status}"
   case "$cmd" in
     once)
       run_once
@@ -393,25 +398,10 @@ PY
       cat "$STATUS" 2>/dev/null || { echo "无 $STATUS"; exit 1; }
       ;;
     run)
-      acquire_single_instance
-      log "=== backup-daemon 启动 pid=$$ root=$ROOT interval=${INTERVAL_H}h watermark=${WATERMARK}% ==="
-      maybe_catchup
-      while true; do
-        local target_epoch; target_epoch="$(date -d "$(next_0330 "$(date +%s)")" +%s 2>/dev/null || echo 0)"
-        local now; now="$(date +%s)"
-        local wait=$(( target_epoch - now ))
-        [ "$wait" -lt 1 ] && wait=1
-        log "[sleep] 下一次 03:30 于 $(date -d "@$target_epoch" '+%F %T %z')（${wait}s 后）"
-        # 分段 sleep，便于 supervisor stop 快速响应；最长 60s 一段
-        local slept=0
-        while [ "$slept" -lt "$wait" ]; do
-          local chunk=$(( wait - slept )); [ "$chunk" -gt 60 ] && chunk=60
-          # 关键：sleep 子进程关闭 fd 9（锁 fd），否则 kill -9 主进程后 sleep 继承锁不放，
-          # watchdog 拉起的新进程 flock 竞争失败 exit 4（自愈失效）。
-          sleep "$chunk" 9>&-; slept=$(( slept + chunk ))
-        done
-        run_once || log "⚠ 本轮备份失败 rc=$?，守护继续等待下一轮（现场保留）"
-      done
+      # M3.0.3 T5（E2）：去掉 03:30 常驻守护。服务可能被关停，"睡到固定时刻"不可靠；
+      # 备份改由 up.sh 启动后一次性补跑 + 手动 backup-once。保留 run 仅作兼容提示，不再常驻。
+      echo "✗ backup-daemon run 常驻模式已在 M3.0.3 移除（不再睡到 03:30）：请用 make backup / make backup-once 手动备份，或由 up.sh 启动补跑。" >&2
+      exit 3
       ;;
     -h|--help|help)
       usage ;;

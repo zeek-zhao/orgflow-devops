@@ -55,9 +55,11 @@ done < "$TSV"
 
 # ---- 4. 反向：每个 verify-* Job 必须在清单 ----
 # P2-1：按第 3 列整字段相等匹配（原 grep -qF 子串匹配会让 verify-cgit 被 verify-cgit-smart-http 顶替）。
+# m3.0.3 T2：verify-restore-drill 已从自检清单移除（演练改封版人工把关），豁免反向登记检查。
 while read -r job; do
   [[ "$job" == verify-* ]] || continue
   [[ "$job" == *'${'* ]] && continue  # 跳过未展开的模板字面 verify-${svc}
+  [[ "$job" == "verify-restore-drill" ]] && continue  # m3.0.3 T2 豁免
   awk -F'\t' -v t="$job" 'NR>1 && $3==t{found=1} END{exit found?0:1}' "$TSV" \
     || { echo "✗ Job $job 未登记进 checks.tsv（第3列整字段匹配）" >&2; rc=1; }
 done < "$jobs_file"
@@ -96,13 +98,26 @@ if ! grep -q 'total_volumes' ci/jenkins/pipelines/verify-backup.Jenkinsfile \
 fi
 awk -F'\t' 'NR>1 && ($1=="data-backup"){f=1} END{exit f?0:1}' "$TSV" \
   || { echo "✗ checks.tsv 缺 data-backup 行（m3.0.1 T2）" >&2; rc=1; }
+# m3.0.3 T2：verify-restore-drill 字段化断言（不 grep 中文文案，E5）+ 无 26h 判红。
 if ! grep -q 'drill.result' ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile \
-   || ! grep -q 'changes 对齐 P=' ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile \
-   || ! grep -q 'healthy 数=3' ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile; then
-  echo "✗ verify-restore-drill.Jenkinsfile 缺 drill.result/changes 对齐/healthy=3 断言（m3.0.2 T5）" >&2; rc=1
+   || ! grep -q 'P_open' ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile \
+   || ! grep -q 'P_total' ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile \
+   || ! grep -q 'backup_sha256' ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile \
+   || ! grep -q "age_h" ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile; then
+  echo "✗ verify-restore-drill.Jenkinsfile 缺字段化断言（P_open/P_total/backup_sha256/age_h，m3.0.3 T2）" >&2; rc=1
 fi
-awk -F'\t' 'NR>1 && ($1=="data-drill"){f=1} END{exit f?0:1}' "$TSV" \
-  || { echo "✗ checks.tsv 缺 data-drill 行（m3.0.1 T3）" >&2; rc=1; }
+# m3.0.3 T2：不得出现 26h 判红（年龄仅信息字段）。
+if grep -qE '结果过期|新鲜度.*判红|age_h.*-le 26|age.*-gt 26' ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile; then
+  echo "✗ verify-restore-drill.Jenkinsfile 仍有 26h 判红（m3.0.3 T2 要求年龄仅信息字段）" >&2; rc=1
+fi
+# m3.0.3 T2：checks.tsv 必须已删除 data-drill 行（自检恢复 21 项）。
+awk -F'\t' 'NR>1 && ($1=="data-drill"){f=1} END{exit f?1:0}' "$TSV" \
+  || { echo "✗ checks.tsv 仍有 data-drill 行（m3.0.3 T2 要求删除，恢复 21 项）" >&2; rc=1; }
+# m3.0.3 T1/T6：Job DSL 不得有生效的长周期 cron（H 2/3/4）；排除注释行（行首 // 后含 cron 字样的说明）。
+active_cron="$(grep -rnE "cron\('H [234] " config/jenkins/jobs/*.groovy | grep -v '//' || true)"
+if [ -n "$active_cron" ]; then
+  echo "✗ Job DSL 仍有每日/每周长定时 cron（m3.0.3 T1/T6 要求删除）：$active_cron" >&2; rc=1
+fi
 # 5g. m3.0.1 T4：报告与代码同源字段门禁；m3.0.2 T6：真校验 deployTag/tagCommit + consistent 口径。
 if ! grep -q 'deployedHead' ci/jenkins/pipelines/selfcheck.Jenkinsfile \
    || ! grep -q 'consistent' ci/jenkins/pipelines/selfcheck.Jenkinsfile \
@@ -120,7 +135,12 @@ if ! grep -q 'deployTag' ci/jenkins/pipelines/verify-status-page.Jenkinsfile \
   echo "✗ verify-status-page 缺 deployTag/tagCommit 断言（m3.0.2 T6）" >&2; rc=1
 fi
 
+# m3.0.3 T2：自检恢复 21 项（data-drill 已移除）。
+# 口径：checks.tsv 数据行=22（含默认 EXCLUDE 的 feat-review-flow），selfcheck selected=21（报告 total）。
+if [[ "$n" -ne 22 ]]; then
+  echo "✗ checks.tsv 数据行=$n != 22（m3.0.3 T2 删 data-drill 后应为 22 行，报告 selected=21 项）" >&2; rc=1
+fi
 if [[ $rc -eq 0 ]]; then
-  echo "✓ 自检清单门禁：${n} 项（表头/列/id 唯一/target 存在/verify-* 全覆盖/result+overall+mechanism+alive+instances/backup 断言字段）"
+  echo "✓ 自检清单门禁：${n} 项（表头/列/id 唯一/target 存在/verify-* 全覆盖/result+overall+mechanism+alive+instances/backup 断言字段；无 data-drill、无长定时 cron）"
 fi
 exit $rc

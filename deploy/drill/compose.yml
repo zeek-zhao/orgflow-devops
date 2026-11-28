@@ -15,7 +15,7 @@ services:
     environment:
       LDAP_ORGANISATION: OrgFlow
       LDAP_DOMAIN: ${LDAP_DOMAIN:-orgflow.local}
-      LDAP_ADMIN_PASSWORD: ${LDAP_PASSWORD:-change-me}
+      LDAP_ADMIN_PASSWORD: ${LDAP_PASSWORD:?LDAP_PASSWORD 必填（M3.0.3 T4：删除 change-me 兜底）}
       LDAP_BASE_DN: ${LDAP_BASE_DN:-dc=orgflow,dc=local}
       LDAP_ADMIN_DN: ${LDAP_ADMIN_DN:-cn=admin,dc=orgflow,dc=local}
       LDAP_TLS: "false"
@@ -45,7 +45,7 @@ services:
       P_GERRIT_HTTP: 8080
       P_GERRIT_SSH: 29418
       GERRIT_PUBLIC_URL: http://127.0.0.1:18443/
-      LDAP_ADMIN_PASSWORD: ${LDAP_PASSWORD:-change-me}
+      LDAP_ADMIN_PASSWORD: ${LDAP_PASSWORD:?LDAP_PASSWORD 必填（M3.0.3 T4：删除 change-me 兜底）}
     volumes:
       - /data/drill/orgflow-drill/gerrit_git:/var/gerrit/git
       - /data/drill/orgflow-drill/gerrit_etc:/var/gerrit/etc

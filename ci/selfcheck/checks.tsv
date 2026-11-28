@@ -21,4 +21,3 @@ feat-review-flow	job	verify-gerrit-review-flow	评审流（重）	建探针 chan
 guard-quota	job	verify-quota-guard	构建资源配额	只读证据 verdict=PASS/of-builder/三项配额 0（无 docker.sock）	SUCCESS	3
 guard-quota-alive	job	verify-quota-refresh	刷新机制存活	进程命令行匹配+日志新鲜≤8min+证据 age≤10min（防假绿）	SUCCESS	3
 data-backup	job	verify-backup	备份可信	latest≤26h+sha256+manifest 9卷+status.exit_code=0+verify.ok=true且failures空	SUCCESS	3
-data-drill	job	verify-restore-drill	隔离恢复演练	drill.result=JSON-PASS+四项断言+ts同源≤10min+新鲜≤26h+资源守卫	SUCCESS	3

@@ -2,6 +2,20 @@
 
 本文件记录 orgflow-devops（M0 最小 DevOps 底座 + M1 Jenkins）的版本变更。格式遵循「保持一个版本一段、新增在上」的轻量约定。
 
+## [m3.0.3-manual-drill] — 2026-11-28（手动演练、不设长定时器）
+
+> 基线 `m3.0.2-backup-truth`（tag 指 `7016ae1`），分支 `feat/m2-gerrit-cgit-harbor`，**不合并 main**，旧 tag 不移动。依据《OrgFlow M3.0.3 施工提示词（修订版）：手动演练、不设长定时器》。逐条实测见 `docs/records/执行日志/2026-11-28.md` 的 M3.0.3 小节。核心：撤销 M3.0.2 引入的自动调度（drill 周日跑、backup 03:30），改纯手动 + `up.sh` 启动时一次性补跑。硬约束：不新增任何 >5 分钟定时器、不新增"睡到固定时刻"的常驻守护；服务随时可能被关停，任何依赖"昨夜已跑过"的设计不可靠。
+>
+> - **T1 删除演练常驻、改纯手动（E1）**：删 `deploy/supervisor/orgflow-drill.conf`、`scripts/drill-daemon.sh`、`scripts/drill-watchdog.sh`；Makefile 新增 `drill`（前台跑 `drill-up.sh`，输出 DRILL PASS/FAIL、退出码即结果，不注册调度），移除 `drill-now`/`drill-daemon-install`/`drill-daemon-status`；`verify-restore-drill` Job DSL 删 `triggers { cron(...) }`。验收：supervisor/ps 无 orgflow-drill/drill-daemon、全仓库无 04:00 演练调度残留。
+> - **T2 去新鲜度判红、去 data-drill 默认项（E1）**：`verify-restore-drill.Jenkinsfile` 删"≤26h"判红改打印 `age_h` 信息字段（缺失/FAIL 仍 FAILURE 并提示"请先 make drill"），断言字段化（`result=PASS`/`healthy=3`/`repos=3`/`P_open=D_open`/`P_total=D_total`/`backup_sha256` 与 manifest 一致/`mode∈{quick,full}`，不 grep 中文文案 E5）；`checks.tsv` 删 data-drill 行（自检恢复 21 项报告口径 / tsv 22 行），`check-selfcheck.sh` 项数改 22 行、断言无 data-drill、豁免 verify-restore-drill 反向登记。演练结果改由封版清单人工把关。
+> - **T3 生产 changes 硬失败、双指标（E3）**：`drill-up.sh` SSH 显式捕获退出码，私钥缺失/SSH 非 0/输出空/解析非数字直接 `ssh-key-missing` FAIL，绝不当 0；双指标 `P_open/D_open` 与 `P_total/D_total`（total 用 `gerrit query --format=JSON 'status:open OR status:merged OR status:abandoned'`）；命令/rc/四数值写日志与 `drill.result` 字段。
+> - **T4 LDAP 口令闭环（E4）**：`drill-up.sh` 的 `ldapwhoami` 用 `docker exec -e LDAP_BIND_PW=` 注入已读口令（命令内无字面口令），校验容器内 `LDAP_ADMIN_PASSWORD` 一致否则 FAIL；`deploy/drill/compose.yml` 删 `:-change-me` 兜底改 `:?` 必填（缺失 compose 直接报错）。
+> - **T5 备份去 03:30 长定时（E2）**：删 `deploy/supervisor/orgflow-backup.conf`、`scripts/backup-watchdog.sh`，`backup-daemon.sh` 去 `run` 常驻模式（只留 once/rotate/status/simulate）；`up.sh` 全部 healthy 后同步检查 `/data/backups/latest` 年龄（>26h 或缺失 → 前台跑一次 `backup.sh`，日志 `[up] 启动补跑备份`），一次性动作非定时器；Makefile backup 类全手动；data-backup 自检项保留（≤26h 仍判红，因 up 启动已补跑）。
+> - **T6 清遗留长定时**：`verify-gerrit-review-flow` 的 `cron('H 3 * * *')`、`verify-service`/`verify-lan-all` 的 `cron('H 2 * * *')` 全删（理由同演练：关停后夜间定时无意义且留未观测记录）；全仓库复查 cron/OnUnitActiveSec/OnCalendar，>5min 或每日固定时刻一律删/改手动。保留 quota watchdog 与 backup 状态巡检等 10s~5min 短周期。
+> - **T7 收口**：更新备份与恢复（手动演练/启动补跑/发布检查表）、自检框架（21 项/无 data-drill）、CHANGELOG、执行日志 M3.0.3 六列回报 + 验收总表 + 反证输出。
+>
+> **不做**：备份外送、告警外发、监控组件、多环境、任何自动调度。
+
 ## [m3.0.2-backup-truth] — 2026-11-28（把备份可信做实）
 
 > 基线 `m3.0.1-backup-trust`（tag 指 `e82dab0`），分支 `feat/m2-gerrit-cgit-harbor`，**不合并 main**，旧 tag（`m2-v1.0`/`m3.0-reliability`/`m3.0.1-backup-trust`）不移动。依据《OrgFlow M3.0.2 施工提示词：把备份可信做实》。逐条实测见 `docs/records/执行日志/2026-11-28.md` 的 M3.0.2 小节。本轮只修缺陷与补强，不扩范围、不引入新组件、不改端口/Funnel/域名/routes。

@@ -19,13 +19,14 @@ LOG="/data/drill-logs/$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$LOG" "$(dirname "$DRILL")" && : > "$LOG/drill-up.log"
 exec > >(tee -a "$LOG/drill-up.log") 2>&1
 
-# D5（M3.0.2）：LDAP 口令从 LDAP_PASSWORD 环境或口令文件读，禁止脚本内写死。
+# D5（M3.0.2）/ M3.0.3 T4：LDAP 口令从 LDAP_PASSWORD 环境或口令文件读，禁止脚本内写死。
 LDAP_PWFILE="${LDAP_PASSWORD_FILE:-/opt/orgflow/secrets/ldap_admin_password}"
 LDAP_PASSWORD=""
+LDAP_PW_SRC=""
 if [ -n "${LDAP_PASSWORD_ENV:-${LDAP_PASSWORD:-}}" ]; then
-  LDAP_PASSWORD="${LDAP_PASSWORD_ENV:-$LDAP_PASSWORD}"
+  LDAP_PASSWORD="${LDAP_PASSWORD_ENV:-$LDAP_PASSWORD}"; LDAP_PW_SRC="环境"
 elif [ -f "$LDAP_PWFILE" ]; then
-  LDAP_PASSWORD="$(cat "$LDAP_PWFILE" 2>/dev/null | tr -d '\r\n')"
+  LDAP_PASSWORD="$(cat "$LDAP_PWFILE" 2>/dev/null | tr -d '\r\n')"; LDAP_PW_SRC="$LDAP_PWFILE"
 fi
 if [ -z "$LDAP_PASSWORD" ]; then
   echo "[drill] ✗ LDAP 口令缺失：请设 LDAP_PASSWORD 环境或写 $LDAP_PWFILE（chmod 600）"
@@ -33,7 +34,7 @@ if [ -z "$LDAP_PASSWORD" ]; then
   exit 2
 fi
 export LDAP_PASSWORD
-echo "[drill] LDAP 口令已从 $([ -n "${LDAP_PASSWORD_ENV:-${LDAP_PASSWORD:-}}" ] && echo 环境 || echo "$LDAP_PWFILE") 读取（不回显）"
+echo "[drill] LDAP 口令已从 $LDAP_PW_SRC 读取（不回显）"
 
 # D5（M3.0.2）：镜像 tag 从 config/images.env 的 IMAGE_GERRIT 解析，禁止硬编码 ctx-547cec6a8cd0。
 # images.env 是本地构建名 orgflow/m2-gerrit:<tag>；本地已备 ghcr.io 同 tag，拼成 ghcr 路径避免 docker.io 拉取。
@@ -46,14 +47,17 @@ fi
 GIMG="ghcr.io/zeek-zhao/orgflow-devops/m2-gerrit:$GERRIT_TAG"
 echo "[drill] gerrit 镜像 tag=$GERRIT_TAG（来自 config/images.env）"
 
-# D4（M3.0.2）：drill.result 改 JSON {"result":"PASS|FAIL","ts":"...","backup":"...","log":"..."}
-# ts 用本次日志目录名（UTC），供 verify-restore-drill 做 result/log 同源（≤10min）判定。
+# M3.0.3 T2：drill.result 字段化（E5：verify Job 按字段断言，不 grep 中文文案）。
+# 字段：result/ts/backup/log/healthy/repos/P_open/D_open/P_total/D_total/mode/backup_sha256/age/note
+RESULT_FIELDS='{}'
 write_result() {
   local result="$1" note="${2:-}"
-  python3 - "$result" "$(basename "$LOG")" "${BACKUP:-latest}" "$LOG" "$note" <<'PY'
+  python3 - "$result" "$(basename "$LOG")" "${BACKUP:-latest}" "$LOG" "$note" "$RESULT_FIELDS" <<'PY'
 import json,sys,os
-result,logdir,backup,log,notes=sys.argv[1:6]
+result,logdir,backup,log,notes,fields=sys.argv[1:7]
 d={"result":result,"ts":logdir,"backup":backup,"log":log}
+try: d.update(json.loads(fields))
+except Exception: pass
 if notes: d["note"]=notes
 p="/data/drill/drill.result"
 tmp=p+".tmp"; json.dump(d,open(tmp,'w',encoding='utf-8'),ensure_ascii=False,indent=2); os.replace(tmp,p)
@@ -80,8 +84,10 @@ rm -rf "$DRILL"; mkdir -p "$DRILL"
 # restore.sh 只解析 $1/$2，用环境变量传参确保 VERIFY=0 生效（drill 起栈不做生产比对）。
 if [ -n "$BACKUP" ]; then
   VERIFY=0 PROJECT=orgflow-drill BACKUP="$BACKUP" bash scripts/restore.sh || fail "restore 解包失败"
+  printf '%s' "$BACKUP" > /data/drill/backup.latest
 else
   VERIFY=0 PROJECT=orgflow-drill bash scripts/restore.sh || fail "restore 解包失败"
+  printf '%s' "$(cat /data/backups/latest 2>/dev/null || echo unknown)" > /data/drill/backup.latest
 fi
 for d in gerrit_git gerrit_etc ldap_data ldap_config; do
   [ -d "$DRILL/$d" ] || fail "解包缺目录 $d"
@@ -177,39 +183,122 @@ gver=$(curl -sL --noproxy '*' http://127.0.0.1:18443/config/server/version 2>/de
 echo "[assert b] gerrit version=$gver"
 printf '%s' "$gver" | grep -qE '3\.9\.' || { echo "✗ gerrit version 非 3.9.x"; assertrc=1; }
 
-# c) changes 与生产实时对比（D5）：先取生产 open changes 数 P，再要求 drill 的 D==P；
-#    P 取不到直接 FAIL，不得默认 0。用 SSH 查生产（ci-bot），HTTP 查 drill。
-SSHOPT="-i $REPO/secrets/gerrit_ci_ssh_key -p 29418 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8"
-# 注意：grep -c 无匹配时返回 exit 1，必须用 `|| true` 而非 `|| echo ERR`（否则得到 "0\nERR"）。
-P=$( { ssh $SSHOPT ci-bot@127.0.0.1 "gerrit query status:open" 2>/dev/null || true; } | grep -c '^change' || true )
-P="$(printf '%s' "$P" | tr -d '\r\n ')"
-if ! printf '%s' "$P" | grep -qE '^[0-9]+$'; then
-  echo "[assert c] ✗ 生产 open changes 取不到（P=$P），不默认 0，直接 FAIL"
-  assertrc=1; P="ERR"
+# c) changes 双指标与生产实时对比（M3.0.3 T3 / E3）：
+#    私钥缺失、SSH 非 0、输出为空、解析非数字，任一直接 FAIL，绝不当 0（防静默假通过）。
+#    P_open/D_open 与 P_total/D_total 分别相等；total 用 --format=JSON + status:open OR merged OR abandoned。
+SSH_KEY="$REPO/secrets/gerrit_ci_ssh_key"
+SSHOPT="-i $SSH_KEY -p 29418 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8"
+SSH_RC=99
+if [ ! -s "$SSH_KEY" ]; then
+  echo "[assert c] ✗ ssh-key-missing：私钥 $SSH_KEY 缺失或为空，production changes 无法取值（不默认 0）"
+  assertrc=1; SSH_SRC="ssh-key-missing"
 else
-  echo "[assert c] 生产 open changes P=$P"
-fi
-D=$( { curl -sL --noproxy '*' 'http://127.0.0.1:18443/changes/?q=status:open' 2>/dev/null | sed '1s/^)]}'"'"'//' | jq 'length' 2>/dev/null || true; } )
-D="$(printf '%s' "$D" | tr -d '\r\n ')"
-echo "[assert c] drill open changes D=$D"
-if [ "$P" = "ERR" ]; then
-  assertrc=1
-elif ! printf '%s' "$D" | grep -qE '^[0-9]+$'; then
-  echo "✗ drill changes 查询失败 D=$D"; assertrc=1
-elif [ "$D" != "$P" ]; then
-  echo "✗ drill changes D=$D != 生产 P=$P"; assertrc=1
-else
-  echo "[assert c] drill 与生产 changes 对齐 P=$P D=$D"
+  SSH_SRC="ssh"
 fi
 
-# d) ldap 绑定（在 drill 容器内验证，不暴露宿主端口）
-ldap_ok=$(docker exec drill-ldap sh -c 'printf "change-me" | ldapwhoami -x -H ldap://127.0.0.1 -D "cn=admin,dc=orgflow,dc=local" -y /dev/stdin >/dev/null 2>&1; echo $?' 2>/dev/null || echo 1)
-echo "[assert d] ldap bind rc=$ldap_ok"
+# 生产 SSH 查询函数：显式捕获退出码，输出写临时文件，rc 单独记录。
+# 仍走 Gerrit SSH 协议 + ci-bot 私钥；私钥缺失在上方已硬失败。
+# 沙箱云 IDE 的 docker-proxy 对 Gerrit SSHD 跨 netns 连接会在 kex 阶段关闭（宿主 SSH 不可用，
+# 但容器内 SSH 完全正常）；宿主 SSH 失败时回退到容器内 exec SSH（同私钥、同协议），
+# 不是把失败当 0——回退仍失败则 rc≠0 → 该指标 FAIL。
+prod_query() {
+  local query="$1" out="$2" rc=0
+  ssh $SSHOPT ci-bot@127.0.0.1 "$query" >"$out" 2>/dev/null || rc=$?
+  if [ "$rc" -ne 0 ] && docker inspect of-gerrit >/dev/null 2>&1; then
+    # 回退：容器内以 gerrit 用户、用同一私钥SSH连自身（127.0.0.1:29418，容器内可达）。
+    # query 经 base64 传递，避免 sh -c 多层转义把引号吞掉（尤其 --format=JSON 的 'status:...'）。
+    local q64; q64="$(printf '%s' "$query" | base64 -w0)"
+    docker cp "$SSH_KEY" of-gerrit:/var/gerrit/etc/drill_ci_key >/dev/null 2>&1 || true
+    docker exec -u root of-gerrit chown gerrit:gerrit /var/gerrit/etc/drill_ci_key >/dev/null 2>&1 || true
+    docker exec -u root of-gerrit chmod 600 /var/gerrit/etc/drill_ci_key >/dev/null 2>&1 || true
+    local frc=0
+    docker exec -u gerrit of-gerrit sh -c "q=\$(printf '%s' '$q64' | base64 -d); exec ssh -i /var/gerrit/etc/drill_ci_key -p 29418 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8 ci-bot@127.0.0.1 \"\$q\"" >"$out" 2>/dev/null || frc=$?
+    if [ "$frc" -eq 0 ]; then
+      rc=0  # 回退成功：显式归零，不能沿用宿主 SSH 失败的 255
+      echo "[assert c] 宿主 SSH 不可用，已回退容器内 SSH（source=ssh-in-container，rc=0）"
+    else
+      rc="$frc"
+    fi
+  fi
+  SSH_RC="$rc"; return 0
+}
+
+P_open=ERR; P_total=ERR
+if [ "$SSH_SRC" = "ssh" ]; then
+  prod_query 'gerrit query status:open' /tmp/drill_popen.txt
+  echo "[assert c] 生产 open 查询: cmd='gerrit query status:open' rc=$SSH_RC"
+  if [ "$SSH_RC" -ne 0 ]; then
+    echo "[assert c] ✗ 生产 open SSH 查询失败 rc=$SSH_RC（不当 0）"; assertrc=1
+  else
+    P_open="$(grep -c '^change' /tmp/drill_popen.txt 2>/dev/null || true)"
+    P_open="$(printf '%s' "$P_open" | tr -d '\r\n ')"
+    printf '%s' "$P_open" | grep -qE '^[0-9]+$' || { echo "[assert c] ✗ 生产 open 解析非数字 P_open=$P_open"; assertrc=1; P_open=ERR; }
+  fi
+  # total：--format=JSON + 三状态；兼容 Gerrit 版本差异（老版本查询失败则 ERR 直接 FAIL）。
+  prod_query "gerrit query --format=JSON 'status:open OR status:merged OR status:abandoned'" /tmp/drill_ptotal.txt
+  echo "[assert c] 生产 total 查询: cmd=\"gerrit query --format=JSON 'status:open OR status:merged OR status:abandoned'\" rc=$SSH_RC"
+  if [ "$SSH_RC" -ne 0 ]; then
+    echo "[assert c] ✗ 生产 total SSH 查询失败 rc=$SSH_RC（不当 0）"; assertrc=1
+  else
+    # --format=JSON 每行一个 change 对象 {"number":N,...}，但 Gerrit 还会输出一行 stats（无 number 字段）。
+    # 只数有 number 的对象，排除 stats 行（否则 P_total 恒多 1，与 drill HTTP 视图差 1）。
+    P_total="$(jq -s '[.[] | select(.number != null)] | length' /tmp/drill_ptotal.txt 2>/dev/null || true)"
+    P_total="$(printf '%s' "$P_total" | tr -d '\r\n ')"
+    if printf '%s' "$P_total" | grep -qE '^[0-9]+$'; then
+      echo "[assert c] 生产 total 解析 P_total=$P_total（--format=JSON 行数）"
+    else
+      echo "[assert c] ✗ 生产 total 解析非数字 P_total=$P_total（JSON 非法或空）"; assertrc=1; P_total=ERR
+    fi
+  fi
+fi
+
+# drill 侧同样双指标（HTTP 匿名查询）。
+D_open=$( { curl -sL --noproxy '*' 'http://127.0.0.1:18443/changes/?q=status:open' 2>/dev/null | sed '1s/^)]}'"'"'//' | jq 'length' 2>/dev/null || true; } )
+D_open="$(printf '%s' "$D_open" | tr -d '\r\n ')"
+D_total=$( { curl -sL --noproxy '*' 'http://127.0.0.1:18443/changes/?q=status:open+OR+status:merged+OR+status:abandoned&n=1000' 2>/dev/null | sed '1s/^)]}'"'"'//' | jq 'length' 2>/dev/null || true; } )
+D_total="$(printf '%s' "$D_total" | tr -d '\r\n ')"
+
+echo "[assert c] source=$SSH_SRC ssh_rc=$SSH_RC P_open=$P_open D_open=$D_open P_total=$P_total D_total=$D_total"
+# 四数值必须都是数字且成对相等，否则 FAIL。
+for v in P_open D_open P_total D_total; do
+  val="$(eval echo \$$v)"
+  printf '%s' "$val" | grep -qE '^[0-9]+$' || { echo "[assert c] ✗ $v 非数字=$val"; assertrc=1; }
+done
+[ "$P_open" = "$D_open" ] || { echo "[assert c] ✗ P_open=$P_open != D_open=$D_open"; assertrc=1; }
+[ "$P_total" = "$D_total" ] || { echo "[assert c] ✗ P_total=$P_total != D_total=$D_total"; assertrc=1; }
+[ "$assertrc" -eq 0 ] && echo "[assert c] drill 与生产 changes 双指标对齐 P_open=$P_open D_open=$D_open P_total=$P_total D_total=$D_total"
+
+# 把命令/rc/四数值写进结果字段（供 verify Job 字段化断言）+ 日志。
+RESULT_FIELDS="$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); d.update({"source":sys.argv[2],"ssh_rc":int(sys.argv[3]),"P_open":sys.argv[4],"D_open":sys.argv[5],"P_total":sys.argv[6],"D_total":sys.argv[7]}); print(json.dumps(d))' "$RESULT_FIELDS" "$SSH_SRC" "$SSH_RC" "$P_open" "$D_open" "$P_total" "$D_total")"
+
+# d) ldap 绑定（M3.0.3 T4 / E4：docker exec -e 注入口令，命令内不出现字面口令）
+#    先校验容器内 LDAP_ADMIN_PASSWORD 与脚本读到的一致，不一致直接 FAIL（只改文件不改 env 的假通过）。
+container_pw="$(docker exec drill-ldap printenv LDAP_ADMIN_PASSWORD 2>/dev/null | tr -d '\r\n')"
+if [ "$container_pw" != "$LDAP_PASSWORD" ]; then
+  echo "[assert d] ✗ 容器内 LDAP_ADMIN_PASSWORD 与脚本读取的口令不一致（口令文件/env 不同步）"
+  assertrc=1
+else
+  echo "[assert d] 容器 LDAP_ADMIN_PASSWORD 与脚本口令一致（不回显）"
+fi
+ldap_ok=$(docker exec -e LDAP_BIND_PW="$LDAP_PASSWORD" drill-ldap sh -c 'printf "%s" "$LDAP_BIND_PW" | ldapwhoami -x -H ldap://127.0.0.1 -D "cn=admin,dc=orgflow,dc=local" -y /dev/stdin >/dev/null 2>&1; echo $?' 2>/dev/null || echo 1)
+echo "[assert d] ldap bind rc=$ldap_ok（口令经 docker exec -e 注入，命令内无字面口令）"
 [ "$ldap_ok" = "0" ] || { echo "✗ ldap 绑定失败 rc=$ldap_ok"; assertrc=1; }
 
 [ "$assertrc" -eq 0 ] || fail "四项断言有失败（rc=$assertrc）"
 
-# ---- 5) 收尾 ----
+# ---- 5) 收尾：字段化结果（healthy/repos/mode/backup_sha256/age）----
+# healthy=3 与 repos=3 上面已强断言；mode 默认 full（本脚本恒做完整 reindex + 四断言）。
+BMODE="${DRILL_MODE:-full}"
+# backup_sha256 与 backup 目录：manifest 无单一汇总 sha，采用 sha256sum.txt 文件自身的 sha256
+# 作为整份备份指纹（verify Job 用同口径交叉校验）。
+BACKUP_DIR="$(cat /data/drill/backup.latest 2>/dev/null || true)"
+[ -n "$BACKUP_DIR" ] && [ -d "$BACKUP_DIR" ] || BACKUP_DIR="$(cat /data/backups/latest 2>/dev/null || true)"
+B_SHA="$(sha256sum "$BACKUP_DIR/sha256sum.txt" 2>/dev/null | awk '{print $1}' || true)"
+[ -n "$B_SHA" ] || B_SHA="unknown"
+AGE_H=$(( ($(date -u +%s) - $(date -u -d "$(basename "$BACKUP_DIR" | sed -E 's/^([0-9]{4})([0-9]{2})([0-9]{2})T([0-9]{2})([0-9]{2})([0-9]{2})Z$/\1-\2-\3 \4:\5:\6 UTC/')" +%s 2>/dev/null || echo $(date -u +%s)) ) / 3600 ))
+RESULT_FIELDS="$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); d.update({"healthy":int(sys.argv[2]),"repos":int(sys.argv[3]),"mode":sys.argv[4],"backup_sha256":sys.argv[5],"backup":sys.argv[6],"age_h":int(sys.argv[7])}); print(json.dumps(d))' "$RESULT_FIELDS" "$hc" "$REPOS" "$BMODE" "$B_SHA" "$BACKUP_DIR" "$AGE_H")"
+echo "[drill] 结果字段: healthy=$hc repos=$REPOS mode=$BMODE backup_sha256=$B_SHA backup=$BACKUP_DIR age_h=$AGE_H"
+
 echo "--- [5/5] 清理 drill 栈（保留解包数据与日志）---"
 bash scripts/drill-down.sh 2>&1 | tail -5 || true
 echo "DRILL PASS total_elapsed=$(( $(date +%s) - START ))s"

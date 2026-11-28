@@ -6,9 +6,8 @@ def pipelineText = new File('/opt/orgflow/ci/jenkins/pipelines/verify-gerrit-rev
 pipelineJob('verify-gerrit-review-flow') {
     description('评审流（重）：建探针 change → 触发构建 → Verified +1 → abandon（默认 EXCLUDE，heavy）')
     logRotator { daysToKeep(7); numToKeep(20) }
-    // m2.5.5 P1-2：heavy 评审流此前"默认跳过、由单独定时任务执行"是空话——JCasC 里没有任何
-    // cron/定时配置。补每天 03:xx（H 抖动）自动跑一次，自检报告顶部注明的结果查看位置才成立。
-    triggers { cron('H 3 * * *') }
+    // M3.0.3 T6（E1）：删除每天凌晨的调度触发器。理由同演练：服务会被关停，夜间定时没有意义，
+    // 还会留下"未观测"的记录。评审流由 selfcheck 显式触发或人工手动触发。
     definition {
         cps {
             script(pipelineText)

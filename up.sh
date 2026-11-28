@@ -446,5 +446,38 @@ if (( failed )); then
 fi
 msg="全部 ${#SEQ[@]} 步 healthy"
 (( JSON )) || echo "✓ $msg"
+
+# ---- M3.0.3 T5（E2）：全部服务 healthy 后一次性检查备份新鲜度，过期/缺失则前台补跑一轮 ----
+# 这是一次性动作（不是定时器）：服务关停时不会跑，重启后由本段补上，符合"随时关停"现实。
+# --dry-run / --only / --from 等非完整起栈不触发补跑，避免局部操作误备份。
+startup_backup_catchup() {
+  local backup_root="${BACKUP_ROOT:-/data/backups}" latest age_h rc=0
+  [[ -f "$ROOT/scripts/backup.sh" ]] || return 0
+  latest="$(cat "$backup_root/latest" 2>/dev/null || true)"
+  age_h=999999
+  if [[ -n "$latest" && -d "$latest" ]]; then
+    # 用备份目录名中的 UTC 时间戳算年龄（小时）；坏名字视为极旧。
+    local bname; bname="$(basename "$latest")"
+    local bepoch
+    bepoch="$(date -u -d "${bname:0:4}-${bname:4:2}-${bname:6:2} ${bname:9:2}:${bname:11:2}:${bname:13:2} UTC" +%s 2>/dev/null || echo 0)"
+    if [[ "$bepoch" -gt 0 ]]; then age_h=$(( ($(date -u +%s) - bepoch) / 3600 )); fi
+  fi
+  (( JSON )) || echo "[up] 备份新鲜度检查：latest=${latest:-无} age=${age_h}h（阈值 26h）"
+  if [[ -z "$latest" || ! -d "$latest" || "$age_h" -gt 26 ]]; then
+    (( JSON )) || echo "[up] 启动补跑备份：latest 缺失或 age=${age_h}h >26h，前台跑 backup.sh（一次性，非定时器）"
+    bash "$ROOT/scripts/backup.sh" || rc=$?
+    if (( rc == 0 )); then
+      (( JSON )) || echo "[up] 启动补跑备份完成（rc=0）"
+    else
+      echo "✗ [up] 启动补跑备份失败 rc=$rc（不影响起栈结果，请人工检查）" >&2
+    fi
+  else
+    (( JSON )) || echo "[up] 备份新鲜（age=${age_h}h ≤26h），跳过补跑"
+  fi
+  return 0
+}
+if (( ! DRY )) && [[ "$MODE" == "full" ]]; then
+  startup_backup_catchup
+fi
 log_line "$msg"
 exit 0
