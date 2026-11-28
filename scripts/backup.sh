@@ -25,6 +25,10 @@ VOLS=(
 )
 
 mkdir -p "$DEST"
+# M3.0.1 T1: 打包窗口内变更文件计数表 + tar 告警日志
+CHANGED_TSV="$DEST/.changed.tsv"
+LOG_TAR="$DEST/.tar-warnings.log"
+: > "$CHANGED_TSV"; : > "$LOG_TAR"
 echo "[backup] 目标: $DEST"
 echo "[backup] commit: $(git -C "$REPO" rev-parse HEAD)"
 
@@ -36,7 +40,27 @@ for vol in "${VOLS[@]}"; do
     exit 1
   fi
   echo "[backup] 打包 $vol <- $mp"
-  tar -czf "$DEST/$vol.tar.gz" -C "$mp" .
+  # M3.0.1 T1: 记录打包窗口内被修改文件数（find -newermt 起始时间），写 manifest 的 changed_during_backup。
+  tfile="$(mktemp)"
+  : > "$tfile"
+  changed=0
+  # tar 加 --warning=no-file-changed；退出码 1（文件在打包期间变化）时对该卷重试一次，
+  # 仍失败则整轮失败。重试前刷新时间戳标记。
+  rc=0
+  tar --warning=no-file-changed -czf "$DEST/$vol.tar.gz" -C "$mp" . 2>>"$LOG_TAR" || rc=$?
+  if [ "$rc" -eq 1 ]; then
+    echo "[backup] ⚠ $vol tar 退出码=1（文件变化），重试一次" >&2
+    : > "$tfile"
+    tar --warning=no-file-changed -czf "$DEST/$vol.tar.gz" -C "$mp" . 2>>"$LOG_TAR" || rc=$?
+  fi
+  if [ "$rc" -ne 0 ]; then
+    echo "✗ 卷 $vol 打包失败（rc=$rc）" >&2
+    rm -f "$tfile"
+    exit 1
+  fi
+  changed="$(find "$mp" -newer "$tfile" -type f 2>/dev/null | wc -l)"
+  printf '%s\t%s\n' "$vol" "$changed" >> "$CHANGED_TSV"
+  rm -f "$tfile"
 done
 
 # 2) sha256 清单
@@ -56,6 +80,13 @@ def img_snapshot(repo):
             if line.startswith('IMAGE_') and '=' in line:
                 k,v=line.split('=',1); d[k]=v
     return d
+# M3.0.1 T1: 读取打包窗口变更文件数
+changed={}
+ct=os.path.join(dest,'.changed.tsv')
+if os.path.exists(ct):
+    for line in open(ct,encoding='utf-8'):
+        parts=line.rstrip('\n').split('\t')
+        if len(parts)==2: changed[parts[0]]=int(parts[1])
 entries=[]
 for v in vols:
     tgz=os.path.join(dest, v+'.tar.gz')
@@ -66,6 +97,7 @@ for v in vols:
         "archive": v+'.tar.gz',
         "bytes": os.path.getsize(tgz),
         "entries": n,
+        "changed_during_backup": changed.get(v, 0),
     })
 m={
     "created_utc": ts,
@@ -76,7 +108,11 @@ m={
 }
 with open(os.path.join(dest,'manifest.json'),'w',encoding='utf-8') as f:
     json.dump(m,f,ensure_ascii=False,indent=2)
-print("[backup] manifest: %d 卷, %d 条目" % (len(entries), sum(e['entries'] for e in entries)))
+# 清理中间文件（不进交付产物）
+for tmp in ('.changed.tsv','.tar-warnings.log'):
+    p=os.path.join(dest,tmp)
+    if os.path.exists(p): os.remove(p)
+print("[backup] manifest: %d 卷, %d 条目 (changed_during_backup 已记录)" % (len(entries), sum(e['entries'] for e in entries)))
 PY
 
 # 4) 交付指针

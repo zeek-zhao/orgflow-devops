@@ -122,6 +122,8 @@ V_REG_AUTH="$(grep -E '^REGISTRY_AUTH_VOLUME=' "$ENVFILE" | cut -d= -f2-)"
 V_BUILDER="$(grep -E '^BUILDER_CACHE_VOLUME=' "$ENVFILE" | cut -d= -f2-)"
 # M2.4：自检报告共享卷（Jenkins 写 / Caddy 只读）
 V_SELFCHECK="$(grep -E '^SELFCHECK_REPORTS_VOLUME=' "$ENVFILE" | cut -d= -f2-)"
+# M3.0.1 T6：Gerrit index named volume（替代匿名卷，去手工 reindex）
+V_GERRIT_INDEX="$(grep -E '^GERRIT_INDEX_VOLUME=' "$ENVFILE" | cut -d= -f2-)"
 SUBNET="$(grep -E '^NET_SUBNET=' "$ENVFILE" | cut -d= -f2-)"
 
 # ---- 参数 ----
@@ -223,7 +225,7 @@ ensure_resources() {
     docker network create --driver bridge --subnet "$SUBNET" "$NET" >/dev/null
     res_note "✓ 建网络 $NET $SUBNET"
   fi
-  for v in "$V_CA" "$V_LDAPD" "$V_LDAPC" "$V_JENKINS" "$V_REG_DATA" "$V_REG_AUTH" "$V_BUILDER" "$V_SELFCHECK"; do
+  for v in "$V_CA" "$V_LDAPD" "$V_LDAPC" "$V_JENKINS" "$V_REG_DATA" "$V_REG_AUTH" "$V_BUILDER" "$V_SELFCHECK" "$V_GERRIT_INDEX"; do
     [[ -z "$v" ]] && continue
     if docker volume inspect "$v" >/dev/null 2>&1; then
       res_note "卷 $v 已存在，跳过"

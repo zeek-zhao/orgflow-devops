@@ -1,0 +1,98 @@
+# 隔离恢复演练专用 compose（M3.0.1 T3）：从备份解包数据真实起栈，只读生产（不挂生产卷）。
+# 独立 project orgflow-drill + 独立网络 orgflow-drill_net(172.31.90.0/24)，偏移端口不撞生产。
+# 数据来自 /data/drill/orgflow-drill/<vol>（由 restore.sh 解包），以 bind mount 挂入。
+# 复用生产同 ctx tag 镜像；不新建镜像、不改生产容器。
+name: orgflow-drill
+
+services:
+  # LDAP：挂解包出的 ldap_data/ldap_config，仅容器网络内 389，不发布宿主端口。
+  # 网络别名 ldap 供 gerrit.config 的 ldap://ldap:389 解析。
+  ldap:
+    image: ${IMAGE_LDAP:-ghcr.nju.edu.cn/zeek-zhao/orgflow-devops/mirror-openldap@sha256:18742e9c449c9c1afe129d3f2f3ee15fb34cc43e5f940a20f3399728f41d7c28}
+    pull_policy: never
+    container_name: drill-ldap
+    entrypoint: ["/container/tool/run", "--copy-service"]
+    environment:
+      LDAP_ORGANISATION: OrgFlow
+      LDAP_DOMAIN: ${LDAP_DOMAIN:-orgflow.local}
+      LDAP_ADMIN_PASSWORD: ${LDAP_PASSWORD:-change-me}
+      LDAP_BASE_DN: ${LDAP_BASE_DN:-dc=orgflow,dc=local}
+      LDAP_ADMIN_DN: ${LDAP_ADMIN_DN:-cn=admin,dc=orgflow,dc=local}
+      LDAP_TLS: "false"
+    volumes:
+      - /data/drill/orgflow-drill/ldap_data:/var/lib/ldap
+      - /data/drill/orgflow-drill/ldap_config:/etc/ldap/slapd.d
+    networks:
+      drill:
+        ipv4_address: 172.31.90.13
+        aliases: [ldap]
+    healthcheck:
+      test: ["CMD-SHELL", "printf '%s' \"$$LDAP_ADMIN_PASSWORD\" | ldapsearch -x -H ldap://127.0.0.1 -D \"$$LDAP_ADMIN_DN\" -y /dev/stdin -b \"$$LDAP_BASE_DN\" -s base >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Gerrit：挂解包出的 gerrit_git/gerrit_etc，127.0.0.1:18443:8080，不映射 29418。
+  gerrit:
+    image: ${IMAGE_GERRIT:-ghcr.io/zeek-zhao/orgflow-devops/m2-gerrit:ctx-547cec6a8cd0}
+    pull_policy: never
+    container_name: drill-gerrit
+    depends_on:
+      ldap:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      P_GERRIT_HTTP: 8080
+      P_GERRIT_SSH: 29418
+      GERRIT_PUBLIC_URL: http://127.0.0.1:18443/
+      LDAP_ADMIN_PASSWORD: ${LDAP_PASSWORD:-change-me}
+    volumes:
+      - /data/drill/orgflow-drill/gerrit_git:/var/gerrit/git
+      - /data/drill/orgflow-drill/gerrit_etc:/var/gerrit/etc
+      # index 为可再生搜索索引，备份不含；演练前由 drill-up.sh reindex 到该 bind 目录。
+      - /data/drill/orgflow-drill/gerrit_index:/var/gerrit/index
+      - ./urls.env:/etc/orgflow/urls.env:ro
+      - ../../services/gerrit/entrypoint.sh:/usr/local/bin/orgflow-entrypoint.sh:ro
+      - ../../services/gerrit/etc/gerrit.config.tmpl:/var/gerrit/etc/gerrit.config.tmpl:ro
+    entrypoint: ["/usr/local/bin/orgflow-entrypoint.sh"]
+    ports:
+      - "127.0.0.1:18443:8080"
+    networks:
+      drill:
+        ipv4_address: 172.31.90.18
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/config/server/version >/dev/null 2>&1 || wget -qO- http://127.0.0.1:8080/config/server/version >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 90s
+
+  # cgit：只读挂 gerrit_git，127.0.0.1:18089:80。
+  cgit:
+    image: ${IMAGE_CGIT:-ghcr.io/zeek-zhao/orgflow-devops/m2-cgit:ctx-de0c2431bdbb}
+    pull_policy: never
+    container_name: drill-cgit
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      GIT_ROOT: /var/gerrit/git
+    volumes:
+      - /data/drill/orgflow-drill/gerrit_git:/var/gerrit/git:ro
+      # cgitrc 用镜像内置（含 virtual-root=/cgit/ 与 include=/tmp/projects.conf），无需覆盖。
+    ports:
+      - "127.0.0.1:18089:80"
+    networks:
+      drill:
+        ipv4_address: 172.31.90.19
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/80' >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+networks:
+  drill:
+    name: orgflow-drill_net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.90.0/24

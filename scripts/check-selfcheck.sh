@@ -87,8 +87,29 @@ if ! grep -q 'instances' ci/jenkins/pipelines/verify-quota-refresh.Jenkinsfile \
    || ! grep -q 'pidfile_pid' ci/jenkins/pipelines/verify-quota-refresh.Jenkinsfile; then
   echo "✗ verify-quota-refresh.Jenkinsfile 缺 instances/pidfile_pid 判据（m2.5.4 P0-2）" >&2; rc=1
 fi
+# 5f. m3.0.1 T2：verify-backup 四项断言关键字齐全（sh exit 非零即 FAILURE，无需脚本内写 currentBuild），
+#     且 checks.tsv 必须登记 data-backup 行（自检 21 项）。
+if ! grep -q 'total_volumes' ci/jenkins/pipelines/verify-backup.Jenkinsfile \
+   || ! grep -q 'exit_code' ci/jenkins/pipelines/verify-backup.Jenkinsfile \
+   || ! grep -q 'sha256sum -c' ci/jenkins/pipelines/verify-backup.Jenkinsfile; then
+  echo "✗ verify-backup.Jenkinsfile 缺四项断言关键字（m3.0.1 T2）" >&2; rc=1
+fi
+awk -F'\t' 'NR>1 && ($1=="data-backup"){f=1} END{exit f?0:1}' "$TSV" \
+  || { echo "✗ checks.tsv 缺 data-backup 行（m3.0.1 T2）" >&2; rc=1; }
+if ! grep -q 'drill.result' ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile \
+   || ! grep -q 'open changes=0' ci/jenkins/pipelines/verify-restore-drill.Jenkinsfile; then
+  echo "✗ verify-restore-drill.Jenkinsfile 缺 drill.result/changes 断言（m3.0.1 T3）" >&2; rc=1
+fi
+awk -F'\t' 'NR>1 && ($1=="data-drill"){f=1} END{exit f?0:1}' "$TSV" \
+  || { echo "✗ checks.tsv 缺 data-drill 行（m3.0.1 T3）" >&2; rc=1; }
+# 5g. m3.0.1 T4：报告与代码同源字段门禁。
+if ! grep -q 'deployedHead' ci/jenkins/pipelines/selfcheck.Jenkinsfile \
+   || ! grep -q 'consistent' ci/jenkins/pipelines/selfcheck.Jenkinsfile \
+   || ! grep -q 'report-consistency' ci/jenkins/pipelines/verify-status-page.Jenkinsfile; then
+  echo "✗ 缺报告同源字段（deployedHead/consistent/report-consistency，m3.0.1 T4）" >&2; rc=1
+fi
 
 if [[ $rc -eq 0 ]]; then
-  echo "✓ 自检清单门禁：${n} 项（表头/列/id 唯一/target 存在/verify-* 全覆盖/result+overall+mechanism+alive+instances 字段）"
+  echo "✓ 自检清单门禁：${n} 项（表头/列/id 唯一/target 存在/verify-* 全覆盖/result+overall+mechanism+alive+instances/backup 断言字段）"
 fi
 exit $rc

@@ -26,6 +26,9 @@ services:
     volumes:
       - gerrit_git:/var/gerrit/git
       - gerrit_etc:/var/gerrit/etc
+      # M3.0.1 T6：index 从匿名卷改为 named volume（灾备路径去手工 reindex）。
+      # db/cache 仍为镜像默认匿名卷（可再生，本轮不动）；index 为可重建搜索索引，不备份。
+      - gerrit_index:/var/gerrit/index
       - ../../out/urls.env:/etc/orgflow/urls.env:ro
       - ./entrypoint.sh:/usr/local/bin/orgflow-entrypoint.sh:ro
       - ./etc/gerrit.config.tmpl:/var/gerrit/etc/gerrit.config.tmpl:ro
@@ -47,6 +50,10 @@ volumes:
   gerrit_etc:
     external: true
     name: ${GERRIT_ETC_VOLUME:-orgflow-minimal_gerrit_etc}
+  # M3.0.1 T6：index named volume（external，由 up.sh 预建；不备份，可再生）
+  gerrit_index:
+    external: true
+    name: ${GERRIT_INDEX_VOLUME:-orgflow-minimal_gerrit_index}
 
 networks:
   orgflow:

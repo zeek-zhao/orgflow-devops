@@ -155,6 +155,10 @@ jobs:
   - file: /var/jenkins_home/casc/jobs/verify-quota-guard.groovy
   # M2.5.3 P0-2：刷新机制存活校验 Job（防假绿）
   - file: /var/jenkins_home/casc/jobs/verify-quota-refresh.groovy
+  # M3.0.1 T2：备份可信校验 Job
+  - file: /var/jenkins_home/casc/jobs/verify-backup.groovy
+  # M3.0.1 T3：隔离恢复演练结果校验 Job
+  - file: /var/jenkins_home/casc/jobs/verify-restore-drill.groovy
   - file: /var/jenkins_home/casc/jobs/selfcheck.groovy
 
 # M1 T7：全局默认深色主题；禁止用户改（JCasC 是唯一真源，UI 点的不算）。

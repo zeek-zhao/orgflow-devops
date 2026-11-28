@@ -26,6 +26,13 @@ services:
       - ../../config/defaults.env:/opt/orgflow/config/defaults.env:ro
       # M2.5 P0：构建资源配额证据（只读消费；agent 依旧不带 docker.sock）
       - ../../artifacts/quota:/opt/orgflow/quota:ro
+      # M3.0.1 T2：备份产物只读消费（verify-backup 四项断言；agent 不带 docker.sock）
+      - /data/backups:/opt/orgflow/backups:ro
+      # M3.0.1 T3：隔离恢复演练结果只读消费（verify-restore-drill；agent 不参与起栈）
+      - /data/drill:/opt/orgflow/drill:ro
+      - /data/drill-logs:/opt/orgflow/drill-logs:ro
+      # M3.0.1 T4：自检报告只读消费（verify-status-page 校验 latest.json 同源字段）
+      - selfcheck-reports:/opt/orgflow/reports:ro
       # M2.4 Phase0-4：Gerrit SSH host key 固定校验（ssh-keyscan -p 29418 gerrit 落卷），
       # 替代 StrictHostKeyChecking=no，防中间人；host 公钥非敏感可入库。
       - ../../config/jenkins/known_hosts:/opt/orgflow/config/known_hosts:ro
@@ -45,6 +52,12 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+
+volumes:
+  # M3.0.1 T4：自检报告共享卷（与 controller 同名 external，只读挂到 /opt/orgflow/reports）
+  selfcheck-reports:
+    external: true
+    name: ${SELFCHECK_REPORTS_VOLUME:-orgflow-minimal_selfcheck_reports}
 
 networks:
   orgflow:

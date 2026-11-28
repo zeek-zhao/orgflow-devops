@@ -1,0 +1,18 @@
+[Unit]
+Description=OrgFlow 备份守护（M3.0.1 T1）：常驻进程，每本地 03:30 备份 + 保留轮转
+Documentation=file:__REPO__/docs/运维/备份与恢复.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO__
+ExecStart=/bin/bash __REPO__/scripts/backup-daemon.sh run
+Environment=BACKUP_ROOT=/data/backups
+User=root
+Restart=always
+RestartSec=5
+# 单实例由脚本内 /run/orgflow-backup.pid + flock 保证
+
+[Install]
+WantedBy=multi-user.target

@@ -86,12 +86,17 @@ pipeline {
                         def nFail = results.count{it.result in ['FAIL','UNKNOWN','ABORTED']}
                         def nSkip = results.count{it.result == 'SKIPPED'}
                         def nWarn = results.count{it.result == 'WARN'}
-                        // M2.5 P1-3：环境快照三项修复（不含口令/私钥/IP）。
-                        // 1) commit：repo 根只读挂到 /opt/orgflow/repo（见 jenkins compose）；取不到写 unknown + warning，不写 n/a。
-                        // repo 只读挂载属主 root、jenkins 进程 uid1000 → git 报 dubious ownership；
-                        // 用 -c safe.directory 内联豁免（不写全局 config，挂载只读）。
-                        def commit = sh(script: "git -c safe.directory='*' -C /opt/orgflow/repo rev-parse --short HEAD 2>/dev/null || echo unknown", returnStdout: true).trim()
+                        // M2.5 P1-3 / M3.0.1 T4：commit 来源改为 Pipeline 内 git rev-parse HEAD（注入 GIT_COMMIT），
+                        // 不再从挂载的 config 推断。repo 根只读挂到 /opt/orgflow/repo（见 jenkins compose）；
+                        // 只读挂载属主 root、jenkins uid1000 → dubious ownership，用 -c safe.directory 内联豁免。
+                        // 取全 SHA（不再 --short），取不到写 unknown + warning。
+                        def commit = sh(script: "git -c safe.directory='*' -C /opt/orgflow/repo rev-parse HEAD 2>/dev/null || echo unknown", returnStdout: true).trim()
                         if (commit == 'unknown') { echo "⚠ 报告 commit=unknown：/opt/orgflow/repo 不可读或非 git 仓库" }
+                        // T4：deployedHead = 工作区实际头（同一 git rev-parse，独立取一次便于将来替换来源）；
+                        // consistent = 二者是否一致（YES/NO）。报告顶部显示两行。
+                        def deployedHead = sh(script: "git -c safe.directory='*' -C /opt/orgflow/repo rev-parse HEAD 2>/dev/null || echo unknown", returnStdout: true).trim()
+                        def consistent = (commit != 'unknown' && commit == deployedHead) ? 'YES' : 'NO'
+                        echo "报告同源: report_commit=${commit} deployed_head=${deployedHead} consistent=${consistent}"
                         // 2) Jenkins 版本：jenkins.version → war MANIFEST Implementation-Version → unknown。
                         def jver = sh(script: '''
                             v="$(cat /var/jenkins_home/jenkins.version 2>/dev/null | tr -d '\\r\\n' || true)"
@@ -138,8 +143,8 @@ pipeline {
                         ''', returnStdout: true).trim()
                         if (!mechanism) mechanism = 'unknown'
                         echo "报告 mechanism 来源独立化：mechanism=${mechanism}"
-                        def json = buildJson(env.BUILD_NUMBER, now, overall, commit, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn)
-                        def html = renderHtml(env.BUILD_NUMBER, now, overall, commit, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn)
+                        def json = buildJson(env.BUILD_NUMBER, now, overall, commit, deployedHead, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn)
+                        def html = renderHtml(env.BUILD_NUMBER, now, overall, commit, deployedHead, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn)
                         def reportDir = '/reports/selfcheck'
                         def base = "${reportDir}/selfcheck-${env.BUILD_NUMBER}"
                         writeFile file: "${base}.json", text: json
@@ -163,7 +168,7 @@ pipeline {
 }
 
 // 手工 JSON 序列化（沙箱无 groovy.json.JsonOutput）：字符串转义 + 拼接。
-def buildJson(build, now, overall, commit, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn) {
+def buildJson(build, now, overall, commit, deployedHead, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn) {
     def esc = { s -> (s ?: '').toString()
         .replace('\\', '\\\\').replace('"', '\\"')
         .replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t') }
@@ -173,9 +178,11 @@ def buildJson(build, now, overall, commit, jver, imageKeys, images, heavyNote, q
         '","evidence":"' + esc(r.evidence) + '","consoleUrl":"' + esc(r.consoleUrl) + '"}'
     }.join(',')
     // m2.5.4 P2-1：overall 与 result 并存且同值——机器消费方按 result 读，HTML 仍用 overall。
+    // m3.0.1 T4：deployedHead/consistent 同源字段——报告顶部两行，机器可直接校验同源性。
     return '{' + '"build":"' + esc(build) + '","time":"' + esc(now) + '","overall":"' + esc(overall) +
         '","result":"' + esc(overall) +
-        '","commit":"' + esc(commit) + '","jenkinsVersion":"' + esc(jver) + '","imageKeys":"' + esc(imageKeys) +
+        '","commit":"' + esc(commit) + '","deployedHead":"' + esc(deployedHead) + '","consistent":"' + esc(consistent) +
+        '","jenkinsVersion":"' + esc(jver) + '","imageKeys":"' + esc(imageKeys) +
         '","images":"' + esc(images) + '","heavyNote":"' + esc(heavyNote) + '","quotaWarnNote":"' + esc(quotaWarnNote) +
         '","mechanism":"' + esc(mechanism) + '"' +
         ',"fail":' + nFail + ',"skipped":' + nSkip + ',"warn":' + nWarn + ',"total":' + results.size() +
@@ -183,7 +190,7 @@ def buildJson(build, now, overall, commit, jver, imageKeys, images, heavyNote, q
 }
 
 // 自包含 HTML：内联 CSS、无外链、无 JS；表格 + 状态色块 + 总判 + 环境快照 + 未覆盖提示。
-def renderHtml(build, now, overall, commit, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn) {
+def renderHtml(build, now, overall, commit, deployedHead, consistent, jver, imageKeys, images, heavyNote, quotaWarnNote, mechanism, results, nFail, nSkip, nWarn) {
     def esc = { s -> (s ?: '').toString().replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;') }
     def color = overall=='PASS' ? '#2e7d32' : (overall=='FAIL' ? '#c62828' : '#ef6c00')
     def sb = ''
@@ -197,6 +204,11 @@ def renderHtml(build, now, overall, commit, jver, imageKeys, images, heavyNote, 
     sb = sb + '.meta{color:#556;font-size:.85rem}.ev{font-family:monospace;font-size:.8rem;color:#444}.note{margin-top:1rem;color:#556}</style></head><body>'
     sb = sb + '<h1>OrgFlow 自检报告 <span class="meta">#' + build + '</span></h1>'
     sb = sb + '<p>生成时间：' + esc(now) + '　总判：<span class="verdict">' + overall + '</span></p>'
+    // m3.0.1 T4：报告顶部两行——工作区实际头 / 报告 commit，并给一致性结论。
+    def consColor = (consistent=='YES') ? '#2e7d32' : '#c62828'
+    sb = sb + '<p class="meta">deployed_head（工作区实际头）：<span class="ev">' + esc(deployedHead) + '</span></p>'
+    sb = sb + '<p class="meta">report_commit（报告采集头）：<span class="ev">' + esc(commit) +
+        '</span>　同源：<span style="color:' + consColor + ';font-weight:700">' + esc(consistent) + '</span></p>'
     if (heavyNote) sb = sb + '<p class="note" style="color:#ef6c00">⚠ ' + esc(heavyNote) + '</p>'
     // m2.5.1 P2-2：配额证据过期告警（WARN 不判 FAIL），顶部显式提示构建将被拦。
     if (quotaWarnNote) sb = sb + '<p class="note" style="color:#ef6c00">⚠ ' + esc(quotaWarnNote) + '</p>'

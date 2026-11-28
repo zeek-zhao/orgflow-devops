@@ -254,3 +254,44 @@ restore: ## 从备份恢复到指定 project（BACKUP=... PROJECT=... 默认 org
 
 gerrit-reindex: ## 全量重建后重建 Gerrit 索引（匿名卷重建必做，NoteDb 为数据源）
 	@bash scripts/gerrit-reindex.sh
+
+# ---------- M3.0.1 T1 备份守护 ----------
+backup-daemon-install: ## [PID1=supervisord] 注册备份守护服务（装后断言 RUNNING）
+	@set -e; \
+	repo="$$(pwd)"; \
+	conf_dir="$$(bash scripts/supervisor-conf-dir.sh)"; \
+	wd="$${BACKUP_WATCHDOG_AUTOSTART:-true}"; \
+	sed -e "s#__REPO__#$$repo#g" -e "s#__BACKUP_WATCHDOG_AUTOSTART__#$$wd#g" deploy/supervisor/orgflow-backup.conf > "$$conf_dir/orgflow-backup.conf"; \
+	echo "✓ 配置已写入 $$conf_dir/orgflow-backup.conf（watchdog autostart=$$wd）"; \
+	if command -v supervisorctl >/dev/null 2>&1; then \
+	  supervisorctl reread; supervisorctl update; \
+	  supervisorctl status orgflow-backup | grep -qE 'RUNNING|STARTING' \
+	    || { echo "✗ 装后断言失败：orgflow-backup 非 RUNNING" >&2; exit 2; }; \
+	  supervisorctl status orgflow-backup; \
+	elif [ -n "$${SUPERVISOR_SOCKET:-}" ]; then \
+	  python3 scripts/supervisor-rpc.py reload; \
+	  state="$$(SUPERVISOR_SOCKET="$$SUPERVISOR_SOCKET" python3 scripts/supervisor-rpc.py status orgflow-backup 2>/dev/null | awk '{print $$2}' | tr '[:lower:]' '[:upper:]')"; \
+	  case "$$state" in RUNNING|STARTING) echo "✓ orgflow-backup state=$$state（rpc 断言通过）" ;; \
+	    *) echo "✗ 装后断言失败：orgflow-backup state=$${state:-unknown}" >&2; exit 2 ;; esac; \
+	else \
+	  echo "✗ 无 supervisorctl CLI 且未设 SUPERVISOR_SOCKET，无法断言" >&2; exit 2; \
+	fi; \
+	# 无 CLI 路径下由 watchdog 保证存活；这里等待 pidfile 指向存活 daemon（云 IDE supervisor RPC 状态可能陈旧）。
+	if ! command -v supervisorctl >/dev/null 2>&1; then \
+	  for i in $$(seq 1 15); do \
+	    p="$$(cat /run/orgflow-backup.pid 2>/dev/null)"; \
+	    [ -n "$$p" ] && kill -0 "$$p" 2>/dev/null \
+	      && tr '\0' ' ' < /proc/$$p/cmdline 2>/dev/null | grep -q backup-daemon.sh && break; \
+	    sleep 1; \
+	  done; \
+	  p="$$(cat /run/orgflow-backup.pid 2>/dev/null || echo none)"; \
+	  { kill -0 "$$p" 2>/dev/null && tr '\0' ' ' < /proc/$$p/cmdline 2>/dev/null | grep -q backup-daemon.sh; } \
+	    || { echo "✗ 装后断言失败：/run/orgflow-backup.pid=$$p 非存活 daemon" >&2; exit 2; }; \
+	  echo "✓ 实际存活断言：backup-daemon pid=$$p 命令行匹配"; \
+	fi
+
+backup-daemon-status: ## 查看备份守护状态与 status.json
+	@bash scripts/backup-daemon.sh status
+
+backup-daemon-once: ## 手动触发一轮备份（补跑/测试，支持 BACKUP_FAKE_NOW）
+	@bash scripts/backup-daemon.sh once
